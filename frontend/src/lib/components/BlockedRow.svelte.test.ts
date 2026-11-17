@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/svelte';
-import BlockedRow, { blockedBuild, blockedFact, blockedStateLabel, blockedOptionLabel, blockedRecoveredRank } from './BlockedRow.svelte';
+import BlockedRow, { blockedBuild, blockedFact, blockedStateLabel, blockedOptionLabel, blockedRecoveredRank, blockedAgeText, blockedFactRuns } from './BlockedRow.svelte';
 import type { RolloutCard } from '$lib/rollout-cards';
 
 /** A held rollout: 7b3c9f1 RUNS; 4a8d2e6 is the candidate an approval gate refuses. */
@@ -80,8 +80,10 @@ describe('BlockedRow palette wrap', () => {
 	it('gives the fact its own line below sm without leaving the palette density', () => {
 		const { container } = render(BlockedRow, { card: heldCard, kind: 'held', href: '/r', size: 'palette', wrap: true });
 		const row = container.querySelector('.br')!;
-		expect(row.className).toContain('sm:h-10');
+		// the row wraps at every width, so a line that does not fit drops the fact and action to a second line instead of cutting the name
 		expect(row.className).toContain('flex-wrap');
+		expect(row.className).not.toContain('sm:flex-nowrap');
+		expect(container.querySelector('[data-stacked]')).not.toBeNull();
 		expect(container.querySelector('.basis-full .dot-list')).not.toBeNull();
 		expect(container.querySelector('button')).toBeNull();
 	});
@@ -160,5 +162,22 @@ describe('palette Needs-you order', () => {
 		expect(blockedRecoveredRank('failed', false)).toBeLessThan(blockedRecoveredRank('failed', true));
 		expect(blockedRecoveredRank('held', true)).toBe(0);
 		expect(blockedRecoveredRank('stuck', true)).toBe(0);
+	});
+});
+
+describe('a failed row reads like the Attention card', () => {
+	const NOW = new Date('2026-11-16T10:06:00Z');
+	const since = '2026-11-16T10:00:00Z';
+	it('"for 6m" while a check fails now, "6m ago" once recovered, both from the failure\'s own instant', () => {
+		expect(blockedAgeText('failed', false, since, '2026-11-16T09:00:00Z', NOW)).toBe('for 6m');
+		expect(blockedAgeText('failed', true, since, '2026-11-16T09:00:00Z', NOW)).toBe('6m ago');
+	});
+	it('every other row keeps "<age> ago" of its own event', () => {
+		expect(blockedAgeText('held', false, null, '2026-11-16T09:06:00Z', NOW)).toBe('1h ago');
+		expect(blockedAgeText('failed', false, null, null, NOW)).toBeNull();
+	});
+	it('only the word "failing" takes the danger run; a recovered "failed" fact is one neutral run', () => {
+		expect(blockedFactRuns('Health check “latency” failing', false)).toEqual([{ t: 'Health check “latency” ', danger: false }, { t: 'failing', danger: true }]);
+		expect(blockedFactRuns('Failed its health check', true)).toEqual([{ t: 'Failed its health check', danger: false }]);
 	});
 });

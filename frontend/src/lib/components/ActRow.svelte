@@ -18,6 +18,8 @@
 		/** native title + aria-label for rows that repeat the same label (per-app Roll back) */
 		title?: string;
 		ariaLabel?: string;
+		/** id of the element that says why this action is disabled (aria-describedby) */
+		describedBy?: string;
 		/** stable hook for tests and truth scripts: data-action */
 		key?: string;
 		id?: string;
@@ -108,7 +110,16 @@
 	}
 </script>
 
-<svelte:window onclick={away} onkeydown={(e) => e.key === 'Escape' && (menuOpen = false)} />
+<svelte:window
+	onclick={away}
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && menuOpen) {
+			// Esc closes the menu and nothing else (a failure toast must not go with it)
+			e.preventDefault();
+			menuOpen = false;
+		}
+	}}
+/>
 
 {#snippet face(a: Act, variant: Item['variant'])}
 	{#if a.icon && !a.iconAfter}{@const I = a.icon}<I class={a.iconClass ?? 'h-4 w-4'} aria-hidden="true" />{/if}<span>{a.label}</span>{#if a.icon && a.iconAfter}{@const I = a.icon}<I class="{a.iconClass ?? 'h-4 w-4'} transition-transform {a.iconTurn ? 'rotate-180' : ''}" aria-hidden="true" />{/if}{#if a.href && !a.icon}<span aria-hidden="true" class="shrink-0">{a.external ? '↗' : '›'}</span>{/if}
@@ -116,11 +127,11 @@
 
 <div class="ar" class:ar-fill={fill} class:ar-end={align === 'end'} bind:this={root} data-act-row>
 	{#each items as { act, variant, phone } (act.key ?? act.label)}
-		{@const cls = `ar-item ar-${phone} ${act.phoneOnly ? 'ar-phoneonly' : ''} ${act.desktopOnly ? 'ar-desktoponly' : ''} relative z-[1] shrink-0 gap-1.5 ${variant === 'quiet' ? 'nav-link inline-flex h-8 min-h-0 items-center' : variant === 'primary' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}`}
+		{@const cls = `${act.busy ? 'opacity-60 cursor-progress' : ''} ar-item ar-${phone} ${act.phoneOnly ? 'ar-phoneonly' : ''} ${act.desktopOnly ? 'ar-desktoponly' : ''} relative z-[1] shrink-0 gap-1.5 ${variant === 'quiet' ? 'nav-link inline-flex h-8 min-h-0 items-center' : variant === 'primary' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}`}
 		{#if act.href}
 			<a href={act.href} class={cls} id={act.id} data-action={act.key} {...act.data} title={act.title} aria-label={act.ariaLabel} target={act.external ? '_blank' : undefined} rel={act.external ? 'noopener noreferrer' : undefined}>{@render face(act, variant)}</a>
 		{:else}
-			<button type="button" class={cls} id={act.id} data-action={act.key} {...act.data} title={act.title} aria-label={act.ariaLabel} disabled={act.busy || act.disabled} onclick={act.onclick}>{@render face(act, variant)}</button>
+			<button type="button" class={cls} id={act.id} data-action={act.key} {...act.data} title={act.title} aria-label={act.ariaLabel} aria-describedby={act.describedBy} disabled={act.disabled} aria-disabled={act.busy ? 'true' : undefined} onclick={act.busy ? undefined : act.onclick}>{@render face(act, variant)}</button>
 		{/if}
 	{/each}
 	{#if menu.length}

@@ -610,3 +610,17 @@ describe('RolloutNeighbourhood: Gatehouse tile details', () => {
 		expect(tile?.querySelector('[data-gate-version]')).toBeNull();
 	});
 });
+
+describe('RolloutNeighbourhood: a pin another controller owns', () => {
+	test('the disabled Clear pin says it cannot clear the pin, in its title and its description', () => {
+		const pin = box({ key: 'gate:pin', title: 'Pinned to r1', state: 'blocked', kind: 'pin' as never });
+		const hood: Hood = { focus, upstream: [], downstream: [], gates: [pin], heldLinks: 0, total: 1, holding: 1, heldBuilds: ['b2'] };
+		const { container } = render(RolloutNeighbourhood, { props: { hood, onClearPin: () => {}, clearPinDisabled: true } });
+		const btn = [...container.querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Clear pin') as HTMLButtonElement;
+		expect(btn.disabled).toBe(true);
+		const reason = "Another controller owns this rollout's wanted version, so the dashboard cannot clear the pin.";
+		expect(btn.getAttribute('title')).toBe(reason);
+		expect(container.querySelector('#nb-owned-clear-reason')?.textContent).toBe(reason);
+		expect(btn.getAttribute('aria-describedby')).toBe('nb-owned-clear-reason');
+	});
+});

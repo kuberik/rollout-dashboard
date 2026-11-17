@@ -16,7 +16,7 @@ import {
 	buildInQuestionFacts, deployedBuild, stepsOf, buildTitle, pathReach, reachSentence, buildCommitOf, failureRecovered,
 	type TChange, type TRow, type HomeState, type TierKey, type Step, waitClock, waveInfoOfHref
 } from '../data';
-import { stateWord, approvalWord, failedWord, failedParts } from '../state-words';
+import { stateWord, approvalWord, failedWord, failedParts, type FailedPart } from '../state-words';
 import { holdWord as holdText } from '../rollout-view';
 import { changeBySha, homeModel } from '$lib/components/home/sketch/home-data';
 import { rangeJson, pullJson } from '../github-read.svelte';
@@ -505,6 +505,16 @@ export function foldWindow(events: Pick<Ev, 'kind' | 'words' | 'reachedProd'>[],
 	return null;
 }
 
+/** The Merge-to-production line as parts: the time primary, then the state word in its own ink when a prod place failed (`failing` danger while a check fails now, `failed` neutral once every one recovered; the Places row's word). */
+export function toProdParts(time: string | null, adverse: Place[]): { text: string; ink: 'fg' | FailedPart['ink'] }[] | null {
+	const state: FailedPart | null = adverse.length ? { text: failedWord(adverse.every(recoveredPlace)).toLowerCase(), ink: adverse.every(recoveredPlace) ? 'muted' : 'danger' } : null;
+	if (!time && !state) return null;
+	return [...(time ? [{ text: time, ink: 'fg' as const }] : []), ...(state ? [state] : [])];
+}
+
+/** The Summary card's ink for a part: a failure that recovered reads in the card's own text ink like every other value there (the word carries it); only a failure live now is danger. */
+export const summaryInk = <T extends string>(ink: T): Exclude<T, 'muted'> | 'fg' => (ink === 'muted' ? 'fg' : (ink as Exclude<T, 'muted'>));
+
 /* ═══ How it's going ═══ */
 export function howFacts(c: TChange, places: Place[], all: Unit[], events: Ev[] | null = null) {
 	const run = places.filter((p) => p.kind === 'running');
@@ -521,7 +531,9 @@ export function howFacts(c: TChange, places: Place[], all: Unit[], events: Ev[] 
 		/* one clock read: whole minutes between the two instants (History prints the same instants), days past a day */
 		return ms >= 86_400_000 ? `${Math.floor(ms / 86_400_000)}d` : span(Math.round(ms / 60_000) * 60_000);
 	};
-	return { running: run.length, of: all.length, /* changedetail-8 CD1: the same failures History prints (a place that ran the change and then failed a newer build still failed once) */ failed: events ? events.filter((e) => e.kind === 'failed' && !e.newer).length : places.filter((p) => p.kind === 'failed').length, toFirst: gap(first?.since), toProd: prodReached ? gap(prodReached) : prod && !events ? gap(prod.since) : prodFailed ? `${gap(prodFailed.since)} · ${failedWord(places.filter((p) => p.tier === 'prod' && p.kind === 'failed').every(recoveredPlace)).toLowerCase()}` : null };
+	/* every prod place of this change that failed (its checks failing now, or all recovered): the Merge-to-production line carries the same word the Places row prints, whatever else reached prod */
+	const prodAdverse = places.filter((p) => p.tier === 'prod' && (p.kind === 'failed' || p.newerFails));
+	return { running: run.length, of: all.length, /* a failure live now (not every failed place has recovered): the one case the Failed deploys value is danger */ failedNow: places.some((p) => (p.kind === 'failed' || p.newerFails) && !recoveredPlace(p)), /* changedetail-8 CD1: the same failures History prints (a place that ran the change and then failed a newer build still failed once) */ failed: events ? events.filter((e) => e.kind === 'failed' && !e.newer).length : places.filter((p) => p.kind === 'failed').length, toFirst: gap(first?.since), toProd: toProdParts(prodReached ? gap(prodReached) : prod && !events ? gap(prod.since) : prodFailed ? gap(prodFailed.since) : null, prodAdverse) };
 }
 export { candidateBuilds, isViewer };
 

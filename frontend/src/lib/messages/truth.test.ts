@@ -22,6 +22,7 @@ import {
 	confirmLevel,
 	confirmNotice,
 	typedPrompt,
+	retryTitle,
 	deployActionLabel,
 	deployDirection,
 	deployIntent,
@@ -1972,11 +1973,15 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 		says(deployActionLabel(intent({ direction: 'rollback', production: true })), 'Roll back');
 		says(deployActionLabel(intent({ direction: 'rollback', environment: 'dev' })), 'Roll back');
 		says(deployActionLabel(intent({ direction: 'rollback', environment: '' })), 'Roll back');
+		// one verb from the page's button to the dialog's confirm; the title carries the build and the place (`retryTitle`)
+		says(deployActionLabel(intent({ direction: 'retry', production: true, environment: 'prod' })), 'Retry');
+		says(deployActionLabel(intent({ direction: 'retry', environment: '' })), 'Retry');
+		says(retryTitle(intent({ direction: 'retry', production: true, environment: 'prod' }), '1.4.0'), 'Retry 1.4.0 in prod');
+		says(retryTitle(intent({ direction: 'retry', environment: 'staging' })), 'Retry in staging');
 		says(
-			deployActionLabel(intent({ direction: 'retry', production: true, environment: 'prod' })),
-			'Redeploy to prod'
+			typedPrompt(intent({ direction: 'retry', production: true, environment: 'prod' })),
+			'This deploys to prod again, so it asks you to confirm. Type'
 		);
-		says(deployActionLabel(intent({ direction: 'retry', environment: '' })), 'Redeploy');
 		says(deployActionLabel(intent({ environment: 'staging' })), 'Deploy to staging');
 		says(deployActionLabel(intent({ environment: '' })), 'Deploy Now');
 	});
@@ -2029,7 +2034,7 @@ describe('deploy-risk: a retry states what it destroys', () => {
 			{ failingChecks: ['latency'], clearsFailureDetail: true },
 			'064b655'
 		);
-		says(lines[0], 'Redeploys 064b655 to prod — the same build whose last deploy here failed.');
+		says(lines[0], 'Retries 064b655 in prod — the same build whose last deploy here failed.');
 		says(
 			lines[1],
 			'A rule here is still holding this build back. It applies immediately and prod starts serving it.'
@@ -2037,14 +2042,14 @@ describe('deploy-risk: a retry states what it destroys', () => {
 		says(lines[2], 'latency is still failing right now. Nothing has re-checked this build since.');
 		says(
 			lines[3],
-			'Retrying resets that check to “Pending — reset due to new deployment”, which clears the failure detail shown above.'
+			'Retrying resets that check to “Pending — reset due to new deployment”, which clears the recorded failure detail.'
 		);
 	});
 
 	test('with no tag in hand it still names the target, never a bare Retry', () => {
 		says(
 			retryConsequences(prod(), { failingChecks: [], clearsFailureDetail: false })[0],
-			'Redeploys the current build to prod — the same build whose last deploy here failed.'
+			'Retries the current build in prod — the same build whose last deploy here failed.'
 		);
 	});
 
@@ -2069,7 +2074,7 @@ describe('deploy-risk: a retry states what it destroys', () => {
 		);
 		says(
 			many[3],
-			'Retrying resets those checks to “Pending — reset due to new deployment”, which clears the failure detail shown above.'
+			'Retrying resets those checks to “Pending — reset due to new deployment”, which clears the recorded failure detail.'
 		);
 	});
 

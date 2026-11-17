@@ -67,7 +67,7 @@
 					{#each P.attention as a (a.key)}
 						{@const act = a.yours ? rowAction(a.row) : null}
 						<div class="contents" data-truth-kind="attention" data-truth-app={a.app} data-truth-href={a.href} data-truth-group={a.row.group} {...truthAttrs(a.row)}>
-						<AttentionCard model={a.model} compact href={a.href} id={{ name: a.app }} rollbackHref={a.rollbackHref ?? undefined} openHref={a.openHref}
+						<AttentionCard model={a.model} compact href={a.href} id={{ name: a.app }} rollbackHref={a.rollbackHref ?? undefined} retryHref={a.href} openHref={a.openHref}
 							approve={a.yours ? approvalTarget(a.row, hs) : null} approveFallbackHref={act ? actionHref(act) : undefined} />
 						</div>
 					{/each}

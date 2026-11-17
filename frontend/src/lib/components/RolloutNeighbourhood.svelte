@@ -55,6 +55,7 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import { windowBar } from '$lib/view-models/window-bar';
 	import { CLEAR_PIN_LABEL } from './pin-copy';
+	import { WANTED_VERSION_OWNED_CLEAR_REASON } from '$lib/view-models/pin-hold';
 	import { stateWord } from '$lib/components/new/state-words';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import { StableOrder, RetainedRows } from '$lib/view-models/stable-order';
@@ -102,6 +103,7 @@
 		reconciledUpstream,
 		elsewhereCountOverride,
 		peerHeldByEnv,
+		focusRecovered = false,
 		chainWait = null,
 		focusWaitsFor = null,
 		approvedFacts = []
@@ -192,6 +194,8 @@
 		 * genuinely calm case.
 		 */
 		focusWaitsFor?: string | null;
+		/** the focus place's failure is over (every check OK again) but its rollout is still Failed: the focus draws the recovered ring, never the quiet green dot */
+		focusRecovered?: boolean;
 		/**
 		 * The card's wave/site wait sentence (`RolloutCard.waveWait`), read once
 		 * from blocking-story. Printed on the chain tile it names (or, when no
@@ -762,7 +766,8 @@
 				<p class="gh-line t-meta min-w-0 break-words text-held" data-gate-release>{type === 'window' || type === 'freeze' ? windowLine(b) : boxReleaseLine(b)}</p>
 			{/if}
 			{#if b.kind === 'pin' && onClearPin}
-				<button type="button" class="gh-line btn btn-xs btn-secondary mt-1 self-start" disabled={clearPinDisabled} onclick={onClearPin}>{CLEAR_PIN_LABEL}</button>
+				<button type="button" class="gh-line btn btn-xs btn-secondary mt-1 self-start" disabled={clearPinDisabled} title={clearPinDisabled ? WANTED_VERSION_OWNED_CLEAR_REASON : undefined} aria-describedby={clearPinDisabled ? 'nb-owned-clear-reason' : undefined} onclick={onClearPin}>{CLEAR_PIN_LABEL}</button>
+				{#if clearPinDisabled}<span id="nb-owned-clear-reason" class="sr-only">{WANTED_VERSION_OWNED_CLEAR_REASON}</span>{/if}
 			{/if}
 			{#if offer}
 				<div class="gh-line mt-1 self-start">{@render skipButton(offer)}</div>
@@ -901,7 +906,7 @@
 						     component. -->
 						<span class="inline-flex h-5 w-5 shrink-0 items-center justify-center" data-hood-port>
 							<span style="transform: scale(1.25)"
-								><StatusMark state={focusHeldBuilds.length > 0 ? 'held' : 'newest'} /></span
+								><StatusMark state={focusRecovered ? 'failed' : focusHeldBuilds.length > 0 ? 'held' : 'newest'} recovered={focusRecovered} /></span
 							>
 						</span>
 						<!-- ONE SHAPE AT EVERY WIDTH (AD r3 #2): the name, then the env chip on its own line under it, always, so the centrepiece

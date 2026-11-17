@@ -12,9 +12,9 @@
 	import { formatTimeAgoCompact } from '$lib/utils';
 	import { weekSummary } from './app-model';
 	import type { Rollout } from '../../../../types';
-	let { days, rollouts }: { deploys?: number; days: number; rollouts: Rollout[] } = $props();
+	let { days, rollouts, recoveredOf = undefined }: { deploys?: number; days: number; rollouts: Rollout[]; /** the place's current failure has every check OK again: its count reads neutral, not failing */ recoveredOf?: (r: Rollout) => boolean } = $props();
 
-	const sum = $derived(weekSummary(rollouts.map((r) => ({ history: (r.status?.history ?? []) as never, rolledBack: deployActs(r).map((a) => a?.kind === 'rollback') })), days, $now.getTime()));
+	const sum = $derived(weekSummary(rollouts.map((r) => ({ history: (r.status?.history ?? []) as never, rolledBack: deployActs(r).map((a) => a?.kind === 'rollback'), recovered: !!recoveredOf?.(r) })), days, $now.getTime()));
 	const lastFailureAgo = $derived(sum.lastFailureMs === null ? null : `${formatTimeAgoCompact(new Date(sum.lastFailureMs).toISOString(), $now)} ago`);
 </script>
 

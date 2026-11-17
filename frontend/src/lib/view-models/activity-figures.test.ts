@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inFlightRollouts, deployRateSub } from './activity-figures';
+import { inFlightRollouts, inFlightFacts, deployRateSub } from './activity-figures';
 import { medianTimeToProdMs } from './activity-time-to-prod';
 
 const H = 3_600_000;
@@ -56,5 +56,13 @@ describe('isInFlightEntry (QA #21 review): one predicate for tile, pill, rollup 
 		expect(isInFlightEntry({ bakeStatus: 'InProgress', isLive: true })).toBe(true);
 		expect(isInFlightEntry({ bakeStatus: 'InProgress', isLive: false })).toBe(false);
 		expect(isInFlightEntry({ bakeStatus: 'Succeeded', isLive: true })).toBe(false);
+	});
+});
+
+describe('inFlightFacts', () => {
+	it('is one fact per count-and-noun, joined by a no-break space, absent states omitted', () => {
+		expect(inFlightFacts({ checking: 3, paused: 1, deploying: 1 })).toEqual(['3 checking', '1 paused', '1 deploying']);
+		expect(inFlightFacts({ checking: 0, paused: 0, deploying: 2 })).toEqual(['2 deploying']);
+		expect(inFlightFacts({ checking: 0, paused: 0, deploying: 0 })).toEqual([]);
 	});
 });

@@ -6,6 +6,8 @@
 	import { approvalCellText } from '$lib/view-models/held';
 	import { shortenVersion } from '$lib/utils';
 	import { failedWord } from '$lib/components/new/state-words';
+	import { formatTimeAgoCompact } from '$lib/utils';
+	import { TONE } from '$lib/view-models/state-tone';
 
 	export type BlockedKind = 'failed' | 'stuck' | 'held';
 	/**
@@ -32,6 +34,21 @@
 	export function blockedOptionLabel(c: RolloutCard, kind: BlockedKind, recovered: boolean, actionLabel: string, holdLabel = ''): string {
 		const state = kind === 'failed' ? ` · ${blockedFact(c, kind, null, recovered).toLowerCase()}` : '';
 		return `${c.name}${c.envDisplay ? ` · ${c.envDisplay}` : ''}${state} — ${actionLabel}${holdLabel ? ` ${holdLabel}` : ''}`;
+	}
+
+	/**
+	 * The age phrase of a row, the AttentionCard's own: a failure that still fails reads "for 6m", one whose checks recovered "6m ago",
+	 * both counted from the failure's own instant (`failure.since`); every other row keeps "<age> ago" of its event.
+	 */
+	export function blockedAgeText(kind: BlockedKind, recovered: boolean, failedSince: string | null | undefined, eventInstant: string | null | undefined, at: Parameters<typeof formatTimeAgoCompact>[1]): string | null {
+		if (kind === 'failed' && failedSince) return `${recovered ? '' : 'for '}${formatTimeAgoCompact(failedSince, at)}${recovered ? ' ago' : ''}`;
+		return eventInstant ? `${formatTimeAgoCompact(eventInstant, at)} ago` : null;
+	}
+
+	/** The fact split so the word "failing" (a check failing right now) can take the danger ink; a recovered fact says "failed" in neutral ink and splits to one run. */
+	export function blockedFactRuns(text: string, recovered: boolean): { t: string; danger: boolean }[] {
+		if (recovered) return [{ t: text, danger: false }];
+		return text.split(/(\bfailing$)/).filter(Boolean).map((t) => ({ t, danger: t === "failing" }));
 	}
 
 	/** The row's fact, in plain words: why a person is needed. */
@@ -116,7 +133,6 @@
 	import Chip from './Chip.svelte';
 	import AppGlyph from './AppGlyph.svelte';
 	import { ChevronRightOutline } from 'flowbite-svelte-icons';
-	import { formatTimeAgoCompact } from '$lib/utils';
 	import { eventAge } from '$lib/view-models/event-age';
 	import { now } from '$lib/stores/time';
 	import type { Snippet } from 'svelte';
@@ -125,7 +141,7 @@
 		card,
 		kind,
 		href,
-		fact = undefined,
+		fact: factOverride = undefined,
 		story = null,
 		build = undefined,
 		size = 'row',
@@ -134,12 +150,16 @@
 		as = 'div',
 		wrap = false,
 		trailing = undefined,
+		trailingUp = false,
 		approval = false,
 		recovered = false,
+		failedSince = null,
 		class: className = ''
 	}: {
 		/** a failed row whose health checks are all OK again (its fact says Failed, else a check failing now says failing) */
 		recovered?: boolean;
+		/** a failed row's own age instant (`failure.since`): "for 6m" while failing, "6m ago" once recovered */
+		failedSince?: string | null;
 		/** A held row whose hold waits on a PERSON (an approval): the approval
 		 *  mark (person glyph, strong ink), never the orange pause a rule hold
 		 *  wears. Only meaningful with `kind: 'held'`. */
@@ -165,10 +185,13 @@
 		 *  key while the row is selected), rendered last. With `wrap` it ends
 		 *  line 2 below `sm` and line 1 from `sm`; otherwise it ends the line. */
 		trailing?: Snippet;
+		/** A trailing that is plain text (an approval's "Review approval in …"), not a button: from sm it takes the free right side of the NAME line, so
+		 *  the meta line keeps its one line and every row of a group stays two lines. On a phone it stays at the end of line 2. */
+		trailingUp?: boolean;
 		class?: string;
 	} = $props();
 
-	const factText = $derived(fact ?? blockedFact(card, kind, story, recovered));
+	const factText = $derived(factOverride ?? blockedFact(card, kind, story, recovered));
 	const buildText = $derived(build === undefined ? blockedBuild(card, kind) : build);
 	// ⭐ shared/age-lag-total: ONE AGE PER EVENT. Was `card.timestamp`
 	// unconditionally — the deploy's own start — which is wrong for `held`
@@ -177,43 +200,65 @@
 	// disagreeing instants the coordinator's blind read found. `eventAge`
 	// reads the instant for THIS row's own `kind` (`event-age.ts`).
 	const ageInstant = $derived(eventAge(card, kind));
-	const age = $derived(ageInstant ? formatTimeAgoCompact(ageInstant, $now) : null);
+	const age = $derived(blockedAgeText(kind, recovered, failedSince, ageInstant, $now));
+	const factRuns = $derived(kind === 'failed' ? blockedFactRuns(factText, recovered) : [{ t: factText, danger: false }]);
 	const palette = $derived(size === 'palette');
+
+	/** Marks the palette's meta span `data-stacked="true"` when flex-wrap has put it on a line below the name (so it is indented under the
+	 *  name, as on a phone). Measured, because CSS cannot tell a wrapped item from a first-line one. */
+	function stackedWhenWrapped(node: HTMLElement) {
+		const row = node.parentElement;
+		const measure = () => {
+			const first = row?.querySelector<HTMLElement>('a.tap-link');
+			if (first) node.dataset.stacked = String(node.offsetTop - first.offsetTop > 4);
+		};
+		measure();
+		const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+		if (row) ro?.observe(row);
+		ro?.observe(node);
+		return { destroy: () => ro?.disconnect() };
+	}
 </script>
+
+{#snippet fact()}{#each factRuns as r}{#if r.danger}<span class="{TONE.failed.ink}" data-failing-word>{r.t}</span>{:else}{r.t}{/if}{/each}{/snippet}
 
 <svelte:element
 	this={as}
 	class="br tap-zone flex items-center gap-x-3 transition-colors hover:bg-hover {palette
 		? wrap
-			? 'min-h-10 flex-wrap gap-y-0.5 px-3 py-1.5 sm:h-10 sm:flex-nowrap sm:py-0'
+			? 'min-h-10 flex-wrap gap-y-0.5 px-3 py-1.5'
 			: 'h-10 flex-nowrap px-3'
 		: 'flex-wrap gap-y-0.5 px-4 py-3'} {className}"
 	data-blocked-kind={kind}
 >
-	<StatusMark state={approval && kind === 'held' ? 'approval' : kind} label={approval && kind === 'held' ? 'waits for your approval' : blockedStateLabel(kind, recovered)} />
+	<StatusMark state={approval && kind === 'held' ? 'approval' : kind} recovered={kind === 'failed' && recovered} label={approval && kind === 'held' ? 'waits for your approval' : blockedStateLabel(kind, recovered)} />
 	{#if glyph && !palette}<AppGlyph name={card.name} size={20} />{/if}
 	<a {href} class="tap-link t-card-title min-w-0 {palette ? 'shrink' : ''} truncate text-fg">{card.name}</a>
 	<!-- Palette squeeze order: the env chip gives way first (its label
 	     truncates inside the pill, down to 3rem), then the name. -->
 	{#if card.envDisplay}<Chip role="env" theme={card.theme} label={card.envDisplay} wide class={palette ? 'min-w-12 shrink-[1000]' : 'shrink-0'} />{/if}
+	{#if palette && wrap && trailing && trailingUp}<span class="ms-auto hidden shrink-0 sm:inline" data-trailing-up>{@render trailing()}</span>{/if}
 	{#if palette && wrap}
-		<!-- Below sm the fact gets its own line (.dot-list, so no orphaned "·");
-		     from sm it is the palette's one truncated line. -->
-		<span class="t-meta flex min-w-0 basis-full items-baseline gap-x-3 pl-7 text-fg-muted sm:basis-auto sm:flex-1 sm:pl-0">
-			<span class="dot-list block min-w-0 flex-1">
+		<!-- Below sm the fact gets its own line (.dot-list, so no orphaned "·"). From sm it shares the name's line when the whole row fits there;
+		     when it does not (a long name, a long fact, the action pair), the fact and the action drop to the phone's second line, indented
+		     under the name (`stackedWhenWrapped` sets data-stacked), so the name, the env chip and the state word are never cut. A list of these rows is
+		     ONE arrangement: when its container carries `group/gl` and `data-stack-all="true"` (the palette decides, by measuring the rows' natural fit)
+		     every row takes the two-line form, so no group mixes one-line and two-line rows. -->
+		<span use:stackedWhenWrapped data-meta-line class="group/m t-meta flex min-w-0 basis-full items-baseline gap-x-3 max-sm:flex-wrap pl-7 text-fg-muted sm:basis-auto sm:flex-1 sm:pl-0 sm:data-[stacked=true]:flex-wrap sm:data-[stacked=true]:pl-7 sm:group-data-[stack-all=true]/gl:basis-full sm:group-data-[stack-all=true]/gl:pl-7">
+			<span class="dot-list block min-w-0 flex-1 sm:group-data-[stacked=true]/m:flex-none">
 				<span class="dot-list-row flex min-w-0 flex-wrap items-baseline sm:flex-nowrap">
-					<span class="min-w-0 sm:truncate">{factText}</span>
+					<span class="min-w-0 sm:truncate">{@render fact()}</span>
 					<!-- the build and the age are one no-break fact, so "20m ago" never wraps onto a line by itself -->
-					{#if buildText || age}<span class="shrink-0 whitespace-nowrap" data-build-age>{#if buildText}<span class="t-code-sm">{buildText}</span>{/if}{#if buildText && age}{' · '}{/if}{#if age}<span class="tabular-nums">{age} ago</span>{/if}</span>{/if}
+					{#if buildText || age}<span class="shrink-0 whitespace-nowrap" data-build-age>{#if buildText}<span class="t-code-sm">{buildText}</span>{/if}{#if buildText && age}{' · '}{/if}{#if age}<span class="tabular-nums">{age}</span>{/if}</span>{/if}
 				</span>
 			</span>
-			{#if trailing}<span class="ms-auto shrink-0">{@render trailing()}</span>{/if}
+			{#if trailing}<span class="ms-auto shrink-0 {trailingUp ? 'sm:hidden max-sm:basis-full' : ''}">{@render trailing()}</span>{/if}
 		</span>
 	{:else if palette}
 		<!-- One truncated line that never wraps: text separators cannot orphan. -->
 		<span class="t-meta min-w-0 flex-1 truncate text-fg-muted">
-			<span>{factText}</span>{#if buildText}{' · '}<span class="t-code-sm">{buildText}</span>{/if}{#if age}{' · '}<span
-					class="whitespace-nowrap tabular-nums">{age} ago</span
+			<span>{@render fact()}</span>{#if buildText}{' · '}<span class="t-code-sm">{buildText}</span>{/if}{#if age}{' · '}<span
+					class="whitespace-nowrap tabular-nums">{age}</span
 				>{/if}
 		</span>
 		{#if trailing}<span class="shrink-0">{@render trailing()}</span>{/if}
@@ -232,9 +277,9 @@
 				     ("running 7b3c9f1 · 4a8d2e6 waits for you") drops under the fact
 				     instead of truncating either, and the action keeps the right. -->
 				<span class="dot-list-row flex min-w-0 flex-wrap items-baseline">
-					<span class="min-w-0">{factText}</span>
+					<span class="min-w-0">{@render fact()}</span>
 					{#if buildText}<span class="t-code-sm min-w-0 max-w-full truncate">{buildText}</span>{/if}
-					{#if age}<span class="shrink-0 whitespace-nowrap tabular-nums">{age} ago</span>{/if}
+					{#if age}<span class="shrink-0 whitespace-nowrap tabular-nums">{age}</span>{/if}
 				</span>
 			</span>
 		</span>

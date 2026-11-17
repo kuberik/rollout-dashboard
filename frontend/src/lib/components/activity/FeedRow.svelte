@@ -30,6 +30,7 @@
 		tone = null,
 		live = true,
 		markLive = undefined,
+		markRecovered = false,
 		chip = null,
 		theme = null,
 		envText = null,
@@ -53,8 +54,10 @@
 		tone?: NodeState | null;
 		/** A failure that is no longer the rollout's current state reads neutral. */
 		live?: boolean;
-		/** The state mark's own currency: defaults to `live`. A failure still current whose checks recovered (or are not known yet) reads neutral in its words but keeps the failed mark every other page draws for it; only a superseded failure takes the resolved mark. */
+		/** The state mark's own currency: defaults to `live`. A failure still current (checks recovered, or not known yet) is NOT resolved: it keeps a failed mark; only a superseded failure takes the resolved mark. */
 		markLive?: boolean;
+		/** A failure still current whose checks are all OK again: the failed mark with its fill taken out (the ring, as every other page draws it). Explicit, never derived from `live` / `markLive`: "not known yet" (no health evidence) stays the solid disc. The ladder: failing now = solid; current, checks OK = ring; superseded = resolved gray. */
+		markRecovered?: boolean;
 		/** One environment: its tier chip. */
 		chip?: string | null;
 		theme?: EnvironmentTheme | null;
@@ -80,13 +83,14 @@
 	const ref = $derived(from && to ? `${from} → ${to}` : (to ?? ''));
 	const resolved = $derived(tone === 'failed' && !live);
 	const markResolved = $derived(tone === 'failed' && !(markLive ?? live));
-	const verbInk = $derived(resolved ? 'text-fg-subtle' : tone ? toneInk(tone) : bare ? 'text-fg' : 'text-fg-muted');
+	/* a recovered failure (current, checks OK again) says "failed" in neutral ink beside its ring, whichever page passes it as live */
+	const verbInk = $derived(tone === 'failed' && markRecovered && !markResolved ? toneInk('recovered') : resolved ? 'text-fg-subtle' : tone ? toneInk(tone) : bare ? 'text-fg' : 'text-fg-muted');
 </script>
 
 <li class="fr tap-zone" class:fr-bare={bare} data-feed-row data-tone={tone ?? 'ok'} title={outcome ?? undefined}>
 	<div class="fr-in">
 		<span class="fr-mk">
-			{#if tone}<StatusMark state={tone} label="{app}: {verb}" resolved={markResolved} />{:else}<span class="fr-dot" aria-hidden="true"></span>{/if}
+			{#if tone}<StatusMark state={tone} label="{app}: {verb}" recovered={markRecovered} resolved={markResolved} />{:else}<span class="fr-dot" aria-hidden="true"></span>{/if}
 		</span>
 		{#if !bare}<div class="fr-id">
 			<AppGlyph name={app} size={20} />

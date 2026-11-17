@@ -4,16 +4,16 @@ import { respond } from '../../../demo/respond';
 import { resetDemoState } from '../../../demo/state';
 import { install } from '../../../demo/health-failures-fixtures';
 import { installLiveSource, type FleetSource } from '$lib/components/home/sketch/fleet-source.svelte';
-import { stagesOf } from './stages-model';
-import { ago, failureSinceAt } from '../data';
+import { stagesOf, placeInk } from './stages-model';
+import { ago, failureSinceAt, changes } from '../data';
 import { waveMark } from '$lib/view-models/wave-mark';
 
-const load = () => {
+const load = (me = 'demo') => {
 	resetDemoState('calm');
 	const l = JSON.parse(respond('GET', '/api/rollouts').body ?? '{}');
 	const gh = JSON.parse(respond('GET', '/api/github/changes?days=365').body!);
 	const hc = JSON.parse(respond('GET', '/api/health-checks').body ?? 'null');
-	installLiveSource({ rollouts: l.rollouts.items, environments: l.environments.items, rolloutDependencies: l.rolloutDependencies, kustomizations: [], kruiseRollouts: [], changes: gh.changes, changesState: 'ok', healthChecks: hc?.rolloutHealthChecks?.items ?? null, github: { configured: true, connected: true, login: 'demo' }, me: 'demo', now: new Date() } as unknown as FleetSource);
+	installLiveSource({ rollouts: l.rollouts.items, environments: l.environments.items, rolloutDependencies: l.rolloutDependencies, kustomizations: [], kruiseRollouts: [], changes: gh.changes, changesState: 'ok', healthChecks: hc?.rolloutHealthChecks?.items ?? null, github: { configured: true, connected: true, login: me }, me, now: new Date() } as unknown as FleetSource);
 };
 
 describe('app-scope stage rollup: failed vs failing', () => {
@@ -33,6 +33,23 @@ describe('app-scope stage rollup: failed vs failing', () => {
 	});
 });
 
+describe('change-scope stage rollup: failed vs failing', () => {
+	beforeAll(() => install(true));
+	afterEach(() => installLiveSource(null));
+	const rollupOfChange = (app: string) => {
+		const c = changes('calm').items.find((i) => i.group === 'failed' && i.apps.includes(app))!;
+		return stagesOf({ kind: 'change', change: c }, 'calm').rollup.parts.filter((p) => /fail/.test(p.text));
+	};
+	it('a change whose failed place recovered counts `1 failed` in neutral ink', () => {
+		load('danielreed');
+		expect(rollupOfChange('catalog-api')).toEqual([{ text: '1 failed', ink: 'muted' }]);
+	});
+	it('a change failing now counts `1 failing` in danger ink', () => {
+		load();
+		expect(rollupOfChange('checkout-gateway')).toEqual([{ text: '1 failing', ink: 'danger' }]);
+	});
+});
+
 describe('a failed stage row follows the same failed/failing rule as the rollup', () => {
 	beforeAll(() => install(true));
 	afterEach(() => installLiveSource(null));
@@ -43,6 +60,7 @@ describe('a failed stage row follows the same failed/failing rule as the rollup'
 		expect(p.word).toBe('Failing');
 		expect(p.recovered).toBe(false);
 		expect(waveMark([{ state: 'failed', recovered: p.recovered }], 'prod').label).toBe('prod: 1 failing');
+		expect(placeInk(p)).toContain('text-danger');
 	});
 	it('a recovered failure reads Failed, in the word and in the mark label', () => {
 		load();
@@ -50,6 +68,7 @@ describe('a failed stage row follows the same failed/failing rule as the rollup'
 		expect(p.word).toBe('Failed');
 		expect(p.recovered).toBe(true);
 		expect(waveMark([{ state: 'failed', recovered: true }], 'prod').label).toBe('prod: 1 failed');
+		expect(placeInk(p)).toBe('text-fg-muted');
 	});
 	it("the row's age is the failure's age, not the deploy's", () => {
 		load();

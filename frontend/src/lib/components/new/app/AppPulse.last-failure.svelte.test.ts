@@ -30,3 +30,16 @@ describe('AppPulse: Last failure on the app Summary', () => {
 		expect(printed()).toBe('none in range');
 	});
 });
+
+describe('AppPulse: the Failed count of a recovered failure', () => {
+	const open = () => [place([entry(2, '2026-11-10T12:35:00Z', 'Failed', '2026-11-10T12:45:00Z'), entry(1, '2026-11-09T11:00:00Z', 'Succeeded', '2026-11-09T11:10:00Z')])];
+	test('failing now: the count is in danger ink', () => {
+		const { container } = render(AppPulse, { days: 7, rollouts: open() });
+		expect(container.querySelector('.text-danger')?.textContent).toBe('1');
+	});
+	test('recovered (every check OK again): the count reads neutral, nothing in danger ink', () => {
+		const { container } = render(AppPulse, { days: 7, rollouts: open(), recoveredOf: () => true });
+		expect(container.querySelector('.text-danger')).toBeNull();
+		expect(container.textContent).toContain('Failed');
+	});
+});

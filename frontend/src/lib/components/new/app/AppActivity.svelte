@@ -10,7 +10,7 @@
 	import Card from '$lib/components/Card.svelte';
 	import { ClockOutline } from 'flowbite-svelte-icons';
 	import FeedRow from '$lib/components/activity/FeedRow.svelte';
-	import { activityVerb } from '$lib/view-models/activity-verb';
+	import { activityVerb, bareVerb } from '$lib/view-models/activity-verb';
 	import { formatClockTime } from '$lib/display-time';
 	import { activityKindOf } from '$lib/view-models/activity-kind';
 	import { bakePaused } from '$lib/bake-hold';
@@ -28,9 +28,9 @@
 	import { avatarSrc } from '../data';
 	import type { Rollout, Environment } from '../../../../types';
 
-	let { rollouts, environments = [], limit = 6 }: { rollouts: Rollout[]; environments?: Environment[]; limit?: number } = $props();
+	let { rollouts, environments = [], limit = 6, recoveredOf = undefined }: { rollouts: Rollout[]; environments?: Environment[]; limit?: number; /** the place's failure is current and its checks are all OK again: the newest failure event takes the recovered ring (history stays resolved) */ recoveredOf?: (r: Rollout) => boolean } = $props();
 
-	type Entry = { key: string; ts: string; kind: ActivityKind; current: boolean; env: string; theme: ReturnType<typeof getRolloutEnvironmentTheme>; from: string | null; to: string; actor: Actor };
+	type Entry = { key: string; ts: string; kind: ActivityKind; current: boolean; recovered: boolean; env: string; theme: ReturnType<typeof getRolloutEnvironmentTheme>; from: string | null; to: string; actor: Actor };
 	/* a day is the display zone's day: `startOfDayMs` (display-time.ts) is the one bucket rule */
 	const dayKey = (ts: string) => String(startOfDayMs(new Date(ts)));
 	const all = $derived.by<Entry[]>(() => {
@@ -54,7 +54,7 @@
 				const rank = getEnvironmentRank(envName);
 				const kind = activityKindOf({ bakeStatus: bs, bakeStatusMessage: h.bakeStatusMessage, failedHealthChecks: !!h.failedHealthChecks?.length, bakePaused: bakePaused(h), isRollback: acts[i]?.kind === 'rollback', actorKind: actor.kind, envRank: rank, firstEnvRank: Math.min(ranks.get(r.metadata?.name ?? '') ?? Infinity, rank) });
 				const ts = bs === 'Failed' ? historyEntrySince(h) ?? h.timestamp : h.timestamp;
-				out.push({ key: `${ri}:${i}`, ts, kind, current: i === 0, env: shortEnvLabel(theme) || envName, theme, from: prev, to: ver, actor });
+				out.push({ key: `${ri}:${i}`, ts, kind, current: i === 0, recovered: i === 0 && (kind === 'failed' || kind === 'failedHealthCheck') && !!recoveredOf?.(r), env: shortEnvLabel(theme) || envName, theme, from: prev, to: ver, actor });
 			}
 		}
 		return out.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
@@ -74,8 +74,6 @@
 	const shown = $derived(groups.reduce((n, g) => n + g.rows.length, 0));
 	/** "6 of 35 today" when every shown event is one day's, else "6 of 41" */
 	const footLeft = $derived(groups.length === 1 ? `${shown} of ${totals.get(groups[0].key) ?? shown} ${groups[0].label.toLowerCase()}` : `${shown} of ${all.length}`);
-	/** the verb column: one word each, in a fixed 96px track */
-	const VERB: Record<ActivityKind, string> = { deployed: 'Deployed', promoted: 'Promoted', rolledBack: 'Rolled back', failed: 'Failed', failedHealthCheck: 'Check failed', deploying: 'Deploying', checking: 'Checking', paused: 'Paused', held: 'Held', approved: 'Approved', pinned: 'Pinned' };
 </script>
 
 <Card icon={ClockOutline} title="Recent activity" padded={false} smooth={false}>
@@ -93,7 +91,7 @@
 			<ul class="lc-rows">
 				{#each g.rows as e (e.key)}
 					{@const vb = activityVerb(e.kind)}
-					<FeedRow bare app="" href="" verb={VERB[e.kind]} tone={vb.tone} live={e.current} chip={e.env ? (e.env === 'production' ? 'prod' : e.env) : null} theme={e.theme}
+					<FeedRow bare app="" href="" verb={bareVerb(e.kind)} tone={vb.tone} live={e.current} markRecovered={e.recovered} chip={e.env ? (e.env === 'production' ? 'prod' : e.env) : null} theme={e.theme}
 						from={e.from} to={e.to} actor={e.actor.kind === 'person' ? { ...e.actor, src: avatarSrc(e.actor.name) } : null} age={formatClockTime(e.ts)} />
 				{/each}
 			</ul>

@@ -13,11 +13,12 @@
 	 *   title-led   (no measurement)                          the change title 18/600 + the check name: message (`checkFact`)
 	 *   compact     status · lead · fact · actions only (Rollouts' band; the strand lives on the row below)
 	 *
-	 * Actions: Roll back is the outline, Approve the one blue (ApproveButton), the secondary an outlined "Open rollout ›".
+	 * Actions (view-models/failure-actions.ts `cardActs`): failing now = Roll back the one blue + "Open rollout ›"; recovered = Roll back, Retry, both outlined;
+	 * approval = Approve the one blue (ApproveButton) + "Open ›". They hug their labels (full width only on a phone) and pin to the card's bottom.
 	 * The whole card is a cover link; buttons sit above it. What the lead IS lives in view-models/attention.ts (unit-tested).
 	 * Bands: `AttentionBand` below in this file's sibling `AttentionBand.svelte`.
 	 */
-	import { ExclamationCircleSolid, UndoOutline, UsersGroupOutline, CodeBranchOutline } from 'flowbite-svelte-icons';
+	import { ExclamationCircleSolid, UndoOutline, PlaySolid, UsersGroupOutline, CodeBranchOutline } from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -26,8 +27,11 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import ApproveButton from '$lib/components/new/ApproveButton.svelte';
 	import { envTheme } from '$lib/components/new/rollout-view';
-	import type { ApprovalTarget } from '$lib/components/new/data';
+	import { rollbackOwnedReason, type ApprovalTarget } from '$lib/components/new/data';
 	import type { AttentionModel } from '$lib/view-models/attention';
+	import { TONE } from '$lib/view-models/state-tone';
+	import { cardActs } from '$lib/view-models/failure-actions';
+	import { retryActionHref } from '$lib/components/new/rollout-view';
 	import { now } from '$lib/stores/time';
 	import { formatTimeAgoCompact } from '$lib/utils';
 	import { atoms } from '$lib/components/atoms/atoms-context';
@@ -45,6 +49,7 @@
 		approve = null,
 		approveFallbackHref,
 		rollbackHref,
+		retryHref,
 		openHref,
 		openLabel = 'Open rollout',
 		note,
@@ -66,6 +71,8 @@
 		approveFallbackHref?: string;
 		/** Failing: where Roll back goes (the tab's rollback entry) */
 		rollbackHref?: string;
+		/** where Retry goes (the rollout, which holds the retry and its confirmation): offered, and first, only for a recovered failure */
+		retryHref?: string;
 		/** the outlined secondary "Open rollout ›" */
 		openHref?: string;
 		openLabel?: string;
@@ -74,14 +81,19 @@
 		class?: string;
 	} = $props();
 	/* a failure's age counts against the live clock, the banners' rule: one failure, one age */
-	const forAge = $derived(model.forAgeAt ? `for ${formatTimeAgoCompact(model.forAgeAt, $now)}` : model.forAge);
+	const forAge = $derived(model.forAgeAt ? `${model.recovered ? '' : 'for '}${formatTimeAgoCompact(model.forAgeAt, $now)}${model.recovered ? ' ago' : ''}` : model.forAge);
 
 	const failed = $derived(model.state === 'failed');
 	/* r42 atom: the approval's ratio figure ("5 of 6 prod regions") counted as a region meter */
 	const AT = atoms();
 	const ratio = $derived(AT.regions && model.figure?.kind === 'ratio' ? { k: Number(model.figure.value), n: Number(/of (\d+)/.exec(model.figure.unit)?.[1] ?? 0) } : null);
 	const fig = $derived(model.figure);
-	const hasActions = $derived(failed ? !!rollbackHref || !!openHref : !!approve || !!approveFallbackHref || !!openHref);
+	const retryLead = $derived(failed && model.recovered && !!retryHref);
+	/* the actions of this state, in print order (view-models/failure-actions.ts `cardActs`) */
+	/* another controller owns the failing rollout's wanted version: Roll back is drawn disabled with the header's reason */
+	const ownedReason = $derived(rollbackOwnedReason(rollbackHref));
+	const acts = $derived(cardActs({ state: failed ? 'failed' : 'approval', recovered: !!model.recovered, rollback: !!rollbackHref, retry: retryLead, open: !!openHref && !(retryLead && openHref === retryHref), approve: !!approve || !!approveFallbackHref }));
+	const hasActions = $derived(acts.length > 0);
 	const label = $derived(id.title || id.name);
 	/* the tier chip names its place the way every env chip does: "prod-eu-west", a folded set "5 prod regions" (Chip splits it into the tinted tier + neutral place halves) */
 	const tierLabel = $derived(!model.place ? model.tier : /^\d+ regions?$/.test(model.place) ? model.place.replace(/ (regions?)$/, ` ${model.tier} $1`) : `${model.tier}-${model.place}`);
@@ -89,8 +101,8 @@
 
 {#snippet status()}
 	<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-		<span class="inline-grid shrink-0"><StatusMark state={failed ? 'failed' : 'approval'} /></span>
-		<span class="t-meta font-semibold {failed ? 'text-danger' : 'text-held'}" data-word>{model.word}</span>
+		<span class="inline-grid shrink-0"><StatusMark state={failed ? 'failed' : 'approval'} recovered={failed && model.recovered} /></span>
+		<span class="t-meta font-semibold {failed ? (model.recovered ? TONE.recovered.ink : 'text-danger') : 'text-held'}" data-word>{model.word}</span>
 		{#if forAge}<span class="t-meta tabular-nums text-fg-subtle">· {forAge}</span>{/if}
 		{#if model.tier}<span class="ml-auto shrink-0"><Chip role="env" theme={envTheme(model.tier)} label={tierLabel} wide /></span>{/if}
 	</div>
@@ -111,13 +123,22 @@
 
 {#snippet actions()}
 	{#if hasActions}
-		<div class="ac-act relative z-[1] mt-auto flex shrink-0 flex-wrap items-center gap-2">
-			{#if failed}
-				{#if rollbackHref}<a href={rollbackHref} class="btn btn-secondary" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>{/if}
-			{:else}
-				<ApproveButton target={approve} fallbackHref={approveFallbackHref} class="btn btn-primary" icon />
-			{/if}
-			{#if openHref}<a href={openHref} class="btn btn-secondary">{openLabel} ›</a>{/if}
+		<div class="ac-act relative z-[1] mt-auto flex shrink-0 flex-wrap items-center gap-2" data-actions>
+			{#each acts as a (a.key)}
+				{#if a.key === 'approve'}
+					<ApproveButton target={approve} fallbackHref={approveFallbackHref} class="btn btn-primary" icon />
+				{:else if a.key === 'rollback'}
+					{#if ownedReason}
+						<button type="button" disabled title={ownedReason} class="btn {a.primary ? 'btn-primary' : 'btn-secondary'}" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</button>
+					{:else}
+						<a href={rollbackHref} class="btn {a.primary ? 'btn-primary' : 'btn-secondary'}" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>
+					{/if}
+				{:else if a.key === 'retry'}
+					<a href={retryActionHref(retryHref ?? href)} class="btn btn-secondary" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>
+				{:else}
+					<a href={openHref} class="btn btn-secondary" data-action="open">{openLabel} ›</a>
+				{/if}
+			{/each}
 		</div>
 	{/if}
 {/snippet}
@@ -126,7 +147,7 @@
 	{#if fig}
 		<div class="min-w-0">
 			<div class="flex min-w-0 flex-wrap items-baseline gap-x-2.5" data-lead={fig.kind}>
-				<span class="ac-fig whitespace-nowrap font-semibold tabular-nums tracking-[-0.025em] {model.recovered ? 'text-fg-muted' : 'text-fg'} {lead ? 'ac-fig--lead' : ''}" data-recovered={model.recovered || undefined}>{fig.value}{#if fig.unit}<small class="ml-0.5 whitespace-pre font-normal tracking-normal text-fg-muted {lead ? 'text-lg' : 'text-base'}">{fig.unit.startsWith('of ') ? ' ' : ''}{fig.unit}</small>{/if}</span>
+				<span class="ac-fig whitespace-nowrap font-semibold tabular-nums tracking-[-0.025em] {model.recovered ? 'text-fg-muted' : 'text-fg'} {lead ? 'ac-fig--lead' : ''}" data-recovered={model.recovered || undefined}>{fig.value}{#if fig.unit}<small class="ml-0.5 whitespace-pre font-normal tracking-normal text-fg-muted {lead ? 'text-lg' : 'text-base'}">{fig.unit.startsWith('of ') ? ' ' : ''}{fig.unit}</small>{/if}{#if model.recovered && !ratio}<small class="ml-1.5 whitespace-pre font-normal tracking-normal text-fg-muted {lead ? 'text-lg' : 'text-base'}" data-at-failure>at failure</small>{/if}</span>
 				<span class="t-body min-w-0 text-fg-muted [overflow-wrap:anywhere]">{fig.label}</span>
 			</div>
 			{#if meter}
@@ -176,7 +197,7 @@
 			{#if compact}{@render actions()}{/if}
 		</div>
 		{#if !compact}
-			<div class="flex flex-col gap-3 border-t border-line px-4 py-3 sm:px-5 sm:py-4">
+			<div class="flex flex-col gap-3 border-t border-line px-4 py-3 sm:px-5 sm:py-5">
 				{@render identity()}
 				<div class="ac-foot flex min-w-0 items-center gap-3">
 					{@render changeLine()}
@@ -207,7 +228,6 @@
 	@container (max-width: 520px) {
 		.ac-foot { flex-direction: column; align-items: stretch; }
 		.ac-foot .ac-act { width: 100%; }
-		.ac-foot .ac-act :global(.btn) { flex: 1; }
 	}
 	.ac-fig { font-size: 32px; line-height: 40px; }
 	.ac-fig--lead { font-size: 40px; line-height: 48px; }

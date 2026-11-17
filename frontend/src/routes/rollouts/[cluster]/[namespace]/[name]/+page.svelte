@@ -1,6 +1,13 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { failureText, retryOutcome, RETRY_FAILED } from '$lib/view-models/failure-text';
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
+	import { untrack } from 'svelte';
+	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
+	import { rolloutFailureTarget } from '$lib/view-models/failure-target';
+	import { siteOf } from '$lib/view-models/sites-waves';
+	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { HUE_INK, HUE_SOLID } from '$lib/view-models/state-tone';
 	import { availableReleases, releaseCandidates, releasesOf, noReleasesOf } from '$lib/releases/registry.svelte';
 	import { isDeployInFlight, showNewerBuildsCard } from '$lib/view-models/pipeline-card';
@@ -15,7 +22,6 @@
 	import { clusterErrorsFor } from '$lib/view-models/cluster-errors';
 	import { sourceTreeUrl } from '$lib/source-url';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
-	import { canHover } from '$lib/can-hover.svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { gitRef } from '$lib/git-ref';
 	import { page } from '$app/state';
@@ -34,7 +40,7 @@
 		EnvironmentStatusEntry,
 		EnvironmentInfo
 	} from '../../../../../types/environment-types';
-	import { Tooltip, Popover } from 'flowbite-svelte';
+	import { Popover } from 'flowbite-svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import {
 		CodePullRequestSolid,
@@ -155,7 +161,7 @@
 		rowShowsFailed
 	} from '$lib/view-models/deploy-risk';
 	import { blockingGateNames, promotionCandidates } from '$lib/view-models/promotion';
-	import { dashboardManagesWantedVersion, newerBuildsShown } from '$lib/view-models/pin-hold';
+	import { dashboardManagesWantedVersion, newerBuildsShown, WANTED_VERSION_OWNED_REASON, WANTED_VERSION_OWNED_CLEAR_REASON } from '$lib/view-models/pin-hold';
 	import { fleetSettled } from '$lib/view-models/behind';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import type { SnapCheck } from '$lib/view-models/health-failures';
@@ -191,6 +197,8 @@
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
+	import { headFailingNow } from '$lib/view-models/health-failures';
+	import { stalledKruise } from '$lib/view-models/retry-context';
 	import { flowHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { pageTitle } from '$lib/page-title';
 
@@ -1001,24 +1009,6 @@
 		)
 	);
 
-	// Get the first stalled kruise rollout for retry functionality
-	const stalledKruiseRollout = $derived.by(() => {
-		for (const resources of Object.values(managedResources)) {
-			for (const resource of resources) {
-				if (resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout') {
-					const kruiseRollout = resource.object as KruiseRollout;
-					if (
-						kruiseRollout?.status?.conditions?.some(
-							(c) => c.type === 'Stalled' && c.status === 'True'
-						)
-					) {
-						return kruiseRollout;
-					}
-				}
-			}
-		}
-		return null;
-	});
 
 	// Query for managed resources — one combined fetch across all kustomizations
 	// ⭐ CLUSTER IN THE KEY — `cluster` sits before the kustomization-name list
@@ -1063,6 +1053,9 @@
 	const managedResources = $derived<Record<string, ManagedResourceStatus[]>>(
 		managedResourcesQuery.data ?? {}
 	);
+
+	// the first stalled kruise rollout, for Retry (one reader, view-models/retry-context.ts, shared with the tab headers)
+	const stalledKruiseRollout = $derived(stalledKruise(managedResources));
 
 	/**
 	 * ⭐ HAS MANAGED-RESOURCES SETTLED — SUCCESS, ERROR, OR GENUINELY NEVER
@@ -1507,6 +1500,8 @@
 	let selectedVersion = $state<string | null>(null);
 
 	let showToast = $state(false);
+	/** One hide timer for the page's toast: a newer toast cancels the older one's timer, so it is never cut short by it. */
+	const hideToastSoon = toastHideTimer(() => (showToast = false));
 	let toastMessage = $state('');
 	/**
 	 * ⭐ LANE P, §5 (2026-10-09): `Toast.svelte`'s new, additive `description`
@@ -1517,6 +1512,21 @@
 	 */
 	let toastDescription = $state('');
 	let toastType = $state<'success' | 'error' | 'info'>('success');
+	// An error is reported app-wide, naming this rollout, and waits to be dismissed (it follows the operator across navigation on purpose);
+	// the page's own toast is for successes, which belong to this rollout and are dropped when the route changes.
+	$effect(() => {
+		if (showToast && toastType === 'error') {
+			const message = toastMessage;
+			untrack(() => {
+				reportFailure(rolloutFailureTarget(rollout, environment?.spec?.environment ?? null, environment ? siteOf(environment) : null), message);
+				showToast = false;
+			});
+		}
+	});
+	$effect(() => {
+		void `${cluster}/${namespace}/${name}`;
+		untrack(() => (showToast = false));
+	});
 	let toastLoading = $state(false);
 	/**
 	 * ⭐ ROUND 3, ITEM 13 (AD, 2026-10-09): "Add an action `.nav-link` 'View
@@ -1698,10 +1708,23 @@
 	// status row's own Roll back button opens, pre-selected on `rollbackNow`.
 	let changeVersionPending = $state(page.url.searchParams.get('action') === 'change-version');
 	let rollbackPending = $state(page.url.searchParams.get('action') === 'rollback');
+	/* `?action=retry` (a card's or the palette's Retry): the failure panel opens its typed confirm, then the param goes */
+	let retryPending = $state(page.url.searchParams.get('action') === 'retry');
+	function retryHandled() {
+		retryPending = false;
+		const url = new URL(page.url);
+		url.searchParams.delete('action');
+		replaceState(url, {});
+	}
 	afterNavigate(() => {
 		const action = page.url.searchParams.get('action');
+		if (action === 'retry') retryPending = true;
 		if (action === 'change-version') changeVersionPending = true;
 		if (action === 'rollback') rollbackPending = true;
+	});
+	/* a Retry link that lands on a rollout with nothing to retry (no failure panel mounted): drop the param, open nothing */
+	$effect(() => {
+		if (retryPending && rollout && !isFailedNow && !failedLinger) retryHandled();
 	});
 	$effect(() => {
 		if (rollbackPending && rollout) {
@@ -2355,9 +2378,7 @@
 			}
 
 			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon(toastType);
 		} catch (e) {
 			console.error('Failed to check for new versions:', e);
 			toastLoading = false;
@@ -2368,9 +2389,7 @@
 			toastType = 'error';
 
 			// Auto-dismiss toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon(toastType);
 		} finally {
 			isReconciling = false;
 		}
@@ -2449,9 +2468,7 @@
 			toastType = 'success';
 
 			// Auto-hide toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon(toastType);
 
 			// Refresh the rollout data
 			await rolloutQuery.refetch();
@@ -2464,13 +2481,12 @@
 			toastType = 'error';
 
 			// Auto-hide toast after 3 seconds
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon(toastType);
 		}
 	}
 
-	async function retryDeployment(kruiseRolloutName?: string, testAction = '') {
+	/** `rethrow`: the typed confirm is still open, so it prints the failure inside itself (the toast sits under its backdrop). */
+	async function retryDeployment(kruiseRolloutName?: string, testAction = '', rethrow = false) {
 		try {
 			const response = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/retry`), {
 				method: 'POST',
@@ -2479,7 +2495,7 @@
 			});
 
 			if (!response.ok) {
-				throw new Error('Failed to retry deployment');
+				throw new Error(await failureText(RETRY_FAILED, response));
 			}
 
 			showToast = true;
@@ -2502,20 +2518,19 @@
 			}
 			toastShowLogsAction = true;
 			toastType = 'success';
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon(toastType);
 			await rolloutQuery.refetch();
 		} catch (error) {
 			console.error('Retry deployment error:', error);
+			const { message: failure, toast } = retryOutcome(error, rethrow);
+			// the confirm that is still open prints the failure itself; a toast as well would say it twice
+			if (!toast) throw new Error(failure);
 			showToast = true;
-			toastMessage = `Failed to retry: ${error instanceof Error ? error.message : 'Unknown error'}`;
+			toastMessage = failure;
 			toastDescription = '';
 			toastShowLogsAction = false;
 			toastType = 'error';
-			setTimeout(() => {
-				showToast = false;
-			}, 3000);
+			hideToastSoon(toastType);
 		}
 	}
 </script>
@@ -2890,7 +2905,7 @@
 					</span>
 				{/snippet}
 				{#snippet heroIdentity()}
-					{@const stateChip = rolloutStateChip(latestEntry.bakeStatus, latestEntry)}
+					{@const stateChip = rolloutStateChip(latestEntry.bakeStatus, latestEntry, headFailingNow(healthChecks, latestEntry as never))}
 					<Chip role={stateChip.role} label={stateChip.label} title={stateChip.title} />
 					{#if stuckReason}
 						<StuckBadge reason={stuckReason} />
@@ -2914,8 +2929,8 @@
 					<!-- r11, item 5: no age on the phone meta line (it has other facts). -->
 					<span
 						class="t-meta text-fg-subtle tabular-nums max-lg:hidden"
-						title={formatDate(latestEntry.timestamp)}
-						>{formatTimeAgoCompact(latestEntry.timestamp, $now)} ago</span
+						title={formatDate(headDeployedAt(rollout) ?? latestEntry.timestamp)}
+						>{formatTimeAgoCompact(headDeployedAt(rollout) ?? latestEntry.timestamp, $now)} ago</span
 					>
 					<span class="t-meta contents"
 						>{#if isCurrentVersionCustom || headerNewer > 0 || (getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)) || scheduleMetaText}
@@ -3072,8 +3087,12 @@
 							<button
 								type="button"
 								class="btn btn-secondary max-lg:h-11"
-								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion}
+								aria-disabled={pendingAction ? 'true' : undefined}
+								title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_CLEAR_REASON}
+								aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-clear-reason'}
 								onclick={() => {
+								if (pendingAction) return;
 									showClearPinModal = true;
 								}}
 							>
@@ -3084,11 +3103,13 @@
 							type="button"
 							id="status-change-version-btn"
 							data-tour="change-version"
-							class="btn btn-secondary max-lg:h-11"
-							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noReleases}
+							class="btn btn-secondary max-lg:h-11 {pendingAction ? 'opacity-60 cursor-progress' : ''}"
+							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!noReleases}
+							aria-disabled={pendingAction ? 'true' : undefined}
 							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
-							aria-describedby={noReleases ? "change-version-reason-1" : undefined}
+							aria-describedby={noReleases ? "change-version-reason-1" : isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
 							onclick={() => {
+								if (pendingAction) return;
 								if (isDashboardManagingWantedVersion) {
 									isPinVersionMode = false;
 									selectedVersion = null;
@@ -3130,8 +3151,12 @@
 								id="status-rollback-btn"
 								class="btn btn-secondary max-lg:h-11"
 								data-phone-end
-								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
-								title={rollbackNow.basis === 'ran-here'
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion}
+								aria-disabled={pendingAction ? 'true' : undefined}
+								aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
+								title={!isDashboardManagingWantedVersion
+									? WANTED_VERSION_OWNED_REASON
+									: rollbackNow.basis === 'ran-here'
 									? `Go back to ${rollbackDisplay}, the last older version this environment ran${
 											rollbackSkipped.length > 0
 												? ` (skipping ${joinClauses(rollbackSkipped)} — newer than what is running now)`
@@ -3139,6 +3164,7 @@
 										}`
 									: `Go back to ${rollbackDisplay}, the release directly below the one running (never deployed here)`}
 								onclick={() => {
+								if (pendingAction) return;
 									const running = rollout?.status?.history?.[0]?.version;
 									if (isDashboardManagingWantedVersion && rollbackNow && running) {
 										isPinVersionMode = true;
@@ -3158,27 +3184,8 @@
 							</button>
 						{/if}
 						{#if !isDashboardManagingWantedVersion}
-							{#if canHover.current}
-								<Tooltip
-									triggeredBy="#status-change-version-btn"
-									placement="bottom"
-									transition={blur}
-									transitionParams={{ duration: 300 }}
-								>
-									Another controller owns this rollout's wanted version, so the dashboard cannot pin
-									it.
-								</Tooltip>
-							{:else}
-								<!-- ON TOUCH THE REASON IS PRINTED, NOT HIDDEN BEHIND A HOVER.
-												     (2026-10-09.) The tooltip only renders where there is a
-												     hover, so on a phone the disabled Change Version / Rollback
-												     buttons said nothing about why. One quiet line under the
-												     row, the same sentence the tooltip carries. -->
-								<p class="t-meta text-fg-subtle w-full">
-									Another controller owns this rollout's wanted version, so the dashboard cannot pin
-									it.
-								</p>
-							{/if}
+							<!-- THE REASON IS TEXT AT EVERY WIDTH (a tooltip is hover-only and a disabled button is out of the keyboard's reach): one quiet line under the row, the buttons it explains point at it with aria-describedby. -->
+							<p id="owned-reason" class="t-meta text-fg-subtle max-lg:w-full lg:w-0 lg:min-w-full lg:text-right" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>
 						{/if}
 					{/if}
 				{/snippet}
@@ -3387,8 +3394,12 @@
 								<button
 									type="button"
 									class="btn btn-secondary"
-									disabled={!isDashboardManagingWantedVersion || !!pendingAction}
+									disabled={!isDashboardManagingWantedVersion}
+								aria-disabled={pendingAction ? 'true' : undefined}
+									title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_CLEAR_REASON}
+									aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-clear-reason'}
 									onclick={() => {
+								if (pendingAction) return;
 										showClearPinModal = true;
 									}}
 								>
@@ -3479,14 +3490,17 @@
 						{isDashboardManagingWantedVersion}
 						{cluster}
 						environmentName={environment?.spec?.environment ?? null}
+						site={environment ? siteOf(environment) : null}
 						onRetry={retryDeployment}
+						requestRetry={retryPending}
+						onRequestHandled={retryHandled}
 						onSuccess={(m) => {
 							toastType = 'success';
 							toastMessage = m;
 							toastDescription = '';
 							toastShowLogsAction = false;
 							showToast = true;
-							setTimeout(() => (showToast = false), 3000);
+							hideToastSoon(toastType);
 						}}
 						onError={(m) => {
 							toastType = 'error';
@@ -3494,7 +3508,7 @@
 							toastDescription = '';
 							toastShowLogsAction = false;
 							showToast = true;
-							setTimeout(() => (showToast = false), 3000);
+							hideToastSoon(toastType);
 						}}
 					/>
 				{/if}
@@ -3973,8 +3987,12 @@
 												<button
 													type="button"
 													class="btn btn-secondary btn-xs shrink-0"
-													disabled={!isDashboardManagingWantedVersion || !!pendingAction}
+													disabled={!isDashboardManagingWantedVersion}
+								aria-disabled={pendingAction ? 'true' : undefined}
+													title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_CLEAR_REASON}
+													aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-clear-reason'}
 													onclick={() => {
+								if (pendingAction) return;
 														showClearPinModal = true;
 													}}
 												>
@@ -4158,7 +4176,7 @@
 														     failed / promoting. -->
 														<button
 															type="button"
-															class="btn btn-xs nb-deploy-btn {isOlderRow ||
+															class="btn btn-xs nb-deploy-btn {pendingAction ? 'opacity-60 cursor-progress' : ''} {isOlderRow ||
 															isBlocked ||
 															justFailed ||
 															heldByHealth ||
@@ -4167,10 +4185,10 @@
 																? 'btn-secondary'
 																: 'btn-primary'}"
 															aria-label={`Deploy version ${getDisplayVersion(releaseCandidate)}`}
-															disabled={(!isDashboardManagingWantedVersion &&
-																!hasForceDeployAnnotation(rollout)) ||
-																!!pendingAction}
+															disabled={!isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout)}
+															aria-disabled={pendingAction ? 'true' : undefined}
 															onclick={() => {
+																if (pendingAction) return;
 																selectedVersion = version;
 																const isCustom = isSelectedVersionCustom(version);
 																isPinVersionMode = isOlderThanCurrent(version) || isCustom;
@@ -4203,7 +4221,7 @@
 													}}
 												>
 													<span class="nb-c-mark flex items-center justify-center">
-														<span class="nb-mark" data-spine-mark><StatusMark state={markState} /></span>
+														<span class="nb-mark" data-spine-mark><StatusMark state={markState} recovered={markState === 'failed' && failureRecovered(rolloutPath(cluster, namespace, name))} /></span>
 													</span>
 													<span class="nb-c-build nb-build t-code text-fg">
 														{getDisplayVersion(releaseCandidate)}
@@ -4843,11 +4861,13 @@
 							<button
 								type="button"
 								data-tour="change-version"
-								class="btn btn-primary"
-								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noReleases}
+								class="btn btn-primary {pendingAction ? 'opacity-60 cursor-progress' : ''}"
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!noReleases}
+								aria-disabled={pendingAction ? 'true' : undefined}
 							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
 							aria-describedby={noReleases ? "change-version-reason-2" : undefined}
 								onclick={() => {
+								if (pendingAction) return;
 									if (isDashboardManagingWantedVersion) {
 										isPinVersionMode = false;
 										selectedVersion = null;
@@ -4949,6 +4969,8 @@
 	{rollout}
 	{cluster}
 	{autoDeploy}
+	environmentName={environment?.spec?.environment ?? null}
+	site={environment ? siteOf(environment) : null}
 	toast={false}
 	onSuccess={(m) => {
 		toastType = 'success';
@@ -4956,7 +4978,7 @@
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		setTimeout(() => (showToast = false), 3000);
+		hideToastSoon(toastType);
 		rolloutQuery.refetch();
 		justClearedPin = true;
 		setTimeout(() => (justClearedPin = false), 8000);
@@ -4967,7 +4989,7 @@
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		setTimeout(() => (showToast = false), 3000);
+		hideToastSoon(toastType);
 	}}
 />
 
@@ -4983,15 +5005,17 @@
 	initialSelectedVersion={selectedVersion}
 	initialExplanation={deployExplanation}
 	environmentName={environment?.spec?.environment ?? null}
+	site={environment ? siteOf(environment) : null}
 	{contractHeldVersions}
 	onDeployStart={beginPendingAction}
+	onDeployFail={() => (pendingAction = null)}
 	onSuccess={(m) => {
 		toastType = 'success';
 		toastMessage = m;
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		setTimeout(() => (showToast = false), 3000);
+		hideToastSoon(toastType);
 		// The mutation is DONE now (unlike `onDeployStart`, which fires
 		// before it) — an explicit refetch here is what actually shrinks
 		// the poll gap `pendingAction` is bridging, rather than waiting for
@@ -5004,15 +5028,16 @@
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		setTimeout(() => (showToast = false), 3000);
+		hideToastSoon(toastType);
 	}}
 />
 
-<!-- The toast's position is the shared Toast component's own house position
-     (bottom-right from `sm`, top under the header on a phone — see
-     `Toast.svelte`'s doc comment). This page's one addition is the
-     end-of-page `TOAST_DOCK_CLEARANCE` spacer above, so the rail's last rows
-     can scroll out from under a bottom-right toast at sm+. -->
+<!-- Success and loading toasts stack in the app's one toast dock (`FailureToasts` in the root layout: bottom-right from `sm`, bottom above the
+     tab bar on a phone). This page's one addition is the end-of-page `TOAST_DOCK_CLEARANCE` spacer above, so the rail's last rows can
+     scroll out from under a bottom-right toast at sm+. -->
+{#if !isDashboardManagingWantedVersion}
+	<span id="owned-clear-reason" class="sr-only">{WANTED_VERSION_OWNED_CLEAR_REASON}</span>
+{/if}
 <!-- ⭐ ROUND 3, ITEM 13: the retry toast's one action, "View logs" — only
      `retryDeployment` sets `toastShowLogsAction`, every other toast on this
      page resets it, so this snippet renders only on the toast it was asked

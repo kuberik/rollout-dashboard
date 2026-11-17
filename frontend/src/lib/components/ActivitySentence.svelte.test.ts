@@ -206,3 +206,14 @@ describe('ActivitySentence — a resolved failure is neutral, never red (qa9 B1)
 		expect(container.querySelector('.bg-progress-tint')).toBeTruthy();
 	});
 });
+
+describe('ActivitySentence: the status mark of a failure', () => {
+	const chip = (extra: Record<string, unknown>) =>
+		render(ActivitySentence, { ...baseProps(), actor: { kind: 'controller' as const, name: 'kuberik' }, kind: 'failed' as const, ...extra }).container.querySelector('span.rounded-full.ring-inset')!.className;
+	it('current failure, checks OK again: the ring; failing now: the solid disc; superseded: resolved gray, never the ring', () => {
+		expect(chip({ live: true, recovered: true })).toContain('ring-[1.5px]');
+		expect(chip({ live: true })).toContain('bg-danger-solid');
+		expect(chip({ live: false, recovered: true })).toContain('ring-line');
+		expect(chip({ live: false, recovered: true })).not.toContain('ring-[1.5px]');
+	});
+});

@@ -49,6 +49,7 @@
 		title,
 		check,
 		checkInk = true,
+		recovered = false,
 		observations = null,
 		message,
 		messageDesktopOnly = false,
@@ -88,6 +89,8 @@
 		/** the failing check's HealthCheck observations: a failed banner leads with the first drawable one as a figure (as the failure cards do) and the check line keeps its name + the budget */
 		observations?: HealthObservation[] | null;
 		checkInk?: boolean;
+		/** a failed banner whose checks are all OK again: the check line draws the recovered ring, not the solid "!" */
+		recovered?: boolean;
 		/** one sentence under the title (what the wait or hold means) */
 		/** a string, or a typed cause (a promotion gate drawn as » + chip) */
 		message?: string | Cause;
@@ -162,7 +165,7 @@
 {#snippet bodySnip()}
 			<div class="flex min-w-0 flex-col gap-2" data-statement-body>
 				{#if figure}<ObservationFigure fig={figure} />{/if}
-				{#if shownCheck && !checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} body />{/if}
+				{#if shownCheck && !checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} {recovered} body />{/if}
 				{#if place || since || build || cause || fact}
 					<!-- one .dot-list row at every width and in every banner (no fixed tracks: a track left a 50px hole between the sha and the badge) -->
 					<div class="dot-list min-w-0" data-statement-meta>
@@ -181,7 +184,7 @@
 						</div>
 					</div>
 				{/if}
-				{#if shownCheck && checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} body />{/if}
+				{#if shownCheck && checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} {recovered} body />{/if}
 				{#if message}<p class="min-w-0 {messageDesktopOnly ? 'max-sm:hidden' : ''}">{#if typeof message !== 'string'}<CauseText parts={message} />{:else}{#each splitOpensClause(message) as part}{#if part.unit}<span class="whitespace-nowrap" data-opens-clause>{part.text}</span>{:else}{part.text}{/if}{/each}{/if}</p>{/if}
 				{#if body}{@render body()}{/if}
 			</div>

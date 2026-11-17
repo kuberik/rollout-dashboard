@@ -26,6 +26,10 @@ describe('beads', () => {
 });
 
 describe('a recovered failure', () => {
+	it('is not the alarm pill: its ring carries it; failing now keeps the tinted pill', () => {
+		expect(beadOf([{ ref: '#1', state: 'failed', recovered: true }]).emphasis).toBe('');
+		expect(beadOf([{ ref: '#1', state: 'failed' }]).emphasis).toBe('failed');
+	});
 	it('is a recovered bead only when every change in it has recovered', () => {
 		expect(beadOf([{ ref: '#1', state: 'failed', recovered: true }]).recovered).toBe(true);
 		expect(beadOf([{ ref: '#1', state: 'failed', recovered: true }, { ref: '#2', state: 'failed' }], { team: true }).recovered).toBe(false);

@@ -16,6 +16,7 @@ import {
 	bakeFailedOn,
 	streamBuilds,
 	newestBuild,
+	failureRecovered,
 	behindOfPlace,
 	noReleasesAt,
 	deployedBuild,
@@ -33,6 +34,7 @@ import {
 import { lastFailureMsWithHeads } from '$lib/view-models/event-age';
 import { catalogueOrder } from '$lib/releases/order';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
+import { checkHoldSentence } from '$lib/view-models/check-hold-sentence';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
 import { waitFact } from '$lib/view-models/wait-fact';
 import { causeText, joinCause, labelPart, type Cause, type GateLabel } from '$lib/view-models/gate-label';
@@ -181,7 +183,7 @@ export function placesInPillState(places: PlaceHold[], build: string, pill: stri
 	const on = places.filter((p) => p.deployedBuild === build);
 	const word = pill.toUpperCase();
 	const want = (p: PlaceHold) =>
-		word === 'FAILED'
+		word === 'FAILED' || word === 'FAILING'
 			? p.state === 'failed'
 			: word === 'PAUSED'
 			? p.state === 'checking' && p.bakePaused
@@ -226,6 +228,7 @@ export type HoldRow = {
 	sentence: string;
 	href: string;
 	/** the held-HERE count is still unknown: the card shows a pending bar, never a guessed number */ pending?: boolean;
+	/** the health hold, and every place it names has its checks OK again (the failed rollout still holds the builds): the ring, not the solid disc */ recovered?: boolean;
 };
 /** the gate's name without the app it sits in (the page already says the app): "Invoice api manual approval" -> "Manual approval" */
 export const shortGate = (name: string, app: string): string => {
@@ -240,7 +243,8 @@ export function holdRows(
 	only: Set<string> | null = null,
 	app = '',
 	pins: ReadonlySet<string> = new Set(),
-	pinVersion: string | null = null
+	pinVersion: string | null = null,
+	recoveredAt: (href: string) => boolean = failureRecovered
 ): HoldRow[] {
 	const hrefOf = (label: string) => `${places.find((p) => p.place === label)?.href ?? ''}/gates`;
 	const rows: HoldRow[] = gates.map((g) => ({
@@ -257,6 +261,7 @@ export function holdRows(
 	}));
 	const hp = places.filter((p) => p.holdReason === 'failed' || p.holdReason === 'health');
 	if (hp.length) {
+		const recovered = hp.every((p) => recoveredAt(p.href));
 		const held: string[] = [];
 		for (const p of hp)
 			for (const h of p.heldBuilds)
@@ -268,7 +273,9 @@ export function holdRows(
 			holding: true,
 			places: hp.map((p) => p.place),
 			held,
-			sentence: 'Releases when the check starts passing',
+			/* every place recovered: the check passes again, but the failed rollout is what still holds the builds, so it needs a retry or a new build */
+			sentence: checkHoldSentence(recovered),
+			...(recovered ? { recovered: true } : {}),
 			href: `${hp[0].href}/gates`
 		});
 	}
@@ -322,7 +329,7 @@ export function scenarioPill<T extends { word: string; role: string }>(
 	placeState: string | null | undefined,
 	settled: { word: string; role: string }
 ): { word: string; role: string } {
-	if (scenario !== 'incident' && pill.word === 'FAILED' && placeState !== 'failed') return settled;
+	if (scenario !== 'incident' && (pill.word === 'FAILED' || pill.word === 'FAILING') && placeState !== 'failed') return settled;
 	return { word: pill.word, role: pill.role };
 }
 
@@ -726,10 +733,11 @@ export const pinnedPlaces = (holds: string[]): Set<string> =>
  * figures, failures in their own ink). Folds the retained histories of every place of the app over the last `days` days:
  * deploys, failed, rolled back (history-marks' deployActs, the tab's own definition), the median time to healthy (the tab's own formula),
  * the newest failure, and `daysWithData` (distinct days holding a deploy: below 2 the card collapses to a short list of facts).
- * `openFailure` is true while a place's NEWEST deploy is itself failed (a superseded failure is not the page's alarm).
+ * `openFailure` is true while a place's NEWEST deploy is itself failed and not recovered (a superseded or recovered failure is not the page's alarm).
  */
 export type WeekHistory = { timestamp?: string; bakeStatus?: string; bakeEndTime?: string };
-export type WeekRollout = { history: WeekHistory[]; rolledBack: boolean[] };
+/** `recovered`: the place's newest failure has every check OK again; it still counts as a failure, but is not open (not failing now) */
+export type WeekRollout = { history: WeekHistory[]; rolledBack: boolean[]; recovered?: boolean };
 export function weekSummary(
 	rollouts: WeekRollout[],
 	days: number,
@@ -759,7 +767,7 @@ export function weekSummary(
 			if (r.rolledBack[i]) rolledBack++;
 			if (h.bakeStatus === 'Failed') {
 				failed++;
-				if (i === 0) open = true;
+				if (i === 0 && !r.recovered) open = true;
 			}
 			if (h.bakeStatus === 'Succeeded' && h.bakeEndTime) {
 				const e = new Date(h.bakeEndTime).getTime();

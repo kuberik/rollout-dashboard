@@ -15,10 +15,12 @@
  *
  * Headline rule (coordinator a): an app's headline state here is the MOST SEVERE state among its places (state-words `mostSevere`).
  */
+import { attentionRank } from '$lib/view-models/failure-actions';
 import { inScope } from '../derivation-scope';
 import { toneInk } from '$lib/view-models/state-tone';
 import { newestFirst, latest } from '$lib/instant';
-import { heldHere } from '../data';
+import { heldHere, failingNowAt, failureRecoveredNow } from '../data';
+import { newestFailureEvents } from '$lib/view-models/failure-currency';
 import { siteCount, siteKey } from '$lib/view-models/regions';
 import {
 	rollouts, environments, placeHolds, inbound, rowsOf, ago, buildInQuestionFacts, deployedBuild, holdSince, commitHeadline, buildIdentity, isViewer, TIER_NAME, TIERS, apps as appsOf, fleet24hEvents,
@@ -27,8 +29,8 @@ import {
 import { environmentsPage, stateLine, barSegments, type EnvTile } from '../environments-page';
 import { askOf, type AskItem } from '../home-page';
 import { bannerOf, attentionRollup as attentionRollupOf, type BannerModel, type RestRow } from '../rollouts-page';
-import { failedParts, needApprovalCount, approvalWord, mostSevere, severity, stateWord } from '../state-words';
-import { runwayRow, rowAction } from '../rollout-view';
+import { failedParts, failedRollup, needApprovalCount, approvalWord, mostSevere, severity, stateWord } from '../state-words';
+import { runwayRow, rowAction, byFailRank } from '../rollout-view';
 import { plural } from '../envs-model';
 import { classifyChanges, rc, type Rollup } from '../changes-page';
 import { beadsFor } from '$lib/view-models/bead';
@@ -109,7 +111,7 @@ export type GangTile = {
 	/** the footer: the oldest change still on its way (title, ref, age + its honest label), or the build and where it comes from */
 	foot: { title: string | null; ref: string; age: string; ageLabel: string; ageTitle: string; from: string | null };
 };
-export type DayRow = { key: string; kind: 'deploy' | 'failed' | 'rolledBack'; app: string; href: string; place: string; title: string | null; build: string; who: string; age: string; /** a person pressed deploy (not the controller) */ mark: 'manual' | null; /** the reason they typed, or null (QA #14) */ reason: string | null };
+export type DayRow = { key: string; kind: 'deploy' | 'failed' | 'rolledBack'; app: string; href: string; place: string; title: string | null; build: string; who: string; age: string; /** a person pressed deploy (not the controller) */ mark: 'manual' | null; /** the reason they typed, or null (QA #14) */ reason: string | null; /** the place's newest failure, still failed, every check OK again: the ring */ recovered?: boolean; /** a later deploy replaced this failure: it reads `Failed` in neutral ink, whatever the place does now */ superseded?: boolean };
 export type Gangway = { held: GangTile[]; ready: GangTile[]; heldRollup: Rollup; inStep: { app: string; href: string }[]; /** apps here that run an older build and have nothing inbound: the same "N behind" the at-rest predicate prints, so they are never listed In step */ behind: { app: string; /** the lagging place's rollout (where the Deploy action is) */ href: string; n: number; /** its site, '' when the environment has one default site */ place: string; /** why nothing is inbound, from the lagging place's own tab data (behindWhy) */ why: string }[]; today: DayRow[]; todayRollup: Rollup };
 
 /* a NAMED site: not empty and not a tier word (regions.ts siteKey, the one default-site rule) */
@@ -158,6 +160,15 @@ export function stepSplit<A extends { app: string; href: string }>(apps: readonl
 /** the region tile's accessible summary: "1 place: 0 failing, 0 waiting, 0 checking, 1 healthy" (the count pluralises, failing and failed split as everywhere) */
 export const tileAriaLabel = (places: number, c: { failing: number; waiting: number; moving: number; rest: number }, recovered: number, movingWord: string): string =>
 	`${plural(places, 'place')}: ${failedParts(c.failing, recovered).join(', ') || '0 failing'}, ${c.waiting} waiting, ${c.moving} ${movingWord}, ${c.rest} healthy`;
+/**
+ * "Today in prod": the deploy count, then the failed deploys as the shared failing / failed split. Only a place whose check fails right now is `failing` in danger ink
+ * (state-words `failedInkParts`, the rule the /activity day cards print); a failed deploy whose checks recovered, or that a later deploy replaced, reads `failed` in neutral ink.
+ */
+export function todayRollupOf(deploys: number, failedHrefs: readonly string[]): Rollup {
+	const liveNow = new Set(failedHrefs.filter((h) => failingNowAt(h))).size;
+	/* the deploy count folds on a phone (its rows below are the count); only the failures stay on the title's line */
+	return [{ text: plural(deploys, 'deploy'), fold: true }, ...failedRollup(failedHrefs.length, Math.max(0, failedHrefs.length - liveNow))];
+}
 export function envPage(hs: HomeState, name: string): EnvPage | null {
 	return inScope(() => envPageRaw(hs, name));
 }
@@ -194,10 +205,10 @@ function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 		: { failing: counts.failing, waiting: counts.waiting, moving: counts.moving, rest: counts.rest, mark: listTile!.mark, lead: listTile!.lead, parts: listTile!.parts, calm: listTile!.calm, label: listTile!.label };
 
 	/* banner + Attention: the lead failure here, then the other failures and the approvals the viewer can give */
-	const failed = rows.filter((r) => r.group === 'failed');
+	const failed = byFailRank(rows.filter((r) => r.group === 'failed'));
 	const lead = runwayRow(failed);
 	const yours = rows.filter((r) => r.group === 'approval' && r.needsYou && !r.stillChecking);
-	const attRows = [...failed.filter((r) => r !== lead), ...yours];
+	const attRows = [...failed.filter((r) => r !== lead), ...yours].sort((a, b) => attentionRank(a.group === 'failed' ? 'failed' : 'approval', !!a.failure?.recovered) - attentionRank(b.group === 'failed' ? 'failed' : 'approval', !!b.failure?.recovered));
 	const placeOf = (r: TRow) => (region ? '' : (r.regions.length > 1 ? `${r.regions.length} regions` : r.where === r.tier || ['production', 'staging', 'dev', 'test'].includes(r.where) ? '' : r.where));
 	const attention = attRows.map((r) => { const it = askOf(r, hs, { noTier: true }); const pl = placeOf(r); return pl ? { ...it, id: { ...it.id, name: `${r.app} · ${pl}` } } : it; });
 	const nF = attention.filter((a) => a.failed).length, nA = attention.length - nF;
@@ -314,14 +325,14 @@ function envPageRaw(hs: HomeState, name: string): EnvPage | null {
 		return { ...b, href: lag?.href ?? b.href, place: !lag || lag.label === tierKey || ['prod', 'production'].includes(lag.label) ? '' : lag.label, why: behindWhy(lag ? placeHolds(b.app, hs).find((h) => h.href === lag.href) : null) };
 	});
 	const evs = fleet24hEvents(hs, tierKey).filter((e) => !region || e.place === region || e.place === `prod-${region}` || e.place.endsWith(region));
+	const newestFail = newestFailureEvents(evs);
 	const today: DayRow[] = evs.map((e, i) => {
 		const pl = e.place.replace(/^prod-/, '');
 		const raw = commitHeadline(e.href, e.build)?.title ?? buildIdentity(e.build, e.href)?.title ?? null;
 		const title = raw && !/^(Initial commit|Release commit for build )/.test(raw) ? raw : null;
-		return { key: `${e.app}-${e.place}-${e.at}-${i}`, kind: e.kind, app: e.app, href: e.href, place: ['prod', 'production', 'staging', 'dev', 'test'].includes(pl) ? '' : pl, title, build: e.build, who: isViewer(e.trigger) ? 'you' : e.who, age: ago(e.at), mark: e.mark, reason: e.reason };
+		return { key: `${e.app}-${e.place}-${e.at}-${i}`, kind: e.kind, app: e.app, href: e.href, place: ['prod', 'production', 'staging', 'dev', 'test'].includes(pl) ? '' : pl, title, build: e.build, who: isViewer(e.trigger) ? 'you' : e.who, age: ago(e.at), mark: e.mark, reason: e.reason, ...(e.kind === 'failed' && newestFail.has(e) && failureRecoveredNow(e.href) ? { recovered: true } : {}), ...(e.kind === 'failed' && !newestFail.has(e) ? { superseded: true } : {}) };
 	});
-	const nFailed = today.filter((d) => d.kind === 'failed').length;
-	const todayRollup: Rollup = [plural(today.length, 'deploy'), ...(nFailed ? [{ text: `${nFailed} failed`, ink: 'danger' as const }] : [])];
+	const todayRollup = todayRollupOf(today.length, today.filter((d) => d.kind === 'failed').map((d) => d.href));
 	const gangway: Gangway = { held, ready, heldRollup, inStep, behind, today, todayRollup };
 
 	void fleet24hEvents; void TIER_NAME; void stateWord; void barSegments;

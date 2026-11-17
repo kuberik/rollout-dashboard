@@ -12,20 +12,24 @@
 	import DeployMark from '$lib/components/DeployMark.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import type { DayRow } from './env-page';
+	import { failedWord } from '../state-words';
+	import { TONE } from '$lib/view-models/state-tone';
 
 	let { row }: { row: DayRow } = $props();
+	/** a failure that is over (its checks recovered, or a later deploy replaced it) reads `Failed` in neutral ink; one failing now reads `Failing` in danger ink */
+	const over = $derived(!!row.recovered || !!row.superseded);
 </script>
 
 <li class="dr tap-zone" data-day-row data-kind={row.kind}>
 	<div class="dr-in">
-		<span class="dr-mk">{#if row.kind === 'failed'}<StatusMark state="failed" />{:else}<span class="dr-dot" aria-hidden="true"></span>{/if}</span>
+		<span class="dr-mk">{#if row.kind === 'failed'}<StatusMark state="failed" recovered={row.recovered} resolved={row.superseded} />{:else}<span class="dr-dot" aria-hidden="true"></span>{/if}</span>
 		<div class="dr-id">
 			<AppGlyph name={row.app} size={20} />
 			<a href={row.href} class="tap-link dr-nm">{row.app}</a>
 			{#if row.place}<span class="dr-pl t-meta">{row.place}</span>{/if}
 		</div>
 		<p class="dr-what">
-			{#if row.kind === 'failed'}<span class="dr-w text-danger">Failed</span>{:else if row.kind === 'rolledBack'}<span class="dr-w">Rolled back</span>{/if}
+			{#if row.kind === 'failed'}<span class="dr-w {over ? TONE.recovered.ink : 'text-danger'}" data-word>{failedWord(over)}</span>{:else if row.kind === 'rolledBack'}<span class="dr-w">Rolled back</span>{/if}
 			{#if row.title}{row.title}<span class="dr-ref t-code-sm">{row.build}</span>{:else}{#if row.kind === 'deploy'}<span class="dr-w">Build</span>{/if}<span class="dr-ref first t-code-sm">{row.build}</span>{/if}{#if row.mark}<span class="dr-man"><DeployMark mark={row.mark} /></span>{/if}
 		</p>
 		<span class="dr-who t-meta">{row.who}</span>

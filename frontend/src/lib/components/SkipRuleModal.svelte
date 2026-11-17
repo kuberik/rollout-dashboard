@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
 	/**
 	 * ⭐ SKIP ONE RULE FOR ONE BUILD, ON ONE OR MANY ROLLOUTS. (bypass-only, 2026-11-13; spec `.work/bypass-only/design-spec.md` §3,
 	 * with the coordinator's ceremony ruling.)
@@ -200,7 +201,7 @@
 
 	let toastOpen = $state(false);
 	let toastMessage = $state('');
-	let toastTimer: ReturnType<typeof setTimeout> | undefined;
+	const hideToast = toastHideTimer(() => (toastOpen = false));
 
 	async function submit() {
 		if (!canSubmit) return;
@@ -236,8 +237,7 @@
 			toastMessage = message;
 			toastOpen = true;
 			announce(message);
-			clearTimeout(toastTimer);
-			toastTimer = setTimeout(() => (toastOpen = false), 3000);
+			hideToast('success');
 		} else {
 			// failed rows stay checked; every other row is unchecked and locked
 			selected = new Set(allRows.filter((r) => status[r.key] === 'failed').map((r) => r.key));

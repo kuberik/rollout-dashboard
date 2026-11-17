@@ -83,6 +83,7 @@ import { availableReleases } from '$lib/releases/registry.svelte';
 import { gateAllows } from './promotion';
 import type { Rollout } from '../../types';
 import { getEnvironmentRank } from '$lib/env-order';
+import { siteKey } from './regions';
 import {
 	ENVIRONMENT_THEME_ANNOTATION,
 	ENVIRONMENT_THEME_LABEL_ANNOTATION
@@ -106,6 +107,11 @@ export type DeployIntent = {
 	custom: boolean;
 	/** The environment's own name, as the cluster spells it (`prod`, `staging`). */
 	environment: string;
+	/**
+	 * The place as a person reads it: the environment, then its site when it has one (`prod · eu-west`). Every confirm title and notice
+	 * says THIS, so a rollout in one of several prod regions never reads as all of prod. Absent (hand-built intents): `environment`.
+	 */
+	target?: string;
 	/**
 	 * This exact tag's OWN last attempt, on THIS rollout, failed — see
 	 * `failedHereVerdict`. Decided by the TL (U-4, ledger, 2026-10-08):
@@ -316,10 +322,35 @@ export function deployDirection(
 	return selectedIdx < currentIdx ? 'rollback' : 'forward';
 }
 
+/**
+ * ONE NAME FOR WHERE A DEPLOY LANDS. A rollout in one site of a tier is named by both: `prod · eu-west`, never `prod` (which reads as every
+ * prod region) and never `prod-eu-west` (a second spelling of the same place). The tier and the site come from the environment's own name
+ * (`prod-eu-west`, or `prod` when the rollout's label carries the site: `prod-eu-west`); a site that is only a tier word is the default
+ * site and is not printed. Everything that titles a Roll back / Retry / Deploy confirm reads this, via `targetPhrase`.
+ */
+const TIER_THEN_SITE = /^(dev|development|test|testing|qa|staging|stage|preprod|prod|production)[-_/. ]+(.+)$/i;
+export function placeTarget(rollout: Rollout | null | undefined, explicit?: string | null, site?: string | null): string {
+	const env = rolloutEnvironmentName(rollout, explicit);
+	const own = rolloutEnvironmentName(rollout, null);
+	const named = TIER_THEN_SITE.exec(env);
+	const tier = named ? named[1] : env;
+	// the Environment's own site wins; the rollout's label is the fallback
+	let found: string | null = site && siteKey(site) !== 'default' ? site : null;
+	if (!found && named) found = named[2];
+	if (!found && own !== env) {
+		// the page named the tier ("prod"), the rollout's own label names the place ("prod-eu-west")
+		const fromOwn = TIER_THEN_SITE.exec(own);
+		if (fromOwn && fromOwn[1].toLowerCase() === env.toLowerCase()) found = fromOwn[2];
+	}
+	return found && siteKey(found) !== 'default' ? `${tier} · ${found}` : env;
+}
+
 export function deployIntent(
 	rollout: Rollout | null | undefined,
 	tag: string | null,
-	environmentName?: string | null
+	environmentName?: string | null,
+	/** the Environment's site (`siteOf`); the rollout's label is the fallback */
+	site?: string | null
 ): DeployIntent {
 	const environment = rolloutEnvironmentName(rollout, environmentName);
 	const releases = availableReleases(rollout) ?? [];
@@ -329,6 +360,7 @@ export function deployIntent(
 		vouched: gatesAllow(rollout, tag),
 		custom: !!tag && releases.length > 0 && releaseIndex(rollout, tag) === -1,
 		environment,
+		target: placeTarget(rollout, environmentName, site),
 		knownFailedHere: failedHereVerdict(rollout, tag).kind === 'failed'
 	};
 }
@@ -354,7 +386,8 @@ export function retryTag(rollout: Rollout | null | undefined): string | null {
  */
 export function retryIntent(
 	rollout: Rollout | null | undefined,
-	environmentName?: string | null
+	environmentName?: string | null,
+	site?: string | null
 ): DeployIntent {
 	const environment = rolloutEnvironmentName(rollout, environmentName);
 	return {
@@ -364,6 +397,7 @@ export function retryIntent(
 		// A retry cannot be a custom tag: it re-sends what is already deployed.
 		custom: false,
 		environment,
+		target: placeTarget(rollout, environmentName, site),
 		// ⛔ DELIBERATELY `false`, NEVER DERIVED. (U-4, ledger, 2026-10-08) A
 		// retry's own target (`retryTag`) is `history[0]` — which is
 		// `bakeStatus: 'Failed'` on EVERY ordinary retry (that is the whole
@@ -530,8 +564,8 @@ export function retryConsequences(intent: DeployIntent, facts: RetryFacts, tag?:
 
 	out.push(
 		tag
-			? `Redeploys ${tag} to ${where} — the same build whose last deploy here failed.`
-			: `Redeploys the current build to ${where} — the same build whose last deploy here failed.`
+			? `Retries ${tag} in ${where} — the same build whose last deploy here failed.`
+			: `Retries the current build in ${where} — the same build whose last deploy here failed.`
 	);
 
 	out.push(
@@ -559,8 +593,8 @@ export function retryConsequences(intent: DeployIntent, facts: RetryFacts, tag?:
 			facts.failingChecks.length === 0
 				? 'Retrying resets this rollout’s health checks to “Pending — reset due to new deployment”, which erases the record that anything failed here.'
 				: facts.failingChecks.length > 1
-					? 'Retrying resets those checks to “Pending — reset due to new deployment”, which clears the failure detail shown above.'
-					: 'Retrying resets that check to “Pending — reset due to new deployment”, which clears the failure detail shown above.'
+					? 'Retrying resets those checks to “Pending — reset due to new deployment”, which clears the recorded failure detail.'
+					: 'Retrying resets that check to “Pending — reset due to new deployment”, which clears the recorded failure detail.'
 		);
 	}
 
@@ -591,7 +625,7 @@ export function holdersPhrase(names: readonly string[]): string {
  * rule `/envs/<name>`'s own header and `/apps/<name>`'s map already follow.
  */
 export function targetPhrase(intent: DeployIntent): string {
-	return intent.environment || 'this environment';
+	return intent.target || intent.environment || 'this environment';
 }
 
 /**
@@ -709,6 +743,9 @@ export function typedPrompt(intent: DeployIntent): string {
 	if (intent.direction === 'rollback') {
 		return `This changes ${targetPhrase(intent)}. Type`;
 	}
+	// A retry resends the build already at the head. Say plainly why the version is asked for: not a claim about vouching, just that it lands in
+	// the environment again and the typed version makes sure that is on purpose.
+	if (intent.direction === 'retry') return `This deploys to ${targetPhrase(intent)} again, so it asks you to confirm. Type`;
 	return `Nothing has vouched for this build in ${targetPhrase(intent)}. Type`;
 }
 
@@ -742,10 +779,15 @@ export function deployActionLabel(intent: DeployIntent): string {
 	// grades it. Checked before the retry/forward branches below so it wins
 	// over both.
 	if (intent.knownFailedHere) return 'Deploy anyway';
-	// THE RETRY BUTTON SAYS WHERE IT LANDS TOO. `Retry` named the act and hid
-	// the target, which is how a production redeploy read as a page refresh.
-	if (intent.direction === 'retry') return where ? `Redeploy to ${where}` : 'Redeploy';
+	// ONE VERB FROM BUTTON TO CONFIRM: the page's button says `Retry`, so the dialog's confirm does too. The target and the build are the
+	// title's (`retryTitle`), exactly as a rollback's are.
+	if (intent.direction === 'retry') return 'Retry';
 	return where ? `Deploy to ${where}` : 'Deploy Now';
+}
+
+/** The Retry dialog's title (without its question mark): the build and where it lands, `Retry 1.4.0 in prod`. The same verb as the button. */
+export function retryTitle(intent: DeployIntent, tag?: string | null): string {
+	return ['Retry', tag, 'in', targetPhrase(intent)].filter(Boolean).join(' ');
 }
 
 /**

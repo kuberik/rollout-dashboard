@@ -23,7 +23,8 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
 	import { ledgerSpine } from '$lib/ledger-spine';
-	import { avatarSrc, ago } from '../data';
+	import { avatarSrc, ago, failureRecoveredNow } from '../data';
+	import { newestFailureEvents } from '$lib/view-models/failure-currency';
 	import { envTheme } from '../rollout-view';
 	import { isViewer, clock, span } from '../change-view';
 	import { foldWindow, type Ev } from './detail-model';
@@ -62,6 +63,9 @@
 		: e.kind === 'released' && ciHref ? { text: 'CI run', href: ciHref, ext: true }
 		: e.href ? { text: 'Rollout', href: e.href, ext: false } : null;
 	const sitesText = (e: Ev) => (e.tier === 'prod' && (e.wave != null || e.places.length > 1) ? e.places.map((p) => p.label).join(', ') : '');
+	/** only a place's newest failure that is still its current state can be recovered; earlier failures are history */
+	const newestFail = $derived(newestFailureEvents(events));
+	const recoveredEv = (e: Ev) => !!e.href && newestFail.has(e) && failureRecoveredNow(e.href);
 	const showWho = (e: Ev) => !!e.who && e.who !== 'Automatic';
 </script>
 
@@ -84,10 +88,10 @@
 						{:else if e.kind === 'moving'}<StatusMark state={/checking/i.test(e.words) ? 'checking' : 'deploying'} />
 						{:else if e.kind === 'waiting'}<StatusMark state="approval" tone="held" />
 						{:else if e.kind === 'held'}<StatusMark state="held" />
-						{:else}<StatusMark state="failed" />{/if}
+						{:else}<StatusMark state="failed" recovered={recoveredEv(e)} />{/if}
 					</span>
 					<span class="cdh-l1 flex min-h-5 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-						<span class="t-ui whitespace-nowrap {verbInk(e)}" data-ev-verb>{e.words}</span>
+						<span class="t-ui whitespace-nowrap {recoveredEv(e) ? 'text-fg-muted' : verbInk(e)}" data-ev-verb>{e.words}</span>
 						{#if e.tier && (e.kind === 'deployed' || e.kind === 'moving' || e.kind === 'redeploy')}<Chip role="env" theme={envTheme(e.tier)} label={e.tier} />{/if}
 						{#if sites}<span class="t-meta min-w-0 truncate text-fg-muted" data-ev-sites title={sites}>{sites}</span>{/if}
 						{#if multiApp && e.app}<span class="t-meta inline-flex shrink-0 items-center gap-1 text-fg-muted" data-ev-app><AppGlyph name={e.app} size={16} class="shrink-0" />{e.app}</span>{/if}

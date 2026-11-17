@@ -53,6 +53,7 @@
 		bodyClass = '',
 		railLabel = 'Pipeline steps',
 		mute = false,
+		recovered = false,
 		...rest
 	}: {
 		state?: PipelineState;
@@ -75,6 +76,8 @@
 		railLabel?: string;
 		/** build-r4 /needs-you (additive): the header carries the pipeline's neutral role icon instead of a state mark, where the host states the failure once at full weight above the card (AD r2 #3, r3 N6) */
 		mute?: boolean;
+		/** the failed state's checks are all OK again: the header mark is the ring (StatusMark `recovered`) */
+		recovered?: boolean;
 		[k: string]: unknown;
 	} = $props();
 </script>
@@ -84,7 +87,7 @@
 	<header class="pc-head flex min-h-[47px] flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line px-4 py-3">
 		<div class="flex min-w-0 items-center gap-2">
 			{#if mute}<ChevronDoubleRightOutline class="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden="true" />
-			{:else}<StatusMark state={MARK[st]} />{/if}
+			{:else}<StatusMark state={MARK[st]} {recovered} />{/if}
 			<h3 class="t-card-title min-w-0 text-fg">{title}</h3>
 		</div>
 		{#if rollup}<span class="t-ui-sm shrink-0 whitespace-nowrap tabular-nums {rollupAdverse ? 'text-fg' : 'text-fg-subtle'}" data-pc-rollup>{rollup}</span>{/if}

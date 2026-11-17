@@ -95,7 +95,15 @@ function needsYouRows(): HTMLElement[] {
 	return group ? [...group.querySelectorAll<HTMLElement>('[role="option"]')] : [];
 }
 
+/* one switch: when set, every failure's checks read as recovered (the module's own answer otherwise) */
+const recov = vi.hoisted(() => ({ on: false }));
+vi.mock('$lib/components/new/data', async (orig) => {
+	const m = await orig<typeof import('$lib/components/new/data')>();
+	return { ...m, failureRecovered: (href: string) => (recov.on ? true : m.failureRecovered(href)) };
+});
+
 beforeEach(() => {
+	recov.on = false;
 	// Any fetch the confirm makes (commits, permissions) answers empty.
 	vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('{}', { status: 200 }))));
 	vi.mocked(goto).mockClear();
@@ -119,6 +127,13 @@ describe('Needs you lists builds held by approval', { timeout: 20_000 }, () => {
 		expect(rows[1].querySelector('[data-blocked-kind="held"]')).not.toBeNull();
 	});
 
+	test('a recovered failure comes after the approval: failing, approvals, recovered (the Attention order)', () => {
+		recov.on = true;
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
+		const kinds = needsYouRows().map((r) => r.querySelector('[data-blocked-kind]')?.getAttribute('data-blocked-kind'));
+		expect(kinds).toEqual(['held', 'failed']);
+	});
+
 	test('an approval hold alone makes Needs you the first section', () => {
 		render(WithQueryClient, { props: { component: CommandPalette as never, props: props({ withoutFailed: true }) } });
 		const firstHeader = document.body.querySelector('[role="presentation"]');
@@ -128,12 +143,12 @@ describe('Needs you lists builds held by approval', { timeout: 20_000 }, () => {
 		expect(rows[0].querySelector('[data-blocked-kind]')?.getAttribute('data-blocked-kind')).toBe('held');
 	});
 
-	test('Enter on the approval row goes to its Gates tab and opens no dialog', async () => {
+	test('Enter on the approval row opens the rollout and no dialog; its link and action still point at Gates', async () => {
 		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
 		await fireEvent.mouseEnter(needsYouRows()[1]);
 		await fireEvent.keyDown(window, { key: 'Enter' });
 		expect(goto).toHaveBeenCalledTimes(1);
-		expect(String(vi.mocked(goto).mock.calls[0][0])).toMatch(/telemetry-indexer.*\/gates$/);
+		expect(String(vi.mocked(goto).mock.calls[0][0])).toMatch(/telemetry-indexer[^/]*$/);
 		await new Promise((r) => setTimeout(r, 50));
 		expect(screen.queryByPlaceholderText(/Search builds/i)).toBeNull();
 		expect(document.querySelector('dialog[open]')).toBeNull();
@@ -149,12 +164,23 @@ describe('Needs you lists builds held by approval', { timeout: 20_000 }, () => {
 		expect(document.querySelector('dialog[open]')).toBeNull();
 	});
 
-	test('a failed row still navigates to its logs (unchanged)', async () => {
+	test('a failing row: Enter opens the rollout, never Roll back; Roll back and Open logs stay links on the row', async () => {
 		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
-		await fireEvent.mouseEnter(needsYouRows()[0]);
+		const row = needsYouRows()[0];
+		expect(row.querySelector('[data-meta="action"]')?.textContent).toContain('Roll back');
+		expect(row.querySelector('a[data-secondary="logs"]')?.getAttribute('href')).toMatch(/checkout-worker.*\/logs$/);
+		await fireEvent.mouseEnter(row);
 		await fireEvent.keyDown(window, { key: 'Enter' });
 		expect(goto).toHaveBeenCalledTimes(1);
-		expect(String(vi.mocked(goto).mock.calls[0][0])).toMatch(/checkout-worker.*\/logs$/);
+		expect(String(vi.mocked(goto).mock.calls[0][0])).toMatch(/checkout-worker[^/?]*$/);
+		expect(row.querySelector('a[data-action="rollback"]')?.getAttribute('href')).toContain('action=rollback');
+	});
+
+	test('a failing row says "failing" in danger ink and "for <age>", like the card', () => {
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
+		const row = needsYouRows()[0];
+		expect(row.querySelector('[data-failing-word]')?.className).toContain('text-danger');
+		expect(row.querySelector('[data-build-age]')?.textContent ?? row.textContent).toMatch(/for \d+\w/);
 	});
 
 	test('QA C7: the word "approval" finds the rollout that waits for one (state words are indexed)', async () => {

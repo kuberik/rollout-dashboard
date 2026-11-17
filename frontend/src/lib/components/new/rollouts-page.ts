@@ -8,15 +8,16 @@
  * Honest fallbacks: no `observations[]` API on the list payload yet, so a failing card leads with the check's NAME and message
  * (attention.ts `checkFact`), never a figure; an approval card is title-led (no ratio) as the mock draws it.
  */
+import { attentionRank } from '$lib/view-models/failure-actions';
 import { newestFirst } from '$lib/instant';
 import {
 	rollouts, pinOnlyPlaces, pinRow, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, pinSinceOfHref, waitClock, gateName, isViewer, personOf, avatarSrc,
 	type TRow, type HomeState
 } from './data';
-import { markOf, tabEnv, rowAction, actionHref, runwayRow, byFailRank, type MarkState } from './rollout-view';
+import { markOf, markRecoveredOf, tabEnv, rowAction, actionHref, runwayRow, byFailRank, type MarkState } from './rollout-view';
 import { nodesOfSteps, type MiniNode } from './mini-pipeline';
 import { holdWordParts } from './rollout-view';
-import { approvalWord, failedWord } from './state-words';
+import { approvalWord, attentionRollupOf } from './state-words';
 import { attentionModel, approvalLead, type AttentionModel } from '$lib/view-models/attention';
 import { failedBannerTitle } from '$lib/view-models/banner';
 import { bannerEvidence, failureSince as checksFailingSince, type BannerEvidence } from '$lib/view-models/health-failures';
@@ -52,7 +53,7 @@ export function changeLineOf(r: TRow): ChangeLine | null {
 
 /** the failure banner's meta line (Since · build), one fact each; null parts are not printed. The place is the title's own ("failed in prod · eu-west"), never a second chip. */
 export type BannerMeta = { since: string | null; /** the instant `since` counts from: the banner ages it against the live clock (`agoOf`), the same call the rollout Overview's banner makes */ sinceAt?: string | null; build: string | null };
-export type BannerModel = { /** the Overview banner's own evidence (observation figure, check line + class glyph, "n health checks failing" / "Recovered at 14:05", Details); null without observations */ evidence?: BannerEvidence | null; row: TRow; title: string; check: { name: string; message: string; cls?: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null; meta: BannerMeta };
+export type BannerModel = { /** the Overview banner's own evidence (observation figure, check line + class glyph, "n health checks failing" / "Recovered at 14:05", Details); null without observations */ evidence?: BannerEvidence | null; row: TRow; title: string; check: { name: string; message: string; cls?: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null; recovered?: boolean; meta: BannerMeta };
 export type AttentionItem = { key: string; row: TRow; model: AttentionModel; app: string; href: string; rollbackHref: string | null; openHref: string; yours: boolean };
 export type StrandRow = { key: string; row: TRow; app: string; href: string; tier: string; place: string | null; mark: MarkState; nodes: MiniNode[]; /** the state word / cause, typed (`CauseText` draws a promotion label by kind); `causeText(lead)` is its plain form */ lead: Cause; rest: string; age: string; yours: boolean; };
 export type RestRow = { key: string; app: string; href: string; place: string; rep: boolean; sentence: string; code: string; age: string; tier: string; /** the quiet row prints the build code before the sentence (Changes' At rest) */ codeFirst?: boolean; /** r42 atoms (opt-in, /design/atoms): the landed change's lead bar */ lead?: { hops: import('$lib/components/atoms/LeadBar.svelte').Hop[]; origin?: number; scale: number; total: string } | null };
@@ -72,7 +73,7 @@ export type RolloutsPage = {
 
 /** a rollout's own steps as strand nodes; a gated rollout gets its GATE as the frontier node (held / approval; to-do while it still checks its own deploy) */
 export function strandOf(r: TRow, hs: HomeState): MiniNode[] {
-	const nodes = nodesOfSteps(r.steps, r.state);
+	const nodes = nodesOfSteps(r.steps, r.state, false, markRecoveredOf(r));
 	if (r.state === 'held-by-rule' || r.state === 'awaiting-approval') {
 		const g = gateName(r, hs);
 		nodes.push({ state: r.stillChecking ? 'pending' : r.state === 'awaiting-approval' ? 'approval' : 'held', step: g ? gateLabelText(g.label) : (r.state === 'awaiting-approval' ? 'Approval' : 'Gate') });
@@ -141,7 +142,7 @@ export function bannerOf(lead: TRow): BannerModel {
 	const evidence = pool ? bannerEvidence(pool, lead.failure?.pendingN ?? 0, null) : null;
 	const failingNow = failingNowOf(lead);
 	const meta = bannerMeta(lead);
-	return { evidence, row: lead, title: failedBannerTitle(lead.app, lead.tier, chipPlace(lead), failingNow), check: lead.failure?.check ? { name: lead.failure.check, message: lead.failure.message ?? '', cls: lead.failure.cls } : null, line: lead.failure?.line ?? null, change: changeLineOf(lead), meta: { ...meta, since: since ? ago(since) : null, sinceAt: since }, openHref: lead.href, rollbackHref: a?.kind === 'rollback' ? actionHref(a) : null };
+	return { evidence, row: lead, title: failedBannerTitle(lead.app, lead.tier, chipPlace(lead), failingNow), check: lead.failure?.check ? { name: lead.failure.check, message: lead.failure.message ?? '', cls: lead.failure.cls } : null, line: lead.failure?.line ?? null, change: changeLineOf(lead), meta: { ...meta, since: since ? ago(since) : null, sinceAt: since }, openHref: lead.href, rollbackHref: a?.kind === 'rollback' ? actionHref(a) : null, recovered: !!lead.failure?.recovered };
 }
 export function attentionItem(r: TRow, hs: HomeState): AttentionItem {
 	const failed = r.group === 'failed';
@@ -204,7 +205,7 @@ export function rolloutsPage(hs: HomeState, o: { settled?: boolean } = {}): Roll
 	const lead = runwayRow(failedRows);
 	const banner = lead ? bannerOf(lead) : null;
 	const yours = rows.filter((r) => r.group === 'approval' && r.needsYou && !r.stillChecking);
-	const attentionRows = [...failedRows, ...yours].filter((r) => r !== lead);
+	const attentionRows = [...failedRows, ...yours].filter((r) => r !== lead).sort((a, b) => attentionRank(a.group === 'failed' ? 'failed' : 'approval', !!a.failure?.recovered) - attentionRank(b.group === 'failed' ? 'failed' : 'approval', !!b.failure?.recovered));
 	const inAttention = new Set([...failedRows, ...yours].map((r) => r.key));
 	const strand = (g: (r: TRow) => boolean) => rows.filter((r) => !inAttention.has(r.key) && g(r)).sort(sinceDesc).map((r) => strandRow(r, hs));
 	const moving = strand((r) => r.group === 'moving');
@@ -229,9 +230,5 @@ export function rolloutsPage(hs: HomeState, o: { settled?: boolean } = {}): Roll
 
 /** The Attention header's rollup. Its words are the cards' own: a failure whose checks recovered reads `Failed` on its card, so the rollup counts it as `failed`; `failing` is a check failing right now. */
 export function attentionRollup(P: { failing: number; recovered: number; toApprove: number }): (string | { text: string; ink: 'danger' | 'held' })[] {
-	return [
-		...(P.failing - P.recovered ? [{ text: `${P.failing - P.recovered} ${failedWord(false).toLowerCase()}`, ink: 'danger' as const }] : []),
-		...(P.recovered ? [`${P.recovered} ${failedWord(true).toLowerCase()}`] : []),
-		...(P.toApprove ? [{ text: `${P.toApprove} to approve`, ink: 'held' as const }] : [])
-	];
+	return attentionRollupOf(P.failing, P.recovered, P.toApprove ? { text: `${P.toApprove} to approve`, ink: 'held' as const } : null);
 }

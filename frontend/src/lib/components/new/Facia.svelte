@@ -35,15 +35,16 @@
 	import GateLabel from '$lib/components/GateLabel.svelte';
 	import { causeText, joinCause, mapPlain, splitCause, type Cause } from '$lib/view-models/gate-label';
 	import type { Act } from '$lib/components/ActRow.svelte';
-	import { CodeBranchOutline, UndoOutline, CheckOutline, ClockOutline, ArrowUpRightFromSquareOutline, ChevronDownOutline, MapPinOutline } from 'flowbite-svelte-icons';
+	import { failureActs } from '$lib/view-models/failure-actions';
+	import { CodeBranchOutline, UndoOutline, PlaySolid, CheckOutline, ClockOutline, ArrowUpRightFromSquareOutline, ChevronDownOutline, MapPinOutline } from 'flowbite-svelte-icons';
 	import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import type { TChange } from './data';
 	import type { Lane } from '$lib/view-models/promotion-lanes';
 	import { TIERS_WITH_OTHER } from '$lib/view-models/sites-waves';
 	import { holdLeadCause, ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, buildInQuestionFacts, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
 	import type { HomeState, TApp, TRow } from './data';
-	import { canApproveAt, failureRecovered } from './data';
-	import { plural, rowAction, actionLabel, actionHref, markOf, VIEWER } from './rollout-view';
+	import { canApproveAt, failureRecovered, rollbackOwnedReason } from './data';
+	import { plural, rowAction, actionLabel, actionHref, retryActionHref, markOf, markRecoveredOf, VIEWER } from './rollout-view';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
@@ -301,7 +302,7 @@
 	/* r2-cleanup: the strand beside the line says the state word (Checking / Deploying / Waiting) in its hue; the line keeps the badge + the reason (what is needed, the check, the build) and does not say the word twice */
 	const stateLine = $derived.by((): { ink: string; lead: string; leadC?: Cause; rest: string; build: string; badge: boolean } => {
 		switch (kind) {
-			case 'failed': return { ink: TONE.failed.ink, lead: (failCheck?.name ?? '').replace(new RegExp(`^${item.app}-(?=.{5})`), ''), rest: failMsg ?? '', build: '', badge: true };
+			case 'failed': return { ink: stateRow && markRecoveredOf(stateRow) ? TONE.recovered.ink : TONE.failed.ink, lead: (failCheck?.name ?? '').replace(new RegExp(`^${item.app}-(?=.{5})`), ''), rest: failMsg ?? '', build: '', badge: true };
 			case 'wait': return checkingNow
 				? { ink: TONE.checking.ink, lead: '', rest: waitRow?.state === 'awaiting-approval' ? `Then waits for ${rowAction(waitRow)?.kind === 'approve' ? 'your ' : ''}approval` : '', build: wait?.build ?? '', badge: true }
 				: waitRow?.state === 'awaiting-approval'
@@ -349,10 +350,21 @@
 		return null;
 	});
 
+	/** the failing lead place's failure is over (every check OK again): Retry leads, Roll back follows (view-models/failure-actions.ts) */
+	const recoveredFail = $derived(kind === 'failed' && act?.kind === 'rollback' && !!stateRow && failureRecovered(stateRow.href));
+	const retryHrefOf = $derived(stateRow?.href ? retryActionHref(stateRow.href) : '');
+	const failActs = $derived(failureActs<Act>(recoveredFail, {
+		rollback: actAsAct() ?? null,
+		retry: recoveredFail ? { label: 'Retry', href: retryHrefOf, icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
+		rest: place ? [{ label: 'Open rollout', href: place, after: true, key: 'open-rollout' }] : []
+	}));
+	/** another controller owns the failing place's wanted version: its Roll back is drawn disabled with the header's reason */
+	const ownedReason = $derived(act?.kind === 'rollback' ? rollbackOwnedReason(actHref) : null);
 	/** the Facia's one action as a banner Act (label, href and icon per kind) */
 	function actAsAct(): Act | undefined {
 		if (!act) return undefined;
 		if (act.kind === 'approve') return approveAct(apTarget, { icon: CheckOutline }) ?? { label, href: actHref, icon: CheckOutline, key: act.kind };
+		if (act.kind === 'rollback' && ownedReason) return { label, icon: UndoOutline, key: act.kind, disabled: true, title: ownedReason };
 		return { label, href: actHref, icon: act.kind === 'rollback' ? UndoOutline : undefined, key: act.kind };
 	}
 </script>
@@ -375,12 +387,22 @@
 	{/if}
 {/snippet}
 
+<!-- A failing tile keeps ONE button (Roll back), where the list cards add "Open rollout": the tile is a compact, whole-surface link (its cover link
+     already opens the rollout, the same destination), and a second button would double the tile's action row beside the app's env row. The failing card on
+     Home, /envs and /rollouts carries both because there the card is a stand-alone object. -->
 <!-- r39 (2026-11-08): tile actions are 32px (btn-sm) everywhere: Approve the one blue, Roll back the outline. `xs` is kept for callers and means nothing now. -->
 {#snippet actionBtn(primary: boolean, _xs = false)}
 	{#if act?.kind === 'approve'}
 		<ApproveButton target={apTarget} fallbackHref={actHref} icon class="btn btn-sm {primary || act?.kind === 'approve' ? 'btn-primary' : 'btn-secondary'} shrink-0 gap-2 max-sm:min-h-11" />
+	{:else if act && recoveredFail}
+		<span class="inline-flex shrink-0 flex-wrap items-center gap-2" data-fp-acts>
+			{#if ownedReason}<button type="button" disabled title={ownedReason} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</button>{:else}<a href={actHref} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</a>{/if}
+			<a href={retryHrefOf} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>
+		</span>
+	{:else if act && ownedReason}
+		<button type="button" disabled title={ownedReason} class="btn btn-sm btn-primary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</button>
 	{:else if act}
-		<a href={actHref} class="btn btn-sm {primary ? 'btn-primary' : 'btn-secondary'} relative z-[1] shrink-0 gap-2 max-sm:min-h-11">
+		<a href={actHref} class="btn btn-sm {primary || act.kind === 'rollback' ? 'btn-primary' : 'btn-secondary'} relative z-[1] shrink-0 gap-2 max-sm:min-h-11">
 			{#if act.kind === 'rollback'}<UndoOutline class="h-4 w-4" aria-hidden="true" />{:else}<ArrowUpRightFromSquareOutline class="h-4 w-4" aria-hidden="true" />{/if}{label}
 		</a>
 	{/if}
@@ -388,7 +410,7 @@
 
 {#snippet stateMark()}
 	<!-- apps-7 Q2: a wait is the tab's pause mark, never the person icon (StatusMark's approval) -->
-	{#if stateRow}<span class="flex h-5 shrink-0 items-center">{#if markOf(stateRow) === 'held' || markOf(stateRow) === 'approval'}<HeldGlyph size={16} class="text-held" title="Held" />{:else}<StatusMark state={markOf(stateRow)} />{/if}</span>{/if}
+	{#if stateRow}<span class="flex h-5 shrink-0 items-center">{#if markOf(stateRow) === 'held' || markOf(stateRow) === 'approval'}<HeldGlyph size={16} class="text-held" title="Held" />{:else}<StatusMark state={markOf(stateRow)} recovered={markRecoveredOf(stateRow)} />{/if}</span>{/if}
 {/snippet}
 
 {#snippet code(b: string)}<span class="t-code font-medium text-fg">{b}</span>{/snippet}
@@ -448,9 +470,8 @@
 		{/if}
 		{@render envRow('')}
 		{#if failCheck}
-			<StatementBanner severity="failed" title="Deployment failed" check={failCheck}
-				primary={actAsAct()}
-				secondary={place ? [{ label: 'Open rollout', href: place, after: true, key: 'open-rollout' }] : []} />
+			<StatementBanner severity="failed" title="Deployment failed" check={failCheck} recovered={recoveredFail}
+				primary={failActs.primary} secondary={failActs.secondary} />
 		{:else if waitRow}
 			<!-- apps-7 Q2: the tab's own held banner (the shared StatementBanner: tint, 40px pause disc, the tab's sentence) -->
 			<StatementBanner severity={checkingNow ? 'checking' : 'held'} title={checkingNow ? 'Checking' : waitRow.state === 'awaiting-approval' ? approvalIn(rowAction(waitRow)?.kind === 'approve', placeName) : joinCause(`${placeName} is held: waiting on `, gateC)} message={checkingNow ? `${checkLeft ? checkLeft.replace(/\.$/, '') + '. ' : 'The health checks are running. '}${waitRow.state === 'awaiting-approval' ? `Then it waits for ${act?.kind === 'approve' ? 'your ' : ''}approval${placeName ? ' in ' + placeName : ''}.` : ''}`.trim() : waitRow.state === 'awaiting-approval' && wait?.build ? `${act?.kind === 'approve' ? 'Your approval' : 'An approval'} releases ${wait.build} ${waitScope ? 'in ' + waitScope : placeName ? 'to ' + placeName : ''}.`.replace(/ \.$/, '.') : nb ? (waitRow.state === 'awaiting-approval' ? `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting.` : `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting. Nothing promotes itself until someone clears the hold.`) : undefined}
@@ -468,7 +489,7 @@
 			<StarToggle app={item.app} class="max-sm:!h-11 max-sm:!w-11 max-sm:-mr-3" />
 		</div>
 			<div style:display={!noTier && !act && (kind === 'deploying' || kind === 'checking') ? 'none' : undefined} class="fp-state flex min-w-0 items-start gap-x-2 max-sm:flex-wrap max-sm:gap-y-2" data-fp-line2 data-state-line={kind}>
-			<span class="flex h-5 w-4 shrink-0 items-center justify-center">{#if lineMark === 'held' || lineMark === 'approval'}<HeldGlyph size={16} class="text-held" title="Held" />{:else if lineMark}<StatusMark state={lineMark as never} />{/if}</span>
+			<span class="flex h-5 w-4 shrink-0 items-center justify-center">{#if lineMark === 'held' || lineMark === 'approval'}<HeldGlyph size={16} class="text-held" title="Held" />{:else if lineMark}<StatusMark state={lineMark as never} recovered={!!stateRow && markRecoveredOf(stateRow)} />{/if}</span>
 			<!-- two tracks: the env badge, then the message; a wrapped message hangs on the MESSAGE's own x, never under the badge -->
 				<div class="t-ui-sm m-0 flex min-w-0 flex-1 items-start gap-x-2 leading-5 text-fg-muted max-sm:basis-[calc(100%-1.5rem)] max-sm:flex-wrap max-sm:gap-y-1" title={[stateLine.lead, stateLine.rest, stateLine.build].filter(Boolean).join(' · ')}>
 					{#if stateLine.badge && envOf && noTier}{#if noTier}{#if noTierPlace}<span class="t-meta inline-flex h-5 shrink-0 items-center text-fg-subtle" data-place>{noTierPlace}</span>{/if}{:else}<span class="inline-flex h-5 shrink-0 items-center"><Chip role="env" theme={envOf.theme} label={envOf.label} /></span>{/if}{/if}

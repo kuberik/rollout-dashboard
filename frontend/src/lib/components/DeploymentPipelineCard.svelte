@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Leaving from './Leaving.svelte';
 	import StepDisc from './StepDisc.svelte';
 	import { bakeElapsedMs, bakePaused } from '$lib/bake-hold';
@@ -197,6 +198,8 @@
 		healthChecks.length === 0 || healthChecks.every((hc) => hc.status?.status === 'Healthy')
 	);
 	let hcUnknown = $derived(healthChecksUnavailable || healthChecksPending);
+	/** the failed head's checks are all OK again (at least one check exists to say so): the header dot draws the recovered ring */
+	const headerRecovered = $derived(bakeIsFailed && healthChecks.length > 0 && allHCHealthy && !hcUnknown);
 	let hasMultipleKRs = $derived(pipelineValidRollouts.length > 1);
 
 	let nodes = $derived<StageNode[]>(
@@ -1334,8 +1337,11 @@
 		class="flex min-h-[47px] flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3"
 	>
 		<div class="flex items-center gap-2">
-			{#if summary.failed > 0}
-				<ExclamationCircleSolid class="h-4 w-4 text-danger" />
+			{#if summary.failed > 0 && headerRecovered}
+				<!-- the place's failure is over (a health check failed and every one is OK again): the recovered ring, as the page's other marks draw it. Header only: the step marks below keep the step history. -->
+				<span class="inline-grid shrink-0" data-header-mark="recovered"><StatusMark state="failed" recovered /></span>
+			{:else if summary.failed > 0}
+				<ExclamationCircleSolid class="h-4 w-4 text-danger" data-header-mark="failed" />
 			{:else if summary.running > 0}
 				<!-- The in-flight tone follows WHAT is in flight: deploying is
 				     blue (active), checking/baking is yellow (progress). -->

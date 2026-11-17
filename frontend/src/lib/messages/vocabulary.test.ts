@@ -103,7 +103,7 @@ const DENY: Array<{
 			'lib/components/new/change/detail-model.ts\tcode\t… paused',
 			'lib/components/new/stages/stages-model.ts\tcode\t… paused',
 			'lib/view-models/activity-verb.ts\tcode\tis paused',
-			'routes/activity/+page.svelte\tcode\t… paused',
+			'lib/view-models/activity-figures.ts\tcode\t… paused',
 			'lib/view-models/history-current-chip.ts\tcode\tBake paused',
 			'lib/view-models/history-current-chip.ts\tcode\tPaused for',
 			'lib/view-models/history-current-chip.ts\tcode\tBake paused · … check… pending',
@@ -333,6 +333,8 @@ const DENY: Array<{
 		kinds: ['text', 'code'],
 		why: 'A visible button label is the bare verb; the build, sha or place goes in title/aria-label or the dialog it opens. See CLAUDE.md (e).',
 		allow: [
+			// tooltip (a title attribute, never the visible label) of the tab header's Roll back; built in script so a disabled button can show the pin-owner reason instead
+			'lib/components/RolloutTabHeader.svelte\tcode\tRoll back to …',
 			// dialog title
 			'lib/components/ChangeVersionModal.svelte\tcode\tDeploy … to …',
 			// dialog title/confirm
@@ -355,8 +357,6 @@ const DENY: Array<{
 			'lib/components/SkipRuleModal.svelte\tcode\tSkip for ${toSend.length === 1 ? \'1 rollout\' :',
 			// dialog confirm button per (e)
 			'lib/view-models/deploy-risk.ts\tcode\tDeploy to …',
-			// dialog confirm button per (e)
-			'lib/view-models/deploy-risk.ts\tcode\tRedeploy to …',
 			// accessibility skip-link, not a trigger
 			'routes/+layout.svelte\ttext\tSkip to main content'
 		]

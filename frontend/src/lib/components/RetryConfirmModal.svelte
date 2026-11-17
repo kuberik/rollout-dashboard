@@ -36,13 +36,21 @@
 	 * risk dialog recognises the next. The consequence list drops its tint:
 	 * hue lives in the header disc only, never as a body-wide band (same
 	 * rule `RecoveryModeWarningModal` now follows).
+	 *
+	 * ⭐ ONE VERB, NEUTRAL INK (follow-up): the title is `Retry <build> in <env>?` and the confirm is `Retry`, the word of the button that opened
+	 * it. A retry resends a build the place already ran, so the header disc is neutral and the confirm is the product's primary, not a danger
+	 * tint; how careful to be stays in the confirm LEVEL (typed in prod), not in the colour.
 	 */
 	import { Modal } from 'flowbite-svelte';
-	import { ExclamationCircleSolid, RefreshOutline } from 'flowbite-svelte-icons';
+	import { tick } from 'svelte';
+	import StatusSpinner from './StatusSpinner.svelte';
+	import { CloseOutline, ExclamationCircleSolid, PlaySolid } from 'flowbite-svelte-icons';
+	import { DIALOG_ERROR_CLASS, retryFailureText } from '$lib/view-models/failure-text';
 	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import {
 		confirmLevel,
 		deployActionLabel,
+		retryTitle,
 		typedPrompt,
 		type DeployIntent
 	} from '$lib/view-models/deploy-risk';
@@ -54,25 +62,56 @@
 		consequences: string[];
 		/** The build being resent, for the header and the typed box. */
 		tag: string | null;
-		onConfirm: () => void;
+		/** Runs the retry. The dialog stays open while a returned promise is pending; if it rejects, the reason prints inside the dialog (a toast would sit under the backdrop). */
+		onConfirm: () => void | Promise<void>;
+		/** The dialog was closed (Cancel, Esc) while the request was in flight and it then failed: there is no dialog left to print the reason in, so the host reports it (a toast). */
+		onClosedFailure?: (message: string) => void;
 	}
 
-	let { open = $bindable(), intent, consequences, tag, onConfirm }: Props = $props();
+	let { open = $bindable(), intent, consequences, tag, onConfirm, onClosedFailure }: Props = $props();
 
 	// See `a11y.svelte.ts`: the dialog traps focus natively but cannot return it.
 	modalFocusReturn(() => open);
 
 	const level = $derived(confirmLevel(intent));
 	const label = $derived(deployActionLabel(intent));
+	const title = $derived(retryTitle(intent, tag));
 
 	let typed = $state('');
+	let pending = $state(false);
+	let failure = $state('');
+	let confirmBtnEl = $state<HTMLButtonElement | null>(null);
+	async function confirm() {
+		pending = true;
+		// The pressed button is about to be disabled; park focus on the dialog so it never drops to <body>.
+		void tick().then(() => confirmBtnEl?.closest('dialog')?.focus());
+		failure = '';
+		try {
+			await onConfirm();
+			open = false;
+		} catch (e) {
+			const message = retryFailureText(e);
+			if (open) {
+				failure = message;
+				pending = false;
+				// The pressed button was disabled while the request ran, so focus fell to <body>: put it back inside the dialog.
+				await tick();
+				confirmBtnEl?.focus();
+			} else onClosedFailure?.(message);
+		} finally {
+			pending = false;
+		}
+	}
 	// Re-arm on every open. A dialog that remembers the sha you typed last time
 	// is a typed confirm you only have to satisfy once.
 	$effect(() => {
-		if (open) typed = '';
+		if (open) {
+			typed = '';
+			failure = '';
+		}
 	});
 
-	const blocked = $derived(level === 'typed' && typed.trim() !== (tag ?? ''));
+	const blocked = $derived(pending || (level === 'typed' && typed.trim() !== (tag ?? '')));
 </script>
 
 <!-- role="dialog" aria-modal="true": flowbite's `Dialog` sets neither on the
@@ -84,8 +123,11 @@
 	bind:open
 	title=""
 	size="sm"
+	dismissable={false}
 	role="dialog"
 	aria-modal="true"
+	tabindex={-1}
+	aria-busy={pending}
 	class="rounded-lg bg-overlay"
 	classes={{ body: 'p-0 space-y-0' }}
 	aria-labelledby="rcm-title"
@@ -93,18 +135,18 @@
 >
 	<div class="border-b border-line px-5 py-4">
 		<div class="flex items-start gap-3">
-			<div
-				class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full ring-1 {level ===
-				'typed'
-					? 'bg-danger-tint ring-danger-line'
-					: 'bg-held-tint ring-held-line'}"
-			>
-				<ExclamationCircleSolid class="h-5 w-5 {level === 'typed' ? 'text-danger' : 'text-held'}" />
+			<!-- a neutral disc: Retry resends a build this place already ran, which is not the dangerous act a solid danger disc says; the typed version is the care -->
+			<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-subtle ring-1 ring-line" data-retry-icon>
+				<PlaySolid class="h-5 w-5 text-fg-muted" />
 			</div>
-			<div class="min-w-0">
-				<h2 id="rcm-title" class="t-heading text-fg">{label}?</h2>
+			<div class="min-w-0 flex-1">
+				<h2 id="rcm-title" class="t-heading text-fg">{title}?</h2>
 				<p id="rcm-sub" class="t-meta text-fg-subtle">This starts a new deployment attempt.</p>
 			</div>
+			<!-- the close X sits in the header, ahead of Cancel and the confirm, so it is first in tab order, as in the Roll back dialog -->
+			<button type="button" class="btn btn-ghost btn-sm btn-icon hit-44 -my-1 -mr-2 shrink-0" aria-label="Close" onclick={() => (open = false)}>
+				<CloseOutline class="h-4 w-4" aria-hidden="true" />
+			</button>
 		</div>
 	</div>
 
@@ -132,7 +174,7 @@
 			<div>
 				<label for="rcm-confirm" class="mb-1 block t-meta text-fg-subtle">
 					{typedPrompt(intent)}
-					<span class="text-danger">{tag}</span> to confirm
+					<span class="font-mono text-fg">{tag}</span> to confirm
 				</label>
 				<input
 					id="rcm-confirm"
@@ -145,21 +187,32 @@
 		{/if}
 	</div>
 
+	{#if failure}
+		<div class="px-5 pb-4">
+			<div role="alert" class={DIALOG_ERROR_CLASS} data-dialog-error>
+				<ExclamationCircleSolid class="mt-0.5 h-4 w-4 shrink-0" />
+				<p class="min-w-0 flex-1" data-retry-error>{failure}</p>
+			</div>
+		</div>
+	{/if}
 	<div class="flex justify-end gap-2 border-t border-line px-5 py-3">
 		<button type="button" class="btn btn-secondary btn-sm" onclick={() => (open = false)}
 			>Cancel</button
 		>
 		<button
 			type="button"
-			class="btn btn-sm {level === 'typed' ? 'btn-danger' : 'btn-primary'}"
+			class="btn btn-primary btn-sm"
+			bind:this={confirmBtnEl}
 			disabled={blocked}
-			onclick={() => {
-				open = false;
-				onConfirm();
-			}}
+			onclick={confirm}
 		>
-			<RefreshOutline class="h-4 w-4 shrink-0" />
-			<span class="truncate">{label}</span>
+			{#if pending}
+				<StatusSpinner size="4" color="white" />
+				<span class="truncate">Retrying…</span>
+			{:else}
+				<PlaySolid class="h-4 w-4 shrink-0" />
+				<span class="truncate">{label}</span>
+			{/if}
 		</button>
 	</div>
 </Modal>

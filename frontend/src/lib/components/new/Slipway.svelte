@@ -115,7 +115,7 @@
 	const openAct = $derived<Act>({ label: 'Open rollout', href: row.href, desktopOnly: true, key: 'slipway-open' });
 </script>
 
-<PipelineCard shell={nested ? 'card' : 'hung'} at={compact ? 640 : 560} railWidth="min(300px, 40%)" class="sw {nested ? 'sw-nested' : ''} {compact ? 'sw-compact' : ''} {className}" state={failing ? 'failed' : !running ? 'done' : row.state === 'checking' ? 'checking' : 'deploying'} rollup="{done}/{row.steps.length} steps" label="Deployment pipeline of {row.app}" data-more={more ? 'open' : 'closed'} data-slipway="" data-state={failing ? 'failed' : 'moving'}>
+<PipelineCard shell={nested ? 'card' : 'hung'} at={compact ? 640 : 560} railWidth="min(300px, 40%)" class="sw {nested ? 'sw-nested' : ''} {compact ? 'sw-compact' : ''} {className}" recovered={failing && !!fr?.recovered} state={failing ? 'failed' : !running ? 'done' : row.state === 'checking' ? 'checking' : 'deploying'} rollup="{done}/{row.steps.length} steps" label="Deployment pipeline of {row.app}" data-more={more ? 'open' : 'closed'} data-slipway="" data-state={failing ? 'failed' : 'moving'}>
 	{#snippet rail()}<TraySteps steps={row.steps} selected={sel} noActiveChip={checkingGate} checkWord={row.state === 'deploying' ? 'Deploying' : 'Checking'} />{/snippet}
 		<div class="sw-pane min-w-0 p-4 sm:p-6">
 				<div class="sw-info min-w-0 space-y-3">

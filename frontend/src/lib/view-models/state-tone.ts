@@ -12,11 +12,12 @@
  *   done        success   a calm green dot            held       held orange      failed   danger (the one solid disc)
  *   checking    progress  yellow, breathes           approval   held orange      stuck    warning amber
  *   approval-yours  the SAME orange, plus the viewer's ring (`ring`): "you can approve this", against "someone else must" (approval)
+ *   recovered   danger outline (the failed disc, fill taken out: failed, every check OK again)
  *   deploying   active    blue, sweeps               notreached dashed subtle ring (WaveMark's ring)   notaffected  dim subtle dot
  */
 import type { NodeState } from './promotion-lanes';
 
-export type ToneState = 'done' | 'checking' | 'deploying' | 'held' | 'approval' | 'approval-yours' | 'failed' | 'stuck' | 'notreached' | 'notaffected';
+export type ToneState = 'done' | 'checking' | 'deploying' | 'held' | 'approval' | 'approval-yours' | 'failed' | 'recovered' | 'stuck' | 'notreached' | 'notaffected';
 export type ToneHue = 'success' | 'progress' | 'active' | 'held' | 'danger' | 'warning' | 'subtle';
 
 export type Tone = {
@@ -34,8 +35,8 @@ export type Tone = {
 	disc: string;
 	/** StatusMark's chip (disc + edge + glyph colour), Tailwind classes */
 	chip: string;
-	/** 'disc' = filled; 'ring' = the hollow dashed not-reached ring; 'dim' = a quiet dot at reduced opacity */
-	shape: 'disc' | 'ring' | 'dim';
+	/** 'disc' = filled; 'ring' = the hollow dashed not-reached ring; 'dim' = a quiet dot at reduced opacity; 'outline' = the failed disc with its fill taken out: a 1.5px ring in the solid */
+	shape: 'disc' | 'ring' | 'dim' | 'outline';
 	/** does the mark move (only these two ever animate) */
 	moves: boolean;
 	/** the viewer's own ask (the product marks "needs you" with the held line: `.ch-yours`, the yours bead, the field ring): a thin ring round the mark, null for every other state */
@@ -80,6 +81,8 @@ export const TONE: Record<ToneState, Tone> = {
 	'approval-yours': { hue: 'held', ...hue('held'), disc: 'bg-held-tint text-held', bg: 'bg-held-solid', ink: HUE_INK.held, chip: 'bg-held-tint ring-held-line text-held', shape: 'disc', moves: false, ring: 'var(--k-held-solid)' },
 	// Failed is the ONE solid disc (palette AD r3): white "!" on danger-solid, 4.33:1 light, 3.40:1 dark.
 	failed: { hue: 'danger', ...hue('danger'), disc: 'bg-danger-tint text-danger', bg: 'bg-danger-solid', ink: HUE_INK.danger, chip: 'bg-danger-solid ring-danger-solid text-white', shape: 'disc', moves: false, ring: null },
+	// Recovered = failed, every check OK again, the rollout still Failed: the failed disc with its fill taken out (1.5px danger ring). The word is neutral ("failed"), so the ink is muted.
+	recovered: { hue: 'danger', ...hue('danger'), disc: 'bg-danger-tint text-danger', bg: 'bg-transparent', ink: HUE_INK.muted, chip: 'bg-transparent ring-danger-solid text-danger', shape: 'outline', moves: false, ring: null },
 	stuck: { hue: 'warning', ...hue('warning'), disc: 'bg-warning-tint text-warning', bg: 'bg-warning-solid', ink: HUE_INK.warning, chip: 'bg-warning-tint ring-warning-line text-warning', shape: 'disc', moves: false, ring: null },
 	notreached: { hue: 'subtle', ...SUBTLE, disc: 'bg-subtle text-fg-subtle', bg: 'bg-fg-subtle', ink: HUE_INK.subtle, chip: 'bg-subtle ring-line text-fg-subtle', shape: 'ring', moves: false, ring: null },
 	notaffected: { hue: 'subtle', ...SUBTLE, disc: 'bg-subtle text-fg-subtle', bg: 'bg-fg-subtle', ink: HUE_INK.subtle, chip: 'bg-subtle ring-line text-fg-subtle', shape: 'dim', moves: false, ring: null }
@@ -92,7 +95,7 @@ const ALIAS_TABLE = {
 	deploying: 'deploying', current: 'deploying', promoting: 'deploying',
 	held: 'held', hold: 'held', paused: 'held', 'held-by-rule': 'held',
 	approval: 'approval', waiting: 'approval', 'awaiting-approval': 'approval', 'approval-yours': 'approval-yours',
-	failed: 'failed', failing: 'failed',
+	failed: 'failed', failing: 'failed', recovered: 'recovered',
 	stuck: 'stuck',
 	notreached: 'notreached', 'not-reached': 'notreached', none: 'notreached',
 	notaffected: 'notaffected', 'not-affected': 'notaffected'

@@ -10,6 +10,7 @@
  * figure; an approval ask leads with "N of M prod regions" only when `regionStates` says several prod regions wait (the count the change's own
  * line prints), else it is title-led. The viewer is 'you', never their own avatar; the lane drawing is built by the component (Footprint `laneOf`).
  */
+import { attentionRank } from '$lib/view-models/failure-actions';
 import { inScope } from './derivation-scope';
 import { oldestFirst, newestFirst, earliest, latest as latestInstant } from '$lib/instant';
 import { liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
@@ -20,7 +21,7 @@ import { rowAction, actionHref } from './rollout-view';
 import { chipPlace, changeLineOf } from './rollouts-page';
 import { classifyChanges, groupByRepo, cardOf, tiersOf, type RepoGroup, type Rollup } from './changes-page';
 import { TIERS } from './change-view';
-import { severity, approvalWord, failedWord } from './state-words';
+import { severity, approvalWord, failedWord, attentionRollupOf } from './state-words';
 import { siteCount, siteKey, regionsPhrase } from '$lib/view-models/regions';
 import { attentionModel, type AttentionModel } from '$lib/view-models/attention';
 import type { RepoCardModel } from '$lib/view-models/repo-card';
@@ -37,8 +38,8 @@ export type AskItem = {
 	id: { name: string; ref?: string; title?: string; person?: string; you?: boolean };
 };
 /** `mark` is the StatusMark state of the row: failing, held by a rule, waiting on an approval, or moving (QA #6: an approval-held or moving rollout must show on Home even when it is not the viewer's ask). */
-export type FleetTrouble = { key: string; app: string; failing: boolean; mark: 'failed' | 'held' | 'approval' | 'deploying' | 'checking'; word: 'Failing' | 'Failed' | 'Held' | 'Waiting for approval' | 'Needs your approval' | 'Deploying' | 'Checking' | 'Paused'; href: string; places: { tier: string; place: string }[] };
-export type FleetDeploy = { key: string; app: string; tier: string; place: string; at: string; age: string; failing: boolean; href: string };
+export type FleetTrouble = { key: string; app: string; failing: boolean; mark: 'failed' | 'held' | 'approval' | 'deploying' | 'checking'; word: 'Failing' | 'Failed' | 'Held' | 'Waiting for approval' | 'Needs your approval' | 'Deploying' | 'Checking' | 'Paused'; href: string; places: { tier: string; place: string }[]; /** a failed row whose every failed place has its checks OK again: the ring, not the solid disc */ recovered?: boolean };
+export type FleetDeploy = { key: string; app: string; tier: string; place: string; at: string; age: string; failing: boolean; href: string; /** the app's failed places all have their checks OK again: the ring, not the solid disc */ recovered?: boolean };
 export type HomePage = {
 	asks: AskItem[];
 	asksRollup: Rollup;
@@ -114,14 +115,10 @@ export function homePage(hs: HomeState, starred?: ReadonlySet<string>): HomePage
 	return inScope(() => homePageRaw(hs, starred));
 }
 /** the Needs-you rollup: failures live now, failures whose checks recovered (`failed`, the word every page uses), then the approvals */
-export const asksRollupOf = (failing: number, recovered: number, toApprove: number): (string | { text: string; ink: 'danger' | 'held' })[] => [
-	...(failing - recovered ? [{ text: `${failing - recovered} ${failedWord(false).toLowerCase()}`, ink: 'danger' as const }] : []),
-	...(recovered ? [`${recovered} ${failedWord(true).toLowerCase()}`] : []),
-	...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])
-];
+export const asksRollupOf = (failing: number, recovered: number, toApprove: number): (string | { text: string; ink: 'danger' | 'held' })[] => attentionRollupOf(failing, recovered, toApprove ? { text: `${toApprove} to approve`, ink: 'held' as const } : null);
 
-/** a live failure, then a recovered one (its checks are OK again), then the approvals; the sort is stable */
-const askRank = (r: TRow) => (r.group !== 'failed' ? 2 : r.failure?.recovered ? 1 : 0);
+/** a live failure, then the approvals, then a recovered one (its checks are OK again); the sort is stable */
+const askRank = (r: TRow) => attentionRank(r.group === 'failed' ? 'failed' : 'approval', !!r.failure?.recovered);
 function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 	const R = rollouts(hs, starred);
 	/* failures first (prod before the rest: the roster's urgency order already does it), then approvals; the sort is stable */
@@ -158,8 +155,8 @@ function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 			: r.group === 'held' ? { mark: 'held' as const, word: 'Held' as const }
 			: r.group === 'approval' ? { mark: 'approval' as const, word: approvalWord(false) as FleetTrouble['word'] }
 			: r.state === 'checking' ? (r.paused ? { mark: 'held' as const, word: 'Paused' as const } : { mark: 'checking' as const, word: 'Checking' as const }) : { mark: 'deploying' as const, word: 'Deploying' as const };
-		const x = by.get(k) ?? { key: k, app: r.app, failing: failedRow, ...kind, href: r.href, places: [] as FleetTrouble['places'], since: r.since ?? '' };
-		if (failedRow && !r.failure?.recovered) x.word = 'Failing'; /* one live failure among the app's failed places makes the row Failing */
+		const x = by.get(k) ?? { key: k, app: r.app, failing: failedRow, recovered: failedRow && !!r.failure?.recovered, ...kind, href: r.href, places: [] as FleetTrouble['places'], since: r.since ?? '' };
+		if (failedRow && !r.failure?.recovered) { x.word = 'Failing'; x.recovered = false; } /* one live failure among the app's failed places makes the row Failing */
 		x.places.push({ tier: r.tier, place });
 		x.since = earliest([x.since, r.since]) ?? '';
 		by.set(k, x);
@@ -169,9 +166,10 @@ function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 	foldPinIntoFleet(by, heldRegions, pinOnlyPlaces(R.c.m.apps as never, R.rows, new Set([...askKeys, ...mineKeys])));
 	/* a held app's prod chip says the same count the Apps tile, the app page and the rollout page say: "3 of 5 regions" (every cause and the pin once), not the rows' own region count */
 	for (const x of by.values()) if (x.mark === 'held') { const ph = heldRegionsPhrase(x.app, hs); const pr = x.places.find((q) => q.tier === 'prod'); if (ph && pr) pr.place = ph; }
-	const trouble = [...by.values()].sort((a, b) => TROUBLE_ORDER(a.mark) - TROUBLE_ORDER(b.mark) || oldestFirst(a.since, b.since)).map(({ since: _s, ...t }) => t);
+	const trouble = [...by.values()].sort((a, b) => TROUBLE_ORDER(a.mark) - TROUBLE_ORDER(b.mark) || Number(!!a.recovered) - Number(!!b.recovered) || oldestFirst(a.since, b.since)).map(({ since: _s, ...t }) => t);
 
 	const failingApps = new Set(R.rows.filter((r) => r.group === 'failed').map((r) => r.app));
+	const recoveredApps = new Set([...failingApps].filter((a) => R.rows.every((r) => r.app !== a || r.group !== 'failed' || !!r.failure?.recovered)));
 	/* QA round 2 B1: ONE row per app, never a batch named after its first app. The row is the app's latest deploy: its build, the FURTHEST environment that build reached (a build the dev tier took and staging has not is "dev"), when it last moved. No fact lives only in a tooltip. */
 	const byApp = new Map<string, ReturnType<typeof fleet24hEvents>>();
 	for (const e of fleet24hEvents(hs)) byApp.set(e.app, [...(byApp.get(e.app) ?? []), e]);
@@ -186,7 +184,7 @@ function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 		const nSites = siteCount(there.map((i) => i.place));
 		const place = regionsPhrase(nSites) ?? (siteKey(raw) === 'default' ? '' : raw);
 		const at = latestInstant([e.at, ...same.map((x) => x.at)]) ?? e.at;
-		return { key: `${latest.kind}|${latest.build}|${app}`, app, tier: e.tier, place, at, age: ago(at), failing: latest.kind === 'failed' && failingApps.has(app), href: nSites === 1 ? e.href : `/apps/${encodeURIComponent(app)}` };
+		return { key: `${latest.kind}|${latest.build}|${app}`, app, tier: e.tier, place, at, age: ago(at), failing: latest.kind === 'failed' && failingApps.has(app), recovered: latest.kind === 'failed' && recoveredApps.has(app), href: nSites === 1 ? e.href : `/apps/${encodeURIComponent(app)}` };
 	}).sort((a, b) => newestFirst(a.at, b.at)).slice(0, 5);
 
 	return {

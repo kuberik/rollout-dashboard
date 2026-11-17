@@ -1,6 +1,6 @@
 /** r39 Environments page view-model: every tile's buckets sum to its places, the state line leads with the worst fact, calm = nothing adverse. */
 import { describe, it, expect } from 'vitest';
-import { environmentsPage, stateLine, barSegments } from './environments-page';
+import { environmentsPage, stateLine, barSegments, regionRecovered } from './environments-page';
 import { envsModel } from './envs-model';
 import type { HomeState } from './data';
 
@@ -133,6 +133,11 @@ describe('region cell parts follow the tier line', () => {
 		expect(regionCellParts({ failing: 0, recovered: 0, waiting: 3, moving: 1, movingWord: 'checking' }).map((p) => p.text)).toEqual(['3 waiting', '1 checking']);
 		expect(regionCellParts({ failing: 0, recovered: 0, waiting: 0, moving: 2, movingWord: 'in progress' })[0].text).toBe('2 in progress');
 	});
+	it('waiting and moving parts are neutral: only a check failing now spends a hue', async () => {
+		const { regionCellParts } = await import('./environments-page');
+		expect(regionCellParts({ failing: 1, recovered: 0, waiting: 3, moving: 1, movingWord: 'checking' }).map((p) => p.ink)).toEqual(['danger', null, null]);
+		expect(regionCellParts({ failing: 0, recovered: 0, waiting: 3, moving: 1, movingWord: 'deploying' }).map((p) => p.ink)).toEqual([null, null]);
+	});
 	it('movingWordOf: checking / deploying / in progress when both or none', async () => {
 		const { movingWordOf } = await import('./envs-model');
 		const p = (...s: string[]) => s.map((state) => ({ state }));
@@ -145,5 +150,21 @@ describe('region cell parts follow the tier line', () => {
 		const { environmentsPage } = await import('./environments-page');
 		const labels = environmentsPage('calm' as never).tiles.map((t) => t.label);
 		for (const l of labels) { expect(l).not.toMatch(/^1 places/); expect(l).not.toMatch(/ 0 (deploying|checking)/); }
+	});
+});
+
+describe('the recovered ring on the Environments marks', () => {
+	const t = (failing: number, recovered: number) => stateLine({ places: 4, failing, recovered, waiting: 0, yours: 0, moving: 0, rest: 4 - failing }, 'deploying');
+	it('the lead mark is the ring only when every failed place has recovered; a mixed tile keeps the solid disc', () => {
+		expect(t(2, 2).recovered).toBe(true);
+		expect(t(2, 1).recovered).toBeUndefined();
+		expect(t(1, 0).recovered).toBeUndefined();
+		expect(stateLine({ places: 2, failing: 0, waiting: 0, yours: 0, moving: 0, rest: 2 }, 'deploying').recovered).toBeUndefined();
+	});
+	it('a region cell is the ring only when every failed place in it recovered', () => {
+		expect(regionRecovered({ mark: 'failed', failing: 2, recovered: 2 })).toBe(true);
+		expect(regionRecovered({ mark: 'failed', failing: 2, recovered: 1 })).toBe(false);
+		expect(regionRecovered({ mark: 'failed', failing: 1, recovered: 0 })).toBe(false);
+		expect(regionRecovered({ mark: 'approval', failing: 0, recovered: 0 })).toBe(false);
 	});
 });

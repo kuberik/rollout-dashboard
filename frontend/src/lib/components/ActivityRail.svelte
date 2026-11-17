@@ -12,6 +12,7 @@
 	} from '$lib/environment-theme';
 	import { rolloutPath, sourceClusterName } from '$lib/source-dashboard';
 	import { now } from '$lib/stores/time';
+	import { failureRecovered } from '$lib/components/new/data';
 	import ActivityDayHeader from './ActivityDayHeader.svelte';
 	import ActivitySentence from '$lib/components/ActivitySentence.svelte';
 	import { actorFrom, type Actor } from '$lib/actor';
@@ -549,6 +550,7 @@
 										time={hourLabel(a.timestamp)}
 										href={a.href}
 										live={a.isLive}
+										recovered={a.isLive && failureRecovered(a.href)}
 										compact
 										repeatActor={showAppName &&
 											ai > 0 &&

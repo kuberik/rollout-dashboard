@@ -80,7 +80,7 @@
 	const width = $derived((slots.length - 1) * geo.pitch + geo.d + 2 * lead);
 	const WORD: Record<MiniState, string> = { done: 'done', current: 'running', pending: 'not started', failed: 'failed', held: 'waiting', approval: 'waiting for approval', checking: 'checking', rest: 'healthy' };
 	const aria = $derived(label ?? 'Steps: ' + nodes.map((n) => `${n.label ?? n.step ?? ''} ${WORD[n.state]}`.trim()).join(', '));
-	const xsCls = (s: MiniState) => (s === 'done' ? 'mp-done' : s === 'failed' ? 'st-fail' : s === 'held' ? 'st-hold' : s === 'approval' ? 'mp-ask' : s === 'checking' ? 'st-check' : s === 'current' ? 'st-active ' + (lit ? 'st-live' : '') : s === 'rest' ? 'mp-rest' : 'mp-ring mp-ring-off');
+	const xsCls = (s: MiniState, recovered = false) => (s === 'done' ? 'mp-done' : s === 'failed' ? (recovered ? 'st-recovered' : 'st-fail') : s === 'held' ? 'st-hold' : s === 'approval' ? 'mp-ask' : s === 'checking' ? 'st-check' : s === 'current' ? 'st-active ' + (lit ? 'st-live' : '') : s === 'rest' ? 'mp-rest' : 'mp-ring mp-ring-off');
 	/* sm discs are StepDisc's (the tab's own tint + glyph per state); a strand's approval keeps its person ring and its rest disc stays quiet */
 	const smTint = (s: MiniState) => (s === 'approval' ? 'bg-transparent text-fg' : s === 'rest' ? 'bg-subtle' : undefined);
 	const nodeTitle = (n: MiniNode) => n.title ?? `${n.label ?? n.step ?? ''}${n.label || n.step ? ' · ' : ''}${WORD[n.state]}`;
@@ -122,7 +122,7 @@
 				title={decorative ? undefined : size === 'xs' ? nodeTitle(n) : n.title}
 			>
 				{#if size === 'xs'}
-					<span class="st-node mp-dot {xsCls(n.state)}" aria-hidden="true"></span>
+					<span class="st-node mp-dot {xsCls(n.state, n.recovered)}" aria-hidden="true"></span>
 				{:else}
 					<span class="mp-disc {n.state === 'approval' ? 'mp-ask' : ''}" aria-hidden="true"><StepDisc state={n.state} tint={smTint(n.state)} class="h-full w-full" /></span>
 					{#if n.label}<span class="mp-name {lit && FRONTIER.has(n.state) ? 't-ui-sm text-fg' : 't-meta text-fg-subtle'} {n.state === 'failed' && lit ? 'text-danger' : ''}" title={n.label}>{n.label}</span>{/if}

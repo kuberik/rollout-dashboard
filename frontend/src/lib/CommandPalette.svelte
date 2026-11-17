@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
 	/**
 	 * ⛔ THE FASTEST SURFACE IN THE PRODUCT WAS THE ONE THAT TOLD YOU LEAST.
 	 * (2026-08-30)
@@ -122,7 +123,9 @@
 		shortEnvLabel
 	} from '$lib/environment-theme';
 	import { rolloutMatchesEnvironment, rolloutPath } from '$lib/source-dashboard';
-	import { failureRecovered } from '$lib/components/new/data';
+	import { failureRecovered, failureSinceAt } from '$lib/components/new/data';
+	import { dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
+	import { failedRowAction, FAILED_ROW_SECONDARY } from '$lib/view-models/failure-actions';
 	import { href, appPath } from '$lib/paths';
 	import { now } from '$lib/stores/time';
 	import { createQuery } from '@tanstack/svelte-query';
@@ -132,6 +135,7 @@
 		buildChangeRows,
 		myChangesCount,
 		familyProgress,
+		failedVerdictInk,
 		standingWords,
 		familyMeterAriaLabel,
 		type ChangeRowVM
@@ -397,6 +401,7 @@
 	 * it fires the copy.
 	 */
 	let copyToastOpen = $state(false);
+	const hideCopyToast = toastHideTimer(() => (copyToastOpen = false));
 	let copyToastMessage = $state('');
 	type Result = {
 		kind: ResultKind;
@@ -454,6 +459,8 @@
 		 * a 0: a count of the norm is not a mark.
 		 */
 		needsYou?: number;
+		/** how many of them are not a recovered failure (a live failure or a stall): the count reads in danger ink only when this is above 0 */
+		needsYouLive?: number;
 		/** Worst-first ordering key for the default screen. Higher is worse. */
 		severity?: number;
 		// For `app` rows: per-env mini-strip data (env theme + bake status)
@@ -522,6 +529,8 @@
 	 * palette) — re-deriving it here is exactly how that drifted.
 	 */
 	const cardNeedsYou = isNeedsYou;
+	/** a failure whose checks are all OK again is neutral everywhere (the rollups' "N failed"); only a live failure or a stall is danger */
+	const cardLive = (c: RolloutCard) => isNeedsYou(c) && !(c.stuck == null && failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)));
 	/** Worst first. Failure outranks a stall; a stall outranks a lag. */
 	function cardSeverity(c: RolloutCard): number {
 		if (c.statusKey === 'failed') return 3;
@@ -569,6 +578,7 @@
 				stateWord: mark?.word ?? '',
 				stateTitle: mark?.title ?? '',
 				needsYou: cardNeedsYou(c) ? 1 : 0,
+				needsYouLive: cardLive(c) ? 1 : 0,
 				severity: cardSeverity(c),
 				isCurrent: c.name === currentName && c.ns === currentNamespace,
 				nodeState: cardNodeState(c)
@@ -633,6 +643,7 @@
 							}
 						: undefined,
 				needsYou: own.filter(cardNeedsYou).length,
+				needsYouLive: own.filter(cardLive).length,
 				severity: own.reduce((m, c) => Math.max(m, cardSeverity(c)), 0)
 			});
 		}
@@ -662,6 +673,7 @@
 				href: href(`/envs/${encodeURIComponent(name)}`),
 				envTheme: theme,
 				needsYou: own.filter(cardNeedsYou).length,
+				needsYouLive: own.filter(cardLive).length,
 				severity: own.reduce((m, c) => Math.max(m, cardSeverity(c)), 0)
 			});
 		}
@@ -680,6 +692,7 @@
 				subtitle: `${own.length} rollout${own.length === 1 ? '' : 's'}`,
 				href: href(`/namespaces/${encodeURIComponent(ns)}`),
 				needsYou: own.filter(cardNeedsYou).length,
+				needsYouLive: own.filter(cardLive).length,
 				severity: own.reduce((m, c) => Math.max(m, cardSeverity(c)), 0)
 			});
 		}
@@ -917,6 +930,12 @@
 	}
 	/** a failed row whose checks have recovered sorts below one failing now */
 	const recoveredRank = (c: RolloutCard) => blockedRecoveredRank(rowKind(c), failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)));
+	/** the Attention lists' order (`attentionRank`): a failure live now (or a stall), then the approvals, then the recovered failures; within a group the longest-failing first */
+	const attentionRankOf = (c: RolloutCard) => (rowKind(c) === 'held' ? 1 : recoveredRank(c) > 0 ? 2 : 0);
+	const failedAtOf = (c: RolloutCard) => {
+		const t = Date.parse(failureSinceAt(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)) ?? '');
+		return Number.isFinite(t) ? t : Infinity;
+	};
 	/** Failures, then stalls, then approvals (coordinator, 2026-10-11). */
 	const KIND_ORDER = { failed: 0, stuck: 1, held: 2 } as const;
 	const needsYouLeads = $derived(
@@ -930,14 +949,27 @@
 			.filter((c) => needsPerson(c) && (needsYouLeads || c !== currentRolloutCard))
 			.sort(
 				(a, b) =>
-					Number(b === currentRolloutCard) - Number(a === currentRolloutCard) ||
+					attentionRankOf(a) - attentionRankOf(b) ||
 					KIND_ORDER[rowKind(a)] - KIND_ORDER[rowKind(b)] ||
-					recoveredRank(a) - recoveredRank(b) ||
+					failedAtOf(a) - failedAtOf(b) ||
 					cardSeverity(b) - cardSeverity(a) ||
 					a.name.localeCompare(b.name)
 			)
 	);
 	const attentionShown = $derived(attention.slice(0, ATTENTION_CAP));
+
+	/**
+	 * The palette closes on ANY navigation, not only the ones its own handlers start: a row's name is a plain link (a tap or a
+	 * click follows it, no handler of ours runs), and a page that opens behind an open palette is a page nobody can see. Fires on
+	 * a change of the location only, so opening the palette never closes it.
+	 */
+	let lastLocation = page.url.href;
+	$effect(() => {
+		const here = page.url.href;
+		if (here === lastLocation) return;
+		lastLocation = here;
+		open = false;
+	});
 
 	/**
 	 * ⭐ LANE P, §5 — "THIS ROLLOUT". ON A ROLLOUT PAGE, THE OPENING SCREEN'S
@@ -1064,7 +1096,7 @@
 		if (ok) {
 			copyToastMessage = `Copied ${sha}`;
 			copyToastOpen = true;
-			setTimeout(() => (copyToastOpen = false), 3000);
+			hideCopyToast('success');
 		}
 	}
 
@@ -1112,14 +1144,12 @@
 	 * is shared with `thisRolloutActions` so both read one scope/cluster
 	 * rule for "where does this rollout's own link go."
 	 */
-	function goRolloutSub(c: RolloutCard, sub?: string) {
+	function goRolloutSub(c: RolloutCard, sub?: string, query?: string) {
 		open = false;
 		const cluster = c.sourceCluster || localClusterName;
-		goto(sub ? rolloutPath(cluster, c.ns, c.name, sub) : rolloutPath(cluster, c.ns, c.name));
+		goto((sub ? rolloutPath(cluster, c.ns, c.name, sub) : rolloutPath(cluster, c.ns, c.name)) + (query ? `?${query}` : ''));
 	}
 
-	/** The one rollout `goRolloutSub`'s "Logs, or Overview if already there"
-	 *  rule points the incident row at. */
 	/**
 	 * ⭐ PALROW r7 (AD r6, item 3): ONE BLOCKED ROW, ONE ACTION, EVERYWHERE.
 	 * A rollout that needs a person draws the same `blockedOption` row in
@@ -1137,10 +1167,14 @@
 	 * A target that IS the tab already open falls back to Overview, so the
 	 * row never offers a no-op ("Open logs" while on Logs).
 	 */
-	type BlockedAction = { label: string; sub: string | undefined };
+	type BlockedAction = { label: string; sub: string | undefined; query?: string };
 	function blockedAction(c: RolloutCard): BlockedAction {
 		const approval = approvalCards.has(c);
 		const kind = blockedKindOf(c);
+		if (kind === 'failed' && !approval) {
+			const fa = failedRowAction(failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)), c === currentRolloutCard && currentTab === 'overview');
+			if (fa.sub === undefined) return fa;
+		}
 		const wanted: 'logs' | 'gates' | undefined =
 			kind === 'failed' ? 'logs' : approval || hasGatesTab(c) ? 'gates' : undefined;
 		if (approval && !(c === currentRolloutCard && currentTab === 'gates')) {
@@ -1158,7 +1192,8 @@
 	}
 	function blockedHref(c: RolloutCard): string {
 		const cluster = c.sourceCluster || localClusterName;
-		return rolloutPath(cluster, c.ns, c.name, blockedAction(c).sub);
+		const a = blockedAction(c);
+		return rolloutPath(cluster, c.ns, c.name, a.sub) + (a.query ? `?${a.query}` : '');
 	}
 	/** Search results: the RolloutCard behind a rollout result, when that
 	 *  rollout needs a person, so the row renders as `blockedOption`. */
@@ -1169,11 +1204,6 @@
 		if (r.kind !== 'rollout') return null;
 		const c = cardsByResultKey.get(r.key);
 		return c && needsPerson(c) ? c : null;
-	}
-	/** THE ONE THING A BLOCKED ROW DOES, for ↵ and a search pick: go to its
-	 *  action's tab (a click follows the row's own link, same href). */
-	function runBlocked(c: RolloutCard) {
-		goRolloutSub(c, blockedAction(c).sub);
 	}
 	/**
 	 * ⭐ PALROW r7 (AD r6 nit): ONE IDENTITY PER ENV NAME. A rollout with no
@@ -1402,7 +1432,9 @@
 			if (sev !== 0) return sev;
 			return a.r.title.localeCompare(b.r.title);
 		});
-		const ranked = capKind(scored.slice(0, 200).map((x) => x.r), 'change', CHANGE_TITLE_CAP);
+		// The flat index is the order on screen: kinds sit in `KIND_PRIORITY` groups, each in score order, so the first row drawn is
+		// index 0 (the highlight and Enter start on it). `sort` is stable, so within a kind the score order stays.
+		const ranked = capKind(scored.slice(0, 200).map((x) => x.r), 'change', CHANGE_TITLE_CAP).sort((a, b) => KIND_PRIORITY[b.kind] - KIND_PRIORITY[a.kind]);
 		// Reference rows ride ABOVE everything else, ungrouped, and only in
 		// the unscoped default search — there is no `change` picker tile to
 		// scope INTO (the fifth Browse tile navigates instead, see
@@ -1512,11 +1544,7 @@
 
 	function pick(r: Result) {
 		open = false;
-		const bc = blockedCardFor(r);
-		if (bc) {
-			runBlocked(bc);
-			return;
-		}
+		// A rollout that needs a person is a result like any other: Enter opens it; its action is a click or a Tab away.
 		if (r.onSelect) {
 			r.onSelect();
 			return;
@@ -1568,6 +1596,37 @@
 	const inPicker = $derived(!scope && !query);
 
 	/**
+	 * The highlight follows the ITEM, not its position. `selectedIndex` is a position in the flat list; when the list re-sorts or
+	 * re-fills under an open palette (a rollout's state changes, the fleet refreshes) the same position is a different item, and
+	 * Enter would run that item's action. `rowKeys` names the item at every position; when the keys change, the highlight moves to
+	 * where the highlighted item went (and stays put if it is gone).
+	 */
+	const rowKeys = $derived.by<string[]>(() => {
+		if (!inPicker) return filtered.map((r) => `r:${r.kind}:${r.href ?? r.title}`);
+		const attn = attentionShown.map((c) => `a:${c.sourceCluster || localClusterName}/${c.ns}/${c.name}`);
+		const here = [...(incidentCard ? ['i'] : []), ...thisRolloutActions.map((a) => `t:${a.id}`)];
+		const keys: string[] = needsYouLeads ? [...attn, ...here] : [...here, ...attn];
+		return keys;
+	});
+	let prevRowKeys: string[] = [];
+	let prevAsk = untrack(() => `${query}\u0000${scope ?? ''}`);
+	$effect.pre(() => {
+		const next = rowKeys;
+		const ask = `${query}\u0000${scope ?? ''}`;
+		const at = untrack(() => selectedIndex);
+		const was = prevRowKeys[at];
+		const sameAsk = ask === prevAsk;
+		prevRowKeys = next;
+		prevAsk = ask;
+		// a new query or scope is a new list: the best match is first, the old highlight means nothing
+		if (!sameAsk) { selectedIndex = 0; return; }
+		if (!was || next[at] === was) return;
+		const moved = next.indexOf(was);
+		if (moved >= 0) selectedIndex = moved;
+	});
+
+
+	/**
 	 * ⭐ LANE P, §5: THE OPENING SCREEN'S FLAT INDEX SPACE NOW HAS THREE
 	 * SECTIONS, NOT TWO, in the order the template renders them —
 	 * `thisRolloutActions` ("This rollout", rollout pages only), then
@@ -1582,8 +1641,67 @@
 		return idx - attentionShown.length - thisRolloutCount;
 	}
 
+	/**
+	 * A row's own controls (Roll back, Retry, Open logs, the secondary link) are real links: when one has focus, Enter does what a link
+	 * does and Space does the same (a link ignores Space by itself). The palette's own Enter (open the highlighted row) and Tab (scope or
+	 * walk to the highlighted row's action) belong to the search box; they never take a key from a control that has focus.
+	 */
+	const rowControl = (t: EventTarget | null): HTMLElement | null => (t instanceof HTMLElement ? (t.closest<HTMLElement>('a') ?? t.closest<HTMLElement>('button')) : null);
+	/** The first action of the highlighted row, so Tab from the search box lands on what the row offers and not on row one's link. */
+	function highlightedAction(): HTMLElement | null {
+		const row = document.getElementById(`cp-opt-${selectedIndex}`);
+		return row?.querySelector<HTMLElement>('[data-meta="action"] a[href], [data-meta="action"] button') ?? row?.querySelector<HTMLElement>('a[href], button:not(:disabled)') ?? (row?.matches('a[href], button:not(:disabled)') ? row : null);
+	}
+	/** The highlighted row is a Jump to tile that scopes (Tab narrows into it); "Your changes" navigates and takes no Tab. */
+	const highlightScopes = $derived(inPicker && jumpToIndex(selectedIndex) >= 0 && jumpToIndex(selectedIndex) < PICKER_KINDS.length);
+	/** The highlighted row is a rollout that needs a person: it carries an action Tab reaches. */
+	/** A row's own action BUTTON exists (Roll back, Retry): an approval row's "Review approval in ..." is plain text and a disabled Roll back is not reachable, so neither earns the footer's "Tab action". */
+	function hasRowButton(c: RolloutCard): boolean {
+		const a = blockedAction(c);
+		if (!a.query) return false;
+		return !(/action=rollback/.test(a.query) && c.rollout && !dashboardManagesWantedVersion(c.rollout));
+	}
+	const highlightHasAction = $derived.by(() => {
+		if (inPicker) {
+			const thisIdx = selectedIndex - thisStart;
+			if (thisIdx >= 0 && thisIdx < thisRolloutCount) return thisIdx === 0 && !!incidentCard && hasRowButton(incidentCard);
+			const a = selectedIndex - attnStart;
+			return a >= 0 && a < attentionShown.length && hasRowButton(attentionShown[a]);
+		}
+		const r = filtered[selectedIndex];
+		const c = r ? blockedCardFor(r) : null;
+		return !!c && hasRowButton(c);
+	});
+
+	/** An arrow key pressed while a row's own control has focus moves the highlight AND hands focus back to the search box, so one row ever looks selected and Enter opens the row the highlight is on. */
+	function returnFocusToInput(e: KeyboardEvent) {
+		if (!(e.target instanceof HTMLInputElement)) searchInput?.focus();
+	}
+
+	/** Focus moved onto a control in another row (Tab past the highlighted row's action): the highlight follows it, so one row looks selected and the arrows continue from there. */
+	function highlightFocusedRow(e: FocusEvent) {
+		const idx = Number((e.target as HTMLElement | null)?.closest<HTMLElement>('[role="option"][data-idx]')?.dataset.idx);
+		if (Number.isFinite(idx) && idx !== selectedIndex) selectedIndex = idx;
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (!open) return;
+		const control = rowControl(e.target);
+		if (control && !(e.target instanceof HTMLInputElement) && (e.key === 'Enter' || e.key === ' ')) {
+			if (e.key === ' ') {
+				e.preventDefault();
+				control.click();
+			}
+			return;
+		}
+		if (e.key === 'Tab' && !e.shiftKey && e.target instanceof HTMLInputElement) {
+			const act = highlightScopes ? null : highlightedAction();
+			if (act) {
+				e.preventDefault();
+				act.focus();
+				return;
+			}
+		}
 		const maxIdx = inPicker
 			? attentionShown.length + thisRolloutCount + BROWSE_TILE_COUNT - 1
 			: filtered.length - 1;
@@ -1605,10 +1723,12 @@
 			e.preventDefault();
 			selectedIndex = Math.min(selectedIndex + 1, maxIdx);
 			scrollSelectedIntoView();
+			returnFocusToInput(e);
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
 			selectedIndex = Math.max(selectedIndex - 1, 0);
 			scrollSelectedIntoView();
+			returnFocusToInput(e);
 		} else if (e.key === 'Tab' && inPicker) {
 			// ⭐ LANE P, §5: "the scope action on Tab (existing scoping)" — the
 			// Jump to row the cursor sits on scopes in, same destination Enter
@@ -1634,7 +1754,7 @@
 				const thisIdx = selectedIndex - thisStart;
 				if (thisIdx >= 0 && thisIdx < thisRolloutCount) {
 					if (incidentCard && thisIdx === 0) {
-						runBlocked(incidentCard);
+						goRolloutSub(incidentCard);
 						return;
 					}
 					thisRolloutActions[incidentCard ? thisIdx - 1 : thisIdx]?.onSelect();
@@ -1643,7 +1763,7 @@
 				const attnIdx = selectedIndex - attnStart;
 				if (attnIdx >= 0 && attnIdx < attentionShown.length) {
 					const c = attentionShown[attnIdx];
-					if (c) runBlocked(c);
+					if (c) goRolloutSub(c);
 					return;
 				}
 				const jumpIdx = jumpToIndex(selectedIndex);
@@ -1708,6 +1828,43 @@
 		};
 	}
 
+	/**
+	 * ONE ARRANGEMENT PER GROUP. A blocked row drops its fact and action to a second line when they do not fit beside the name (BlockedRow,
+	 * `stackedWhenWrapped`); a group where some rows did and some did not read as two different kinds of row. The group's container measures
+	 * every blocked row's NATURAL fit (with the group-wide setting removed, read in the same frame so nothing paints in between) and, when
+	 * any row needs two lines, sets `data-stack-all` so every row in the group uses two. Below `sm` every row is already two lines.
+	 */
+	function uniformStack(node: HTMLElement, _key: string) {
+		let frame = 0;
+		const measure = () => {
+			node.removeAttribute('data-stack-all');
+			let any = false;
+			for (const rowEl of node.querySelectorAll<HTMLElement>('.br')) {
+				const meta = rowEl.querySelector<HTMLElement>('[data-meta-line]');
+				if (!meta) continue;
+				const first = meta.parentElement?.querySelector<HTMLElement>('a.tap-link');
+				if (first && meta.offsetTop - first.offsetTop > 4) any = true;
+			}
+			if (any) node.setAttribute('data-stack-all', 'true');
+		};
+		const later = () => {
+			cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(measure);
+		};
+		measure();
+		const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(later);
+		ro?.observe(node);
+		return {
+			update(_k: string) {
+				measure();
+			},
+			destroy() {
+				cancelAnimationFrame(frame);
+				ro?.disconnect();
+			}
+		};
+	}
+
 	const KIND_ICON: Record<ResultKind, typeof GridOutline> = {
 		change: CodePullRequestOutline,
 		rollout: GridOutline,
@@ -1764,7 +1921,11 @@
 {#snippet blockedOption(c: RolloutCard, idx: number)}
 	{@const isActive = idx === selectedIndex}
 	{@const actionLabel = blockedAction(c).label}
-	{@const rowHref = blockedHref(c)}
+	{@const actionHref = blockedHref(c)}
+	{@const plainHref = rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name)}
+	<!-- only an action that OPENS A DIALOG (a query: Roll back, Retry) is kept off the row's own link; a destination (Gates, Logs) stays the row's -->
+	{@const rowHref = /[?&]action=/.test(actionHref) ? plainHref : actionHref}
+	{@const actionKey = /action=retry/.test(actionHref) ? 'retry' : /action=rollback/.test(actionHref) ? 'rollback' : 'open'}
 	<!-- ⭐ ROUND 6 (AD review 4): the incident row's destination (Logs, or
 	     Overview if already there) is not what its own link text says (the
 	     rollout's name), so `aria-label` on THIS wrapper (the thing
@@ -1787,9 +1948,20 @@
 		class="rounded-sm {isActive ? 'bg-selected' : ''}"
 	>
 		{#snippet incidentAction()}
-			<span class="flex items-center gap-2" data-meta="action">
-				{@render runKey(isActive)}
-				<span class="t-ui-sm whitespace-nowrap text-fg">{actionLabel}</span>
+			<!-- ONE ROW, TWO TARGETS: a tap or click on the row (its name) opens the rollout, never an action; the row's action is its own button, so on a
+			     phone (no Enter, no hover) a tap on a name cannot start a rollback. Enter opens the rollout (the footer's "↵ open"), never the action.
+			     the secondary link follows. -->
+			<span class="flex items-center gap-3" data-meta="action">
+				{#if actionHref !== rowHref && actionKey === 'rollback' && c.rollout && !dashboardManagesWantedVersion(c.rollout)}
+					<button type="button" disabled title={WANTED_VERSION_OWNED_REASON} class="btn btn-secondary btn-sm relative z-[1] whitespace-nowrap max-sm:min-h-11" data-action="rollback">{actionLabel}</button>
+				{:else if actionHref !== rowHref}
+					<a href={actionHref} class="btn btn-secondary btn-sm relative z-[1] whitespace-nowrap max-sm:min-h-11" data-action={actionKey} onclick={() => (open = false)}>{actionLabel}</a>
+				{:else}
+					<span class="t-ui-sm whitespace-nowrap text-fg">{actionLabel}</span>
+				{/if}
+				{#if rowKind(c) === 'failed' && !approvalCards.has(c) && actionLabel !== FAILED_ROW_SECONDARY.label}
+					<a href={rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name, FAILED_ROW_SECONDARY.sub)} class="t-ui-sm relative z-[1] whitespace-nowrap text-fg-muted hover:text-fg max-sm:inline-flex max-sm:min-h-11 max-sm:items-center" data-secondary="logs" onclick={() => (open = false)}>{FAILED_ROW_SECONDARY.label}</a>
+				{/if}
 			</span>
 		{/snippet}
 		<BlockedRow
@@ -1797,11 +1969,13 @@
 			kind={rowKind(c)}
 			approval={approvalCards.has(c)}
 			recovered={failureRecovered(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name))}
+			failedSince={failureSinceAt(rolloutPath(c.sourceCluster || localClusterName, c.ns, c.name))}
 			story={approvalStories.get(c) ?? null}
 			href={rowHref}
 			size="palette"
 			wrap
 			trailing={incidentAction}
+			trailingUp={approvalCards.has(c) && actionHref === rowHref}
 		/>
 	</div>
 {/snippet}
@@ -1831,7 +2005,7 @@
 {#snippet changeRow(r: Result, idx: number)}
 	{@const isActive = idx === selectedIndex}
 	{@const changeMeta = changeResultMeta(r)}
-	{@const changeSteps = changeMeta ? familyProgress(changeMeta) : null}
+	{@const changeSteps = changeMeta ? familyProgress(changeMeta, (cell) => failureRecovered(rolloutPath(cell.cluster, cell.namespace, cell.rolloutName))) : null}
 	{@const changeRef =
 		r.changeRef && r.repo && !r.ungrouped
 			? `${r.changeRef.kind === 'pull' ? `#${r.changeRef.number}` : shortRevision(r.changeRef.sha)} · ${r.repo}`
@@ -1887,7 +2061,7 @@
 								: changeMeta.verdictTone === 'held'
 									? 'text-held'
 									: changeMeta.verdictTone === 'failed'
-										? 'tone-bad'
+										? failedVerdictInk(changeSteps)
 										: changeMeta.verdictTone === 'not-built'
 											? 'text-fg-disabled'
 											: 'text-fg-muted'}">{standingWords(changeMeta)}</span
@@ -2006,7 +2180,7 @@
 						behindLabel={r.verdict?.label}
 					/>
 				{:else}
-					<StatusMark state={r.nodeState ?? 'newest'} label={r.stateWord || (r.nodeState === 'paused' ? 'paused' : bakeWord(r.bakeStatus))} />
+					<StatusMark state={r.nodeState ?? 'newest'} recovered={r.nodeState === 'failed' && failureRecovered(r.href)} label={r.stateWord || (r.nodeState === 'paused' ? 'paused' : bakeWord(r.bakeStatus))} />
 				{/if}
 			</span>
 		{:else}
@@ -2085,7 +2259,7 @@
 				     app's deepest lag², then the set's size, last. -->
 				{#if (r.needsYou ?? 0) > 0}
 					<span
-						class="t-meta text-danger"
+						class="t-meta {(r.needsYouLive ?? 0) > 0 ? 'text-danger' : 'text-fg-muted'}"
 						data-meta="needs"
 						title="{r.needsYou} rollout{r.needsYou === 1 ? '' : 's'} here failed or stopped moving"
 						>{r.needsYou} need{r.needsYou === 1 ? 's' : ''} you</span
@@ -2242,6 +2416,7 @@
 				id="command-palette-results"
 				role="listbox"
 				aria-label="Results"
+				onfocusin={highlightFocusedRow}
 				use:snapToRows={`${inPicker}|${scope}|${query}|${filtered.length}|${thisRolloutCount}|${attentionShown.length}`}
 				class="@container flex-1 overflow-y-auto p-2 sm:max-h-[min(36rem,calc(100dvh-14vh-88px))] sm:min-h-0 sm:flex-initial"
 			>
@@ -2324,7 +2499,7 @@
 					{/snippet}
 					{#snippet needsYouSection()}
 					{#if attentionShown.length > 0}
-						<div class="relative">
+						<div class="group/gl relative" use:uniformStack={attentionShown.map((c) => c.name).join('|')}>
 						{@render groupHeader('Needs you', attention.length)}
 						{#each attentionShown as c, i (c.sourceCluster + '|' + c.ns + '/' + c.name)}
 							{@const idx = attnStart + i}
@@ -2464,7 +2639,7 @@
 						{/each}
 					{/if}
 					{#each grouped as group (group.kind)}
-						<div class="relative">
+						<div class="group/gl relative" use:uniformStack={group.items.map((i) => i.result.key).join('|')}>
 						{@render groupHeader(group.label, group.items.length)}
 						{#each group.items as item (item.result.key)}
 							{@const bc = blockedCardFor(item.result)}
@@ -2517,10 +2692,10 @@
 							<span>open</span>
 						</span>
 					{/if}
-					{#if inPicker}
+					{#if highlightScopes || highlightHasAction}
 						<span class="flex items-center gap-1">
 							<kbd class="kbd">Tab</kbd>
-							<span>scope</span>
+							<span>{highlightScopes ? 'scope' : 'action'}</span>
 						</span>
 					{/if}
 					<span class="flex items-center gap-1">

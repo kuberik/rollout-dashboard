@@ -48,7 +48,7 @@
 		/** r39 (kit `section()`): a 16px leading icon in place of the dot — the dialect on the page SURFACE (icon · 16/600 title …… rollup). */
 		icon?: Component;
 		/** r39: the rollup, right-aligned, 12px subtle, tabular. Parts are joined with a gap; `ink` marks an adverse count (500 weight, in its ink). Wins over `count`/`description` placement only in position (right). */
-		rollup?: (string | { text: string; ink?: 'danger' | 'held' })[];
+		rollup?: (string | { text: string; ink?: 'danger' | 'held'; fold?: boolean })[];
 		action?: Snippet;
 		/** LAYOUT ONLY. */
 		class?: string;

@@ -4,18 +4,13 @@
 	import { canHover } from '$lib/can-hover.svelte';
 	import type { Rollout, HealthCheck, KruiseRollout, RolloutTest } from '../../types';
 	import { PlaySolid, UndoOutline } from 'flowbite-svelte-icons';
+	import { WANTED_VERSION_OWNED_REASON, rollbackTooltip } from '$lib/view-models/pin-hold';
 	import StatementBanner from './StatementBanner.svelte';
 	import ChangeVersionFlow from './ChangeVersionFlow.svelte';
 	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import RetryTestsModal from './RetryTestsModal.svelte';
 	import RetryConfirmModal from './RetryConfirmModal.svelte';
-	import { getDisplayVersion } from '$lib/utils';
-	import {
-		confirmLevel,
-		retryIntent,
-		retryConsequences,
-		retryTag
-	} from '$lib/view-models/deploy-risk';
+	import { retryConfirm } from '$lib/view-models/retry-confirm';
 	import { checkFailure, deployWindowStart } from '$lib/view-models/health-witness';
 	import { historyEntrySince } from '$lib/view-models/event-age';
 	import { formatTimeAgoCompact } from '$lib/utils';
@@ -48,9 +43,14 @@
 		 * loose in one direction only — see `rolloutEnvironmentName`.
 		 */
 		environmentName?: string | null;
-		onRetry: (kruiseRolloutName?: string, testAction?: string) => Promise<void>;
+		/** the Environment's site (`siteOf`), for the confirm titles */
+		site?: string | null;
+		onRetry: (kruiseRolloutName?: string, testAction?: string, rethrow?: boolean) => Promise<void>;
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
+		/** arrived by a Retry link (`?action=retry`, the way `?action=rollback` opens Roll back): open the typed confirm once permissions are known; `onRequestHandled` clears the request */
+		requestRetry?: boolean;
+		onRequestHandled?: () => void;
 	}
 
 	let {
@@ -65,11 +65,14 @@
 		isDashboardManagingWantedVersion,
 		cluster,
 		environmentName = null,
+		site = null,
 		onRetry,
 		onSuccess = () => {},
 		onError = () => {},
 		/** See `AlertPanel`'s `open`: the panel collapses out instead of vanishing. */
-		open = true
+		open = true,
+		requestRetry = false,
+		onRequestHandled = () => {}
 	}: Props = $props();
 
 	/**
@@ -128,68 +131,20 @@
 	 * retry in a non-production environment whose rules already allow the build.
 	 * That case still fires on one click, which is the point.
 	 */
-	const intent = $derived(retryIntent(rollout, environmentName));
-	const level = $derived(confirmLevel(intent));
+	/** "still failing" is read off the check's status now, not the history record */
+	const failingNow = $derived(healthChecks.filter((h) => h?.status?.status === 'Unhealthy'));
 
-	/**
-	 * ⛔ THE RULE READS THE TAG; THE READER READS THE SHA.
-	 *
-	 * `retryTag` returns the object's real tag — `main-1788132205-064b655b…`,
-	 * 55 characters — because that is what `gatesAllow` has to match against.
-	 * Printing it, and worse asking someone to TRANSCRIBE it, is not a speed
-	 * bump, it is a copy-paste exercise that wraps to three lines at 390. Every
-	 * other surface in this product, `ChangeVersionModal`'s own typed confirm
-	 * included, shows `getDisplayVersion`'s seven characters, so this does too.
-	 */
-	const currentTag = $derived(retryTag(rollout));
-	const displayTag = $derived.by(() => {
-		const v = rollout?.status?.history?.[0]?.version;
-		return v ? getDisplayVersion(v) : currentTag;
-	});
-
-	/**
-	 * ⛔ "STILL FAILING" IS READ OFF THE CHECK'S STATUS NOW, NOT OFF THE HISTORY
-	 * ENTRY. `failedHCList` is `history[0].failedHealthChecks` — a RECORD of what
-	 * failed during that bake, which does not expire when the check recovers.
-	 * Sourcing the sentence from it would assert "is still failing right now"
-	 * about a check that went green ten minutes ago, which is the same
-	 * confident-wrong shape as the banner this pass is fixing. Verified on the
-	 * live cluster: the recovered check kept its history entry and read `Healthy`.
-	 */
-	const failingNow = $derived(
-		healthChecks.filter((h) => h?.status?.status === 'Unhealthy')
-	);
-
-	/**
-	 * ⛔ AND THE ERASURE CLAUSE IS CONDITIONAL ON THERE BEING EVIDENCE TO ERASE.
-	 * The controller's reset writes `Pending`, overwrites `message` and sets
-	 * `lastErrorTime` to nil — so a check that is failing NOW and a check that
-	 * merely *errored* during this deploy both lose their account of it.
-	 * `lastErrorTime` is the witness the rest of the product reads "recovered"
-	 * from, so its presence counts as evidence worth warning about.
-	 */
-	const clearsFailureDetail = $derived(
-		healthChecks.some(
-			(h) => h?.status?.status === 'Unhealthy' || !!h?.status?.lastErrorTime
-		) || failedHCList.length > 0
-	);
-
-	const consequences = $derived(
-		retryConsequences(
-			intent,
-			{
-				failingChecks: failingNow.map((h) =>
-					findDisplayName({ name: h?.metadata?.name ?? '', namespace: h?.metadata?.namespace })
-				),
-				clearsFailureDetail
-			},
-			displayTag
-		)
-	);
+	/** Retry's risk, decided by the one shared rule (view-models/retry-confirm.ts) */
+	const confirm = $derived(retryConfirm(rollout, environmentName, healthChecks, failedHCList, site));
+	const intent = $derived(confirm.intent);
+	const level = $derived(confirm.level);
+	const displayTag = $derived(confirm.displayTag);
+	const consequences = $derived(confirm.consequences);
 
 	let showRetryConfirm = $state(false);
 
-	function handleRetry() {
+	/** `arrived`: opened by a Retry link (`?action=retry`), not a press here, so it always asks first (a URL never fires a deploy) */
+	function handleRetry(arrived = false) {
 		if (failedStepTests.length > 0) {
 			// The failed-tests path already asks, and asks a BETTER question —
 			// retry the tests or skip them. Two dialogs in a row would be the
@@ -198,12 +153,18 @@
 			showRetryModal = true;
 			return;
 		}
-		if (level === 'none') {
+		if (level === 'none' && !arrived) {
 			onRetry(stalledKruiseRollout?.metadata?.name);
 			return;
 		}
 		showRetryConfirm = true;
 	}
+
+	$effect(() => {
+		if (!requestRetry || actionsPending) return;
+		if (open && canUpdate) handleRetry(true);
+		onRequestHandled();
+	});
 
 	function handleRollback() {
 		if (!isDashboardManagingWantedVersion) return;
@@ -266,8 +227,8 @@
 	const evMessage = $derived(ev?.message);
 	const failureAgo = $derived(failureSince ? formatTimeAgoCompact(failureSince, $now) : null);
 	const retryFirst = $derived(allRecovered);
-	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: handleRetry });
-	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback });
+	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
+	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback, ...(isDashboardManagingWantedVersion ? {} : { ...(canHover.current ? {} : { title: WANTED_VERSION_OWNED_REASON }), describedBy: 'failure-owned-reason' }) });
 	const rollbackShown = $derived(!!(rollout?.status?.history && rollout.status.history.length > 1 && canModify));
 </script>
 
@@ -306,6 +267,7 @@
 	{open}
 	class="mb-4"
 	severity="failed"
+	recovered={allRecovered}
 	title="Deployment failed"
 	observations={evidence ? evObservations : observations}
 	check={evidence ? evCheck : undefined}
@@ -313,12 +275,12 @@
 	footnoteLabel="Details"
 	pulse={true}
 	primary={retryFirst ? (canUpdate ? retryAct : undefined) : rollbackShown ? rollbackAct : undefined}
-	secondary={retryFirst ? (rollbackShown ? [rollbackAct] : []) : canUpdate ? [retryAct] : []}
+	secondary={retryFirst ? (rollbackShown ? [rollbackAct] : []) : canUpdate ? [{ ...retryAct, after: true }] : []}
 	tooltips={{
 		...(canUpdate ? { 'failure-retry-btn': 'Reset health checks and failed tests, then retry the deployment.' } : {}),
-		...(rollbackShown ? { 'failure-rollback-btn': 'Revert to the previous version.' + (!isDashboardManagingWantedVersion ? ' Disabled: wantedVersion managed externally.' : '') } : {})
+		...(rollbackShown ? { 'failure-rollback-btn': rollbackTooltip(isDashboardManagingWantedVersion) } : {})
 	}}
-	note={rollbackShown && !canHover.current && !isDashboardManagingWantedVersion ? "Another controller owns this rollout's wanted version, so the dashboard cannot pin it." : undefined}
+	note={rollbackShown && !canHover.current && !isDashboardManagingWantedVersion ? WANTED_VERSION_OWNED_REASON : undefined}
 >
 	{#snippet footnoteBody()}
 		{#if evidence}
@@ -342,12 +304,17 @@
 	{/snippet}
 </StatementBanner>
 
+{#if rollbackShown && !isDashboardManagingWantedVersion}
+	<span id="failure-owned-reason" class="sr-only">{WANTED_VERSION_OWNED_REASON}</span>
+{/if}
+
 <RetryConfirmModal
 	bind:open={showRetryConfirm}
 	{intent}
 	{consequences}
 	tag={displayTag}
-	onConfirm={() => onRetry(stalledKruiseRollout?.metadata?.name)}
+	onConfirm={() => onRetry(stalledKruiseRollout?.metadata?.name, '', true)}
+	onClosedFailure={(m) => onError(m)}
 />
 
 <RetryTestsModal
@@ -365,6 +332,8 @@
 	initialSelectedVersion={rollbackVersionTag}
 	initialExplanation={rollbackExplanation}
 	cluster={cluster ?? ''}
+	{environmentName}
+	{site}
 	{onSuccess}
 	{onError}
 />

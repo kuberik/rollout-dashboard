@@ -878,8 +878,14 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 		// detail's Overview) can show its own banner immediately.
 		expect(startedCount).toBe(1);
 		await waitFor(() => expect(screen.getByText('Rolling back…')).toBeInTheDocument());
-		expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+		// Cancel stays available while in flight: a failure after the dialog is closed is reported as a toast
+		expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled();
+		// the header X is the same dismiss as Cancel, so it agrees with it
+		expect(screen.getByRole('button', { name: 'Close' })).not.toBeDisabled();
 		expect(document.querySelector('.animate-spin')).not.toBeNull();
+		const dlgEl = document.querySelector('dialog')!;
+		expect(dlgEl.getAttribute('aria-busy')).toBe('true');
+		expect(document.activeElement).toBe(dlgEl);
 
 		// A second click while pending must not fire a second request -- both
 		// the `disabled` attribute and `handleDeploy`'s own `deploying` guard
@@ -891,6 +897,82 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 
 		resolveDeploy(new Response(JSON.stringify({}), { status: 200 }));
 		await waitFor(() => expect(successMessage).not.toBeNull());
+	});
+
+	test('a failed Roll back reads "Failed to roll back: <reason>" and keeps focus inside the dialog', async () => {
+		fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.startsWith('/api/rollouts?namespace=')) {
+				return new Response(JSON.stringify(NAMESPACE_LIST_RESPONSE), { status: 200 });
+			}
+			if (url.includes('/change-version')) {
+				return new Response(JSON.stringify({ details: 'denied' }), { status: 500 });
+			}
+			return new Response(JSON.stringify({}), { status: 200 });
+		});
+		const scrolledField: Element[] = [];
+		Element.prototype.scrollIntoView = function (this: Element) { scrolledField.push(this); };
+		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
+		const confirmBtn = await screen.findByRole('button', { name: /^Roll back$/i });
+		const note = screen.getByPlaceholderText(NOTE_PLACEHOLDER);
+		await fireEvent.input(note, { target: { value: 'why' } });
+		confirmBtn.focus();
+		await fireEvent.click(confirmBtn);
+		await waitFor(() => expect(document.querySelector('[data-deploy-error]')).not.toBeNull());
+		expect(document.querySelector('[data-deploy-error]')!.textContent).toBe('Failed to roll back: denied');
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Roll back$/i })));
+		expect(document.activeElement).not.toBe(document.body);
+		// the field is never scrolled itself (that clipped its value); with it in view the pane stays put
+		expect(scrolledField).toEqual([]);
+	});
+
+	test('a pin refused because another controller owns the version says so, in the shared sentence', async () => {
+		fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.startsWith('/api/rollouts?namespace=')) return new Response(JSON.stringify(NAMESPACE_LIST_RESPONSE), { status: 200 });
+			if (url.includes('/change-version')) return new Response(JSON.stringify({ details: 'dashboard is not managing the wantedVersion field' }), { status: 500 });
+			return new Response(JSON.stringify({}), { status: 200 });
+		});
+		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
+		const confirmBtn = await screen.findByRole('button', { name: /^Roll back$/i });
+		await fireEvent.input(screen.getByPlaceholderText(NOTE_PLACEHOLDER), { target: { value: 'why' } });
+		await fireEvent.click(confirmBtn);
+		await waitFor(() => expect(document.querySelector('[data-deploy-error]')).not.toBeNull());
+		expect(document.querySelector('[data-deploy-error]')!.textContent).toBe("Another controller owns this rollout's wanted version, so the dashboard cannot pin it.");
+	});
+
+	test('a failed Roll back that leaves the field out of view scrolls the pane, not the field', async () => {
+		fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.startsWith('/api/rollouts?namespace=')) return new Response(JSON.stringify(NAMESPACE_LIST_RESPONSE), { status: 200 });
+			if (url.includes('/change-version')) return new Response(JSON.stringify({ details: 'denied' }), { status: 500 });
+			return new Response(JSON.stringify({}), { status: 200 });
+		});
+		const scrolledField: Element[] = [];
+		Element.prototype.scrollIntoView = function (this: Element) { scrolledField.push(this); };
+		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
+		const confirmBtn = await screen.findByRole('button', { name: /^Roll back$/i });
+		const note = screen.getByPlaceholderText(NOTE_PLACEHOLDER);
+		await fireEvent.input(note, { target: { value: 'why' } });
+		const pane = note.closest('.cvm-scroll-fade, .sm\\:overflow-y-auto') as HTMLElement;
+		pane.style.overflowY = 'auto';
+		let top = 0;
+		Object.defineProperty(pane, 'scrollTop', { get: () => top, set: (v: number) => { top = v; }, configurable: true });
+		const rect = (top: number, bottom: number) => ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top, toJSON() {} }) as DOMRect;
+		const orig = Element.prototype.getBoundingClientRect;
+		Element.prototype.getBoundingClientRect = function (this: Element) {
+			if (this === pane) return rect(100, 600);
+			if (this === note) return rect(700, 740);
+			return orig.call(this);
+		};
+		try {
+			await fireEvent.click(confirmBtn);
+			await waitFor(() => expect(document.querySelector('[data-deploy-error]')).not.toBeNull());
+			await waitFor(() => expect(pane.scrollTop).toBe(172));
+			expect(scrolledField).toEqual([]);
+		} finally {
+			Element.prototype.getBoundingClientRect = orig;
+		}
 	});
 
 	// ⭐ SUPERSEDED, round 3 (coordinator, whole-product consistency review).

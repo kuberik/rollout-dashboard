@@ -11,6 +11,7 @@ import type { HealthCheck, HealthObservation } from '../../types';
 import { classifyCheck } from './health-witness';
 import { formatAgoCompact } from '../utils';
 import { num } from './attention';
+import { recoveredSentence } from '$lib/components/new/state-words';
 import { displayTimeZone } from '$lib/timezone.svelte';
 
 export type CheckVerdict = 'failing' | 'pending' | 'recovered' | 'passing';
@@ -206,6 +207,13 @@ export function headRecovered(live: HealthCheck[], head: { timestamp?: string | 
 	return !!evidenceLine(poolOf(live, [...(head.failedHealthChecks ?? [])], winStart))?.recovered;
 }
 
+/** Does a check of the head deploy fail right now (not recovered, not merely pending)? False for a deploy that failed with no health check involved. Same window as `headRecovered`. */
+export function headFailingNow(live: HealthCheck[], head: { timestamp?: string | null; lastRetryTimestamp?: string | null; failedHealthChecks?: readonly SnapCheck[] | null } | null | undefined): boolean {
+	if (!head) return false;
+	const winStart = new Date(Math.max(Date.parse(head.timestamp ?? '') || 0, Date.parse(head.lastRetryTimestamp ?? '') || 0));
+	return poolOf(live, [...(head.failedHealthChecks ?? [])], winStart).some((c) => c.verdict === 'failing');
+}
+
 export type Worst = { check: CheckView; row: ObsRow | null; recovered: boolean };
 
 /**
@@ -362,7 +370,7 @@ export function bannerEvidence(pool: CheckView[], pendingN: number, ago: string 
 		return {
 			observations: [],
 			check: { name: r?.name ?? worst.check.name, cls: r?.cls ?? worst.check.cls, message: `${r ? figureText(r.figure) : ''}${at ? ` at ${clock(at)}` : ''}`.trim() || undefined },
-			message: `Recovered${ok ? ` at ${clock(ok)}` : ''}, so a retry is reasonable.`,
+			message: recoveredSentence(ok ? clock(ok) : null),
 			recovered: true,
 			pool
 		};
@@ -410,4 +418,12 @@ export function heldCheckSnaps(live: HealthCheck[]): SnapCheck[] {
 	return live
 		.filter((h) => h.status?.status !== 'Healthy')
 		.map((h) => ({ name: h.metadata?.name ?? '', namespace: h.metadata?.namespace, message: h.status?.message }));
+}
+
+/**
+ * A check's resource name as break-safe segments: split after each "/", the slash kept on the segment before it, so
+ * `orders/orders-worker` is `['orders/', 'orders-worker']`. A name may wrap only between segments (at a "/"), never at a hyphen.
+ */
+export function checkNameSegments(name: string): string[] {
+	return name.split(/(?<=\/)/).filter((s) => s !== '');
 }

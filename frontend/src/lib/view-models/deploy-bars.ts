@@ -34,6 +34,8 @@ export type DeployMarker = {
 	 *  history stays true, but it is drawn in neutral ink with "resolved"
 	 *  (coordinator ruling, 2026-10-10: red only while unresolved). */
 	resolved?: boolean;
+	/** A failure that is still the rollout's current state but whose checks are all OK again: drawn in neutral ink like a resolved one (no "resolved" word: the rollout still needs a retry), and placed after a failure that is failing now. */
+	recovered?: boolean;
 	/** Failed/rolledBack: where it happened ("dev") and when ("01:37"), for the label. */
 	where?: string;
 	when?: string;
@@ -126,7 +128,9 @@ export function placeMarkerLabels(
 	const rows = opts.rows ?? 1;
 	const gap = opts.minGap ?? 8;
 	const rank: Record<DeployMarkerTone, number> = { failed: 0, rolledBack: 1, release: 2 };
-	const ordered = [...markers].sort((a, b) => rank[a.tone] - rank[b.tone] || b.tsMs - a.tsMs);
+	/* a failure failing now takes a pill before one that is over (recovered or resolved), then newest first */
+	const over = (m: DeployMarker) => (m.tone === 'failed' && (m.recovered || m.resolved) ? 0.5 : 0);
+	const ordered = [...markers].sort((a, b) => rank[a.tone] + over(a) - (rank[b.tone] + over(b)) || b.tsMs - a.tsMs);
 	const taken: { l: number; r: number; row: number }[] = [];
 	const out = new Map<string, number>();
 	for (const m of ordered) {

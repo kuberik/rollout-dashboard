@@ -11,7 +11,7 @@
 	 */
 	import SectionHeader from '$lib/components/SectionHeader.svelte';
 	import { InboxOutline, ClockOutline, CheckOutline } from 'flowbite-svelte-icons';
-	import { groupByState, attentionRollup } from './apps-page';
+	import { groupByState, attentionRollup, attentionTier } from './apps-page';
 	import Facia from './Facia.svelte';
 	import { maskLane as masked, nodeHref, NOISY } from './apps-lane';
 	import { laneOf, approvalOf } from './Footprint.svelte';
@@ -63,9 +63,10 @@
 		/* apps-11 AS5 — ONE lead rule: the lead is the thing the rollup names. When nothing fails, the rollup says "N waiting for approval", so the lead is the first app that waits on a person
 		   (its banner carries the ask + Review approval); an app whose place is only CHECKING leads solely when nothing waits on a person. */
 		/* apps-12 AT2: an app is "waiting" ONLY when one of its cells says Waiting; the lead is the first failing app, else the first app a cell says is Waiting (one an actionable viewer can approve first), else the rest (Checking) */
-		const rank = (a: TApp) => (worst(a) === 'failed' ? 0 : worst(a) === 'approval' ? 1 : 2);
+		/* a failing-now app outranks a recovered one (its checks are OK again), which outranks the approvals */
+		const rank = (a: TApp) => attentionTier(worst(a), !!a.row?.failure?.recovered);
 		const mine = (a: TApp) => { const r = approvalOf(a, approvals)?.row ?? a.row; return !!r && !!rowAction(r); };
-		return [...out].sort((a, b) => rank(a) - rank(b) || (rank(a) === 1 ? Number(mine(b)) - Number(mine(a)) : 0));
+		return [...out].sort((a, b) => rank(a) - rank(b) || (rank(a) === 2 ? Number(mine(b)) - Number(mine(a)) : 0));
 		return out;
 	});
 	/** each app counted ONCE by its worst state: failing, else waiting for approval, else its own group's kind */

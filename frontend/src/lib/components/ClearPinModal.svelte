@@ -42,6 +42,11 @@
 	import { shortRevisionOrNull } from '$lib/version-utils';
 	import { announce } from '$lib/stores/announce.svelte';
 	import { CLEAR_PIN_LABEL, clearPinDialogTitle } from './pin-copy';
+	import { placeTarget } from '$lib/view-models/deploy-risk';
+	import { failureText } from '$lib/view-models/failure-text';
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
+	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
+	import { rolloutFailureTarget } from '$lib/view-models/failure-target';
 	import { apiPath } from '$lib/api/urls';
 
 	interface Props {
@@ -69,6 +74,8 @@
 		 * knows a truer name than the rollout can derive on its own.
 		 */
 		environmentName?: string | null;
+		/** the Environment's site, so a failure names the same place the dialog titles do */
+		site?: string | null;
 		onSuccess?: ((message: string) => void) | null;
 		onError?: ((message: string) => void) | null;
 		/**
@@ -85,6 +92,7 @@
 		cluster,
 		autoDeploy = null,
 		environmentName = null,
+		site = null,
 		onSuccess = null,
 		onError = null,
 		toast = true
@@ -106,13 +114,16 @@
 	const clusterSuffix = $derived(
 		cluster && cluster.toLowerCase() !== envLabel.toLowerCase() ? ` on the ${cluster} cluster` : ''
 	);
+	/** the place as every confirm and failure toast spells it: "prod · af-south-1" when the app has a site there, else "prod" */
+	const place = $derived(rollout ? placeTarget(rollout, environmentName, site) : envLabel);
 	const clearPinTitle = $derived(
-		rollout?.metadata?.name && envLabel
-			? clearPinDialogTitle(rollout.metadata.name, envLabel)
+		rollout?.metadata?.name && place
+			? clearPinDialogTitle(rollout.metadata.name, place)
 			: CLEAR_PIN_LABEL
 	);
 
 	let showLocalToast = $state(false);
+	const hideLocalToast = toastHideTimer(() => (showLocalToast = false));
 	let localToastMessage = $state('');
 	let localToastType = $state<'success' | 'error'>('success');
 
@@ -122,10 +133,15 @@
 		announce(message, kind === 'error' ? 'assertive' : 'polite');
 		(kind === 'success' ? onSuccess : onError)?.(message);
 		if (!toast) return;
+		// a failure is reported app-wide (the dialog is already closed, so this is the only record) and waits to be dismissed
+		if (kind === 'error') {
+			reportFailure(rolloutFailureTarget(rollout, envLabel, site), message);
+			return;
+		}
 		localToastType = kind;
 		localToastMessage = message;
 		showLocalToast = true;
-		setTimeout(() => (showLocalToast = false), 3000);
+		hideLocalToast(kind);
 	}
 
 	const gateState = $derived(autoDeploy ?? autoDeployState(rollout));
@@ -183,7 +199,7 @@
 		// (principle 11 bans shouting an environment's name, not an ordinary
 		// capital letter at a sentence's start) — `envLabel` itself stays
 		// exactly as written everywhere else in this dialog.
-		const sentenceLead = envLabel.charAt(0).toUpperCase() + envLabel.slice(1);
+		const sentenceLead = place.charAt(0).toUpperCase() + place.slice(1);
 		return `${sentenceLead} moves ${current} → ${target}${count > 1 ? ` (${count} newer builds allowed)` : ''}.`;
 	});
 
@@ -209,7 +225,7 @@
 				}
 			);
 			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}));
+				const errorData = await response.clone().json().catch(() => ({}));
 				if (
 					response.status === 500 &&
 					typeof errorData.details === 'string' &&
@@ -219,7 +235,7 @@
 						"Cannot clear pin: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system."
 					);
 				}
-				throw new Error('Failed to clear pin');
+				throw new Error(await failureText('Failed to clear pin', response));
 			}
 			open = false;
 			notify('success', 'Successfully cleared version pin');
@@ -258,7 +274,8 @@
      sentence plus a `FactList` needs. -->
 <Modal bind:open size="sm" role="dialog" aria-modal="true" aria-label={clearPinTitle} class="rounded-lg bg-overlay" classes={{ body: 'p-0 space-y-0' }}>
 	<div class="border-b border-line px-5 py-4">
-		<div class="flex items-start gap-3">
+		<!-- max-sm:pe-10: on a phone the dialog's own close X sits over this row's right edge; the title wraps before it, never under it (the 512px desktop dialog clears it) -->
+		<div class="flex items-start gap-3 max-sm:pe-10">
 			<!-- Neutral disc, same reasoning as `RecoveryModeWarningModal`'s own:
 			     clearing a pin is a reversible, ordinary control action, not a
 			     hold (orange) or a destructive one (red) — the hue stays out of
@@ -280,7 +297,7 @@
 			<!-- Emphasis inside a sentence is colour, never weight
 			     (DESIGN-LANGUAGE.md §4's do/don't table): `text-fg`, not
 			     `<strong>`. -->
-			This clears the pin currently held in <span class="text-fg">{envLabel}</span>{clusterSuffix}.
+			This clears the pin currently held in <span class="text-fg">{place}</span>{clusterSuffix}.
 			<!-- ⭐ THE ROLLOUT RIDES ALONG NOW. (2026-09-03, UX-walk iteration 2,
 			     finding 5) The dialog used to promise "moves to the newest
 			     allowed version" with no version anywhere in the sentence — an

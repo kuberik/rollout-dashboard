@@ -4,10 +4,10 @@
  * (adverse) part. Before this, every plain part but the last folded, which dropped "1 waiting" and left only "20 at rest" at 390.
  * A plain part that is not a count ("5h ago") keeps the old behaviour and folds.
  */
-export type RollupPart = string | { text: string; ink?: 'danger' | 'held' };
+export type RollupPart = string | { text: string; ink?: 'danger' | 'held'; /** the caller says this part goes on a phone (when it is not the last): a count the section's own rows repeat */ fold?: boolean };
 
 export function foldsOnPhone(part: RollupPart): boolean {
-	if (typeof part !== 'string') return false;
+	if (typeof part !== 'string') return part.fold === true && !part.ink;
 	const m = /^(\d+)\s/.exec(part.trim());
 	return m ? Number(m[1]) === 0 : true;
 }

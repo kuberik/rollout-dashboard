@@ -12,16 +12,14 @@ describe('Toast position', () => {
 			'[role="status"], [role="alert"]'
 		) as HTMLElement;
 
-	it('phone: docks over the app bar, 4px below the safe area, never at the bottom', () => {
+	it('phone: docks at the bottom, 8px above the tab bar, never over the header or the rollout tabs', () => {
 		const cls = root({ tone: 'success' }).className;
-		expect(cls).toContain('top-[calc(env(safe-area-inset-top,0px)+4px)]');
-		expect(cls).not.toMatch(/(^|\s)bottom-\[calc\(var\(--tabbar-h/);
-		expect(cls).not.toMatch(/(^|\s)-top-|top-\[-/);
+		expect(cls).toContain('bottom-[calc(var(--tabbar-h,0px)+8px)]');
+		expect(cls).not.toMatch(/(^|\s)top-/);
 	});
 
 	it('sm and up: bottom-right, 380px', () => {
 		const cls = root({ tone: 'success' }).className;
-		expect(cls).toContain('sm:top-auto');
 		expect(cls).toContain('sm:bottom-4');
 		expect(cls).toContain('sm:w-[380px]');
 	});

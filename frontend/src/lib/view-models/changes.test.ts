@@ -1581,3 +1581,38 @@ describe('familyProgress', () => {
 		expect(familyMeterAriaLabel(steps)).toBe('dev live · staging held · prod not yet');
 	});
 });
+
+describe('familyProgress: the recovered flag of a failed family (the palette change row draws the ring)', () => {
+	const row = () => {
+		const vm = mkVm([
+			mkService('svc', [
+				mkCell('live', { envName: 'dev', envRank: 0 }),
+				mkCell('failed', { envName: 'prod-eu', envRank: 1, rolloutName: 'eu' }),
+				mkCell('failed', { envName: 'prod-us', envRank: 1, rolloutName: 'us' })
+			])
+		]);
+		return { grid: buildLandingGrid(vm, NOW), services: vm.services, verdictTone: 'failed' as const };
+	};
+	const prod = (r: ReturnType<typeof row>, f?: (c: PrCell) => boolean) => familyProgress(r, f).find((s) => s.family === 'PROD')!;
+	it('every failed cell recovered: recovered', () => {
+		expect(prod(row(), () => true).recovered).toBe(true);
+	});
+	it('one failing now, or no evidence (no lookup): not recovered, the solid disc', () => {
+		expect(prod(row(), (c) => c.rolloutName === 'eu').recovered).toBeUndefined();
+		expect(prod(row()).recovered).toBeUndefined();
+		expect(prod(row(), () => false).tone).toBe('failed');
+	});
+	it('a live family never carries it', () => {
+		expect(familyProgress(row(), () => true).find((s) => s.family === 'DEV')!.recovered).toBeUndefined();
+	});
+});
+
+import { failedVerdictInk } from './changes';
+describe('failedVerdictInk (palette change row)', () => {
+	it('neutral only when every failed family has recovered', () => {
+		expect(failedVerdictInk([{ tone: 'failed', recovered: true }, { tone: 'live' }])).toBe('text-fg-muted');
+		expect(failedVerdictInk([{ tone: 'failed', recovered: true }, { tone: 'failed' }])).toBe('tone-bad');
+		expect(failedVerdictInk([{ tone: 'failed' }])).toBe('tone-bad');
+		expect(failedVerdictInk(null)).toBe('tone-bad');
+	});
+});

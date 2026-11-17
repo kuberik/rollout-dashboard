@@ -15,7 +15,7 @@
  * are candidates, in array order ("the FIRST observation"); all healthy -> the check fallback.
  */
 import type { HealthObservation } from '$lib/../types';
-import { failedWord } from '$lib/components/new/state-words';
+import { failedWord, recoveredSentence } from '$lib/components/new/state-words';
 
 export type AttentionState = 'failed' | 'approval';
 
@@ -139,7 +139,7 @@ export function attentionModel(i: AttentionInput): AttentionModel {
 	/* the name appears once, as the figure's caption: the fact line under it is the limit phrase and the observation's message */
 	const figLine = figure ? [figure.budget ?? figure.phrase, figure.detail].filter(Boolean).join(' \u00b7 ') : '';
 	const fact = failed && figure && i.recovered
-		? { name: null, message: i.recoveredAt ? `recovered at ${i.recoveredAt}` : 'recovered' }
+		? { name: null, message: recoveredSentence(i.recoveredAt) }
 		: failed && figure
 		? figLine ? { name: null, message: figLine } : null
 		: failed
@@ -148,7 +148,8 @@ export function attentionModel(i: AttentionInput): AttentionModel {
 	return {
 		state: i.state,
 		word: statusWord(i.state, !!i.recovered),
-		forAge: i.age ? `for ${i.age}` : null,
+		/* a recovered failure is over: "Failed 10m ago"; one failing now keeps "for 10m" */
+		forAge: i.age ? (failed && i.recovered ? `${i.age} ago` : `for ${i.age}`) : null,
 		forAgeAt: i.ageAt ?? null,
 		tier: i.tier ?? '',
 		place: i.place ?? '',

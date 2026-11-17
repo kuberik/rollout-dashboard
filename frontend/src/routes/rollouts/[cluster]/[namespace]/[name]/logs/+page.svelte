@@ -5,11 +5,14 @@
 	import { outageEscalation } from '$lib/view-models/outage-escalation.svelte';
 	import LogsViewer from '$lib/components/LogsViewer.svelte';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
+	import { headDeployedAt } from '$lib/view-models/head-age';
 	import NotFound from '$lib/components/NotFound.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
+	import { healthChecksQueryOptions } from '$lib/api/health-checks';
+	import { headFailingNow, headRecovered } from '$lib/view-models/health-failures';
 	import { pollWhenHealthy } from '$lib/api/errors';
 	import type { Rollout } from '../../../../../../types';
 	import { pageTitle } from '$lib/page-title';
@@ -35,6 +38,14 @@
 		})
 	);
 	const rollout = $derived(rolloutQuery.data?.rollout as Rollout | null | undefined);
+	// The header's state word reads "failing" while a check fails now, like the Overview (the same cache entry as its health-checks query).
+	const healthChecksQuery = createQuery(() => ({
+		...healthChecksQueryOptions(namespace, name, cluster),
+		enabled: Boolean(rolloutQuery.data?.rollout?.spec?.healthCheckSelector),
+		refetchInterval: pollWhenHealthy(5000, 60000, cluster)
+	}));
+	const failingNow = $derived(headFailingNow(healthChecksQuery.data?.healthChecks ?? [], rollout?.status?.history?.[0] as never));
+	const recovered = $derived(headRecovered(healthChecksQuery.data?.healthChecks ?? [], rollout?.status?.history?.[0] as never));
 
 	/**
 	 * ⭐ NOT FOUND, LIKE THE SIBLING History TAB (squad-rollout coordinator,
@@ -92,8 +103,7 @@
 	 */
 	let podCount = $state(0);
 	const sinceLabel = $derived.by((): string | null => {
-		const latest = rollout?.status?.history?.[0];
-		const since = latest?.bakeStartTime || latest?.timestamp;
+		const since = headDeployedAt(rollout);
 		return since ? `${formatTimeAgoCompact(since, $now)} ago` : null;
 	});
 </script>
@@ -151,7 +161,7 @@
 	<div class="mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden px-4 py-6 sm:px-6">
 		<!-- No env chip after the title: the breadcrumb names the environment
 		     and the Overview / History headers carry none (one fact, once). -->
-		<RolloutTabHeader {name} {rollout} quietRollback class="mb-6 shrink-0">
+		<RolloutTabHeader {name} {rollout} quietRollback {failingNow} {recovered} class="mb-6 shrink-0">
 			{#snippet meta()}
 				{#if podCount > 0}
 					<span>{podCount} pod{podCount === 1 ? '' : 's'}</span>

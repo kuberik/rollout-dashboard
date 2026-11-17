@@ -16,6 +16,14 @@ export const failedWord = (recovered: boolean): 'Failing' | 'Failed' => (recover
 /** "2 failing" and "1 failed" as separate parts, zero parts left out: the one counting rule for failed places, `recovered` of the `failing` ones having all their checks OK again */
 export const failedParts = (failing: number, recovered: number): string[] => [failing - recovered > 0 ? `${failing - recovered} ${failedWord(false).toLowerCase()}` : '', recovered > 0 ? `${recovered} ${failedWord(true).toLowerCase()}` : ''].filter(Boolean);
 
+/** A part of a rollup or a dot list with its ink: the word of a check failing now is danger, every other part (the recovered `failed`, a time) is neutral. */
+export type FailedPart = { text: string; ink: 'danger' | 'muted' };
+/** `failedParts` as ink parts: THE ONE INK RULE for the failure words (failing danger, failed neutral). Surfaces that print the count as `{ text, ink }` call this instead of colouring by hand. */
+export const failedInkParts = (failing: number, recovered: number): FailedPart[] => failedParts(failing, recovered).map((text) => ({ text, ink: text.endsWith(` ${failedWord(false).toLowerCase()}`) ? 'danger' : 'muted' }));
+
+/** `failedInkParts` for a rollup whose neutral parts are plain strings: only the danger part is an object `{ text, ink }`. */
+export const failedRollup = (failing: number, recovered: number): (string | { text: string; ink: 'danger' })[] => failedInkParts(failing, recovered).map((p) => (p.ink === 'danger' ? { text: p.text, ink: 'danger' as const } : p.text));
+
 export type StateKind = 'failed' | 'approval' | 'held' | 'deploying' | 'checking' | 'paused';
 
 /** accepts the product's other spellings of the same five states */
@@ -76,3 +84,12 @@ export function askView(ask: AskState, headline: string | null, place: string | 
 	if (ask === ASK_LOADING) return { headline: approvalIn(false, place), slot: 'reserved' };
 	return ask ? { headline: approvalIn(true, place), slot: 'approve' } : { headline, slot: 'none' };
 }
+
+/** An Attention rollup in the cards' own order (view-models/failure-actions.ts `attentionRank`): failing now, then the approvals, then the recovered `failed`. `recovered` of the `failing` places have all their checks OK again. */
+export function attentionRollupOf<A>(failing: number, recovered: number, approval: A | null): (string | { text: string; ink: 'danger' } | A)[] {
+	const rec = Math.min(recovered, failing);
+	return [...failedRollup(failing - rec, 0), ...(approval ? [approval] : []), ...failedRollup(rec, rec)];
+}
+
+/** The one sentence of a recovered failure, on the banners and on the list cards: when its checks went OK, and why Retry is the reasonable next step. `at` is a clock ("09:34"), or null when unknown. */
+export const recoveredSentence = (at: string | null | undefined): string => `Recovered${at ? ` at ${at}` : ''}, so a retry is reasonable.`;

@@ -1,6 +1,7 @@
 import { describe, test, expect, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render } from '@testing-library/svelte';
+import { createRawSnippet } from 'svelte';
 import RolloutTabHeader from './RolloutTabHeader.svelte';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -58,17 +59,18 @@ describe('RolloutTabHeader: the phone meta line (LOGOPEN r8)', () => {
 		const { container } = render(RolloutTabHeader, {
 			props: { name: 'checkout-worker', rollout: failed }
 		});
-		const phone = container.querySelector('a[data-phone-only]') as HTMLAnchorElement;
+		const phone = container.querySelector('button[data-phone-only]') as HTMLButtonElement;
 		expect(phone).not.toBeNull();
 		expect(phone.textContent?.trim()).toBe('Roll back');
-		expect(phone.className).toMatch(/\blg:hidden\b/);
+		expect(phone.closest('[data-phone-actions]')!.className).toMatch(/\blg:hidden\b/);
 		expect(phone.className).toMatch(/\bh-11\b/);
 
-		const desktop = container.querySelector('a[data-desktop-only]') as HTMLAnchorElement;
+		const desktop = container.querySelector('button[data-desktop-only]') as HTMLButtonElement;
 		expect(desktop.textContent?.trim()).toBe('Roll back');
 		expect(desktop.className).toMatch(/\bmax-lg:hidden\b/);
-		// Same destination: the rollback dialog names the sha.
-		expect(phone.getAttribute('href')).toBe(desktop.getAttribute('href'));
+		// buttons, not links: the confirm opens in place
+		expect(phone.getAttribute('href')).toBeNull();
+		expect(desktop.getAttribute('href')).toBeNull();
 
 		const row = container.querySelector('.dot-list-row')!;
 		expect(row.querySelector('[data-phone-only]')?.textContent).toMatch(/failed/i);
@@ -80,8 +82,8 @@ describe('RolloutTabHeader: the phone meta line (LOGOPEN r8)', () => {
 		const { container } = render(RolloutTabHeader, {
 			props: { name: 'checkout-worker', rollout: failed, inlineRollback: false }
 		});
-		expect(container.querySelector('a[data-phone-only]')).toBeNull();
-		expect(container.querySelector('a[data-desktop-only]')).toBeNull();
+		expect(container.querySelector('button[data-phone-only]')).toBeNull();
+		expect(container.querySelector('button[data-desktop-only]')).toBeNull();
 	});
 });
 
@@ -114,5 +116,119 @@ describe('RolloutTabHeader: the phone meta line stays one line (drop rule)', () 
 		});
 		// chip + action are the data-phone-only copies the rule exempts
 		expect(container.querySelectorAll('[data-phone-only]').length).toBeGreaterThanOrEqual(2);
+	});
+});
+
+/** One state word on every tab: a failed head whose check fails now reads "failing", a recovered or check-less failure reads "failed". */
+describe('RolloutTabHeader: the failure word follows failingNow', () => {
+	const words = (props: Record<string, unknown>) => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, ...props } });
+		return [...container.querySelectorAll('[data-phone-only], .chip, [class*="chip"]')].map((e) => e.textContent?.trim().toLowerCase()).join(' ');
+	};
+	test('failingNow reads failing, not failed', () => {
+		expect(words({ failingNow: true })).toContain('failing');
+	});
+	test('without failingNow it stays failed', () => {
+		expect(words({})).toContain('failed');
+		expect(words({})).not.toContain('failing');
+	});
+	test('every route that draws the header on a rollout passes failingNow', () => {
+		const base = resolve(__dirname, '../../routes/rollouts/[cluster]/[namespace]/[name]');
+		for (const f of ['logs', 'gates', 'history', 'diff/[version]']) {
+			const src = readFileSync(resolve(base, f, '+page.svelte'), 'utf8');
+			expect(src, f).toMatch(/<RolloutTabHeader[^>]*failingNow|<RolloutTabHeader\s[^<]*?\{failingNow\}|failingNow=\{/s);
+		}
+	});
+});
+
+/** The pair at 390: wherever the lg+ header shows Roll back | Retry (a recovered failure), the phone meta line shows the same two, in the same order; Roll back is never out of reach. */
+describe('RolloutTabHeader: the phone shows the same pair as lg+', () => {
+	const phoneActs = (recovered: boolean) => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered } });
+		return [...container.querySelectorAll('button[data-phone-only]')].map((a) => `${(a as HTMLElement).dataset.action ?? 'rollback'}:${/btn-primary/.test(a.className) ? 'primary' : 'secondary'}`);
+	};
+	test('recovered: Roll back (secondary) then Retry (primary)', () => {
+		expect(phoneActs(true)).toEqual(['rollback:secondary', 'retry:primary']);
+	});
+	test('failing now: Roll back (primary) then Retry (secondary), as the Overview banner', () => {
+		expect(phoneActs(false)).toEqual(['rollback:primary', 'retry:secondary']);
+	});
+	test('the pair is its own line under the meta row: not inside it, no separator before it, gap-2', () => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: false } });
+		const cell = container.querySelector('[data-phone-actions]') as HTMLElement;
+		expect(cell.closest('.dot-list-row')).toBeNull();
+		expect(cell.className).toMatch(/\bgap-2\b/);
+		expect(container.querySelector('[data-ph-below]')?.contains(cell)).toBe(true);
+	});
+	test('Retry and Roll back on every size are buttons that act in place, never links to the Overview', () => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: true } });
+		const acts = [...container.querySelectorAll('[data-action="retry"], [data-action="rollback"], [data-desktop-only]')];
+		expect(acts.length).toBeGreaterThan(3);
+		for (const a of acts) {
+			expect(a.tagName).toBe('BUTTON');
+			expect(a.getAttribute('href')).toBeNull();
+		}
+		expect(container.querySelector('a[href*="action="]')).toBeNull();
+	});
+	test('lg+ draws the same pair in the actions slot on a failing-now rollout (every tab shares this header)', () => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: false } });
+		const d = [...container.querySelectorAll('button[data-desktop-only]')].map((a) => `${a.textContent?.trim()}:${/btn-primary/.test(a.className) ? 'primary' : 'secondary'}`);
+		expect(d).toEqual(['Roll back:primary', 'Retry:secondary']);
+	});
+});
+
+/** The gap under the phone action pair: one rule on every tab (24px, what Gates and Logs leave under the header), never 0 against a header's own `below` content (History's cadence strip). */
+describe('RolloutTabHeader: the space under the phone action pair', () => {
+	test('the pair is followed by the below content, and language.css gives it the 24px block gap when something follows', () => {
+		const css = readFileSync(resolve(__dirname, '../../styles/language.css'), 'utf8');
+		const belowSnippet = createRawSnippet(() => ({ render: () => '<div data-test-below="1"></div>' }));
+		expect(css).toMatch(/\[data-phone-actions\]:has\(\+ \*\)\s*\{\s*margin-bottom:\s*24px;/);
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: failed, recovered: false, below: belowSnippet } });
+		const cell = container.querySelector('[data-phone-actions]') as HTMLElement;
+		expect(cell.nextElementSibling?.getAttribute('data-test-below')).toBe('1');
+	});
+});
+
+/** A calm build whose wanted version another manager owns: the disabled Roll back says why in visible text (a phone has no hover). */
+describe('RolloutTabHeader: a disabled quiet Roll back prints its reason', () => {
+	const calm = (owner: string | null) =>
+		({
+			metadata: {
+				name: 'checkout-worker',
+				namespace: 'checkout-worker-staging',
+				...(owner ? { managedFields: [{ manager: owner, operation: 'Apply', fieldsV1: { 'f:spec': { 'f:wantedVersion': {} } } }] } : {})
+			},
+			spec: { wantedVersion: 'a02f1c4' },
+			status: {
+				history: [
+					{ bakeStatus: 'Succeeded', version: { tag: 'a02f1c4', created: '2026-10-11T10:00:00Z' }, timestamp: '2026-10-11T10:00:00Z' },
+					{ bakeStatus: 'Succeeded', version: { tag: '3f1ed09', created: '2026-10-10T10:00:00Z' }, timestamp: '2026-10-10T10:00:00Z' }
+				]
+			}
+		}) as never;
+	test('owned by Flux: the button is disabled and the Overview\'s own reason is on the page as text', async () => {
+		const { WANTED_VERSION_OWNED_REASON } = await import('$lib/view-models/pin-hold');
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('flux-controller'), quietRollback: true } });
+		expect(container.querySelector<HTMLButtonElement>('[data-phone-end]')!.disabled).toBe(true);
+		expect(container.querySelector('[data-owned-reason]')?.textContent).toBe(WANTED_VERSION_OWNED_REASON);
+	});
+	test('the reason is text at every width (not lg:hidden) and the disabled button points at it', () => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('flux-controller'), quietRollback: true } });
+		const reason = container.querySelector('[data-owned-reason]')!;
+		expect(reason.closest('.lg\\:hidden')).toBeNull();
+		expect(reason.id).toBe('owned-reason');
+		expect(container.querySelector('[data-phone-end]')!.getAttribute('aria-describedby')).toBe('owned-reason');
+	});
+	test('with a strip below (History) the reason leaves 24px before it; without one (Gates, Logs) the page supplies the gap', async () => {
+		const { createRawSnippet } = await import('svelte');
+		const strip = createRawSnippet(() => ({ render: () => '<div data-strip></div>' }));
+		const withStrip = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('flux-controller'), quietRollback: true, below: strip } });
+		expect(withStrip.container.querySelector('[data-owned-reason]')!.className).toContain('mb-6');
+		const without = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('flux-controller'), quietRollback: true } });
+		expect(without.container.querySelector('[data-owned-reason]')!.className).not.toContain('mb-6');
+	});
+	test('owned by the dashboard: no reason line', () => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('rollout-dashboard'), quietRollback: true } });
+		expect(container.querySelector('[data-owned-reason]')).toBeNull();
 	});
 });

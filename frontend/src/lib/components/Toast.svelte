@@ -36,6 +36,8 @@
 	 * which the root layout reads to keep the header revealed — auto-hide
 	 * resumes the instant the toast closes. Non-floating (`floating={false}`)
 	 * render is the design specimen only and never registers.
+	 * SUPERSEDED for phones: a toast docks at the BOTTOM, 8px above the fixed bottom tab bar (`--tabbar-h`), so it never covers the rollout tabs or
+	 * the header; an error toast waits to be dismissed, and at the top it would have sat over the navigation until then.
 	 * Enter: 160ms fade + 8px rise; leave: 120ms fade. Status is the ICON's
 	 * colour only — the toast body stays neutral.
 	 */
@@ -48,6 +50,7 @@
 		CloseOutline
 	} from 'flowbite-svelte-icons';
 	import StatusSpinner from './StatusSpinner.svelte';
+	import { toDock, nextToastOrder } from '$lib/toast-dock';
 	import { HUE_INK } from '$lib/view-models/state-tone';
 	import { showToast, hideToast } from '$lib/stores/toast-visibility.svelte';
 	import { untrack, type Snippet } from 'svelte';
@@ -59,6 +62,8 @@
 		tone = 'info',
 		message = '',
 		dismissable = true,
+		onclose,
+		order = nextToastOrder(),
 		floating = true,
 		description = '',
 		children,
@@ -68,6 +73,10 @@
 		tone?: Tone;
 		message?: string;
 		dismissable?: boolean;
+		/** the dismiss X was pressed (for a toast whose lifetime a store owns) */
+		onclose?: () => void;
+		/** where it sits in the dock's column (arrival order); a failure list passes its own so an older one never lands after a newer one */
+		order?: number;
 		/** `false` renders in flow (the design specimen); never false in product. */
 		floating?: boolean;
 		/**
@@ -109,6 +118,8 @@
 	// `untrack` that read makes THIS effect depend on `showing`, so its own
 	// write to `showing` re-triggers it: an infinite `effect_update_depth_exceeded`
 	// loop (reproduced in dev before this fix).
+	// The dock sits at the bottom, clear of the header, so nothing holds the header open for it any more; the count is the number of open toasts.
+	let docked = $state(false);
 	$effect(() => {
 		if (open && floating) {
 			untrack(showToast);
@@ -120,9 +131,12 @@
 {#if open}
 	<div
 		role={tone === 'danger' ? 'alert' : 'status'}
-		class="{floating
-			? 'fixed right-2 left-2 z-[60] top-[calc(env(safe-area-inset-top,0px)+4px)] sm:top-auto sm:right-4 sm:bottom-4 sm:left-auto sm:w-[380px]'
-			: 'relative w-full max-w-[380px]'} flex items-start gap-3 rounded-md bg-overlay px-4 py-3"
+		use:toDock={{ enabled: floating, onDocked: () => (docked = true), order }}
+		class="{docked
+			? 'relative w-full'
+			: floating
+				? 'fixed right-2 left-2 z-[60] bottom-[calc(var(--tabbar-h,0px)+8px)] sm:right-4 sm:bottom-4 sm:left-auto sm:w-[380px]'
+				: 'relative w-full max-w-[380px]'} flex items-start gap-3 rounded-md bg-overlay px-4 py-3"
 		style="box-shadow: var(--k-shadow-overlay)"
 		in:fly={{ y: 8, duration: 160, easing: cubicOut }}
 		out:fade={{ duration: 120 }}
@@ -147,9 +161,12 @@
 		{#if dismissable}
 			<button
 				type="button"
-				class="btn btn-ghost btn-icon btn-xs -my-1 -mr-2"
+				class="btn btn-ghost btn-icon btn-xs -my-1 -mr-2 max-sm:-my-3 max-sm:-mr-3 max-sm:min-h-11 max-sm:min-w-11"
 				aria-label="Dismiss"
-				onclick={() => (open = false)}
+				onclick={() => {
+					open = false;
+					onclose?.();
+				}}
 			>
 				<CloseOutline class="h-3 w-3" />
 			</button>

@@ -3,8 +3,10 @@
 	import Navbar from '../lib/Navbar.svelte';
 	import Sidebar from '../lib/Sidebar.svelte';
 	import MobileTabBar from '../lib/MobileTabBar.svelte';
+	import FailureToasts from '../lib/components/FailureToasts.svelte';
 	import LiveRegion from '$lib/components/LiveRegion.svelte';
 	import FleetAppNames from '$lib/components/FleetAppNames.svelte';
+	import FleetGate from '$lib/components/new/FleetGate.svelte';
 	import ApprovalLayer from '$lib/components/new/ApprovalLayer.svelte';
 	import { installApprovalCache } from '$lib/components/new/approvals.svelte';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
@@ -16,7 +18,6 @@
 	import { provideShellChrome } from '$lib/shell-chrome.svelte';
 	import { ScrollDirectionTracker } from '$lib/scroll-direction.svelte';
 	import { scrollMemoryKey, saveScrollPosition, getScrollPosition } from '$lib/scroll-memory';
-	import { toastVisibility } from '$lib/stores/toast-visibility.svelte';
 
 	// ⭐ FIX PASS ITEM 7 (2026-09-10). Namespaces a document-scroller entry
 	// apart from an `<main>`-scroller entry for the SAME url — see the
@@ -89,11 +90,7 @@
 	// reports hidden there; `.header-group`'s own media query is still what
 	// makes that state inert, this is just cheap to leave running unguarded.
 	//
-	// qa9 B2: `data-hidden` below also checks `toastVisibility.count` — a
-	// floating `Toast` docks at this bar's position on a phone, so while one
-	// is open the bar must stay revealed no matter what `headerScroll` says,
-	// or the toast ends up over content instead of chrome. See
-	// `$lib/stores/toast-visibility.svelte`'s doc comment.
+	// Toasts dock at the bottom (the toast dock), clear of this bar, so the bar's auto-hide no longer has to wait for them.
 	const headerScroll = new ScrollDirectionTracker(24);
 	let headerGroupEl: HTMLElement | undefined = $state();
 
@@ -368,6 +365,11 @@
 
 <QueryClientProvider client={queryClient}>
 	<FleetAppNames />
+	<!-- The command palette (in the shell) reads the live fleet source for its Needs-you list: failure ages and which failures have
+	     recovered. The source is installed here, once, for every page; a page's own FleetGate reads this one (same queries, same cache). -->
+	<FleetGate bare>
+		{#snippet children()}{/snippet}
+	</FleetGate>
 	<!-- ⭐ TWO SCROLL MODELS, ONE BREAKPOINT. (2026-09-04, from the human: "we
 	     broke how desktop looks like when we recently changed scrolling
 	     behaviour … navbar / sidebar bounces on chrome scrolling. it should be
@@ -396,7 +398,7 @@
 			<div
 				bind:this={headerGroupEl}
 				class="header-group"
-				data-hidden={headerScroll.hidden && toastVisibility.count === 0}
+				data-hidden={headerScroll.hidden}
 			>
 				<Navbar />
 				{#if shellChrome.tabStrip && !isDesktop}
@@ -424,5 +426,6 @@
 		<MobileTabBar />
 		<LiveRegion />
 		<ApprovalLayer />
+		<FailureToasts />
 	</div>
 </QueryClientProvider>

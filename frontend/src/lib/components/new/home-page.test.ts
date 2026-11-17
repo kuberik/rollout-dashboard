@@ -73,6 +73,6 @@ it('Fleet deploys: one row per app, carrying the furthest tier its latest build 
 });
 
 it('the Needs-you rollup says `failed` for a recovered failure, like every other page', () => {
-	expect(asksRollupOf(3, 1, 2)).toEqual([{ text: '2 failing', ink: 'danger' }, '1 failed', { text: '2 to approve', ink: 'held' }]);
+	expect(asksRollupOf(3, 1, 2)).toEqual([{ text: '2 failing', ink: 'danger' }, { text: '2 to approve', ink: 'held' }, '1 failed']);
 	expect(asksRollupOf(1, 1, 0)).toEqual(['1 failed']);
 });

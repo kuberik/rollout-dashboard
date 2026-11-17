@@ -191,7 +191,7 @@
 					{/if}
 					{#if markers.some((m) => m.tone !== 'release' && m.tsMs >= b.startMs && m.tsMs < b.endMs)}
 						{@const bad = markers.find((m) => m.tone !== 'release' && m.tsMs >= b.startMs && m.tsMs < b.endMs)!}
-						{@const badTone = bad.resolved ? 'resolved' : bad.tone}
+						{@const badTone = bad.resolved || bad.recovered ? 'resolved' : bad.tone}
 						<!-- What went wrong sits ON the series: a mark at the bar's top in
 						     the marker's ink (a mark, not a segment: bars stay one fill). -->
 						<circle cx={cx} cy={yc(b.count) - 4} r="3.5" class="db-onseries db-on-{badTone}" />
@@ -215,7 +215,7 @@
 			{#each markers as m (m.key)}
 				{@const mx = xMark(m.tsMs)}
 				{@const row = rows.get(m.key)}
-				<g class="db-marker db-m-{m.resolved ? 'resolved' : m.tone}">
+				<g class="db-marker db-m-{m.resolved || m.recovered ? 'resolved' : m.tone}">
 					<line x1={mx} x2={mx} y1={row != null ? 22 + row * 22 : PAD_T - 6} y2={y(0)} class="db-mline" />
 					{#if row != null}
 						{@const pw = pillW(m)}
@@ -268,7 +268,7 @@
 					{@const row = rows.get(m.key)}
 					{@const pw = pillW(m)}
 					{@const px = pillLeft(mx, pw, PAD_L - 4, W - PAD_R)}
-					<a href={m.href} class="db-link db-m-{m.resolved ? 'resolved' : m.tone}" aria-label="Open {m.title ?? markerText(m)}">
+					<a href={m.href} class="db-link db-m-{m.resolved || m.recovered ? 'resolved' : m.tone}" aria-label="Open {m.title ?? markerText(m)}">
 						<line x1={mx} x2={mx} y1={row != null ? 22 + row * 22 : PAD_T - 6} y2={y(0)} class="db-link-hit" />
 						{#if row != null}
 							<rect x={px - 2} y={2 + row * 22} width={pw + 4} height="22" rx="5" class="db-link-pill" />

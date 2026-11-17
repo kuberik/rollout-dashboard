@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { placeHolds, gatesOf, apps, tabPill, newestBuild } from '../data';
-import { buildsOf, holdSentences, deployTargets, holdRows, nextOf, pillOf, currencyOf, restCurrency, ledgerOf, foldLedger, tabLag, placeNote, stopWord, stopShort, weekSummary, placeWord, pinnedPlaces, placeWait, isPromotion } from './app-model';
+import { buildsOf, holdSentences, deployTargets, holdRows, nextOf, pillOf, currencyOf, restCurrency, ledgerOf, foldLedger, tabLag, placeNote, stopWord, stopShort, weekSummary, placeWord, pinnedPlaces, placeWait, isPromotion, placesInPillState } from './app-model';
 
 describe('app-model on the demo apps', () => {
 	const P = placeHolds('invoice-api', 'incident');
@@ -23,6 +23,15 @@ describe('app-model on the demo apps', () => {
 		expect(r[0].places).toEqual(['us-east', 'us-west']);
 		expect(r[0].held.length).toBe(5);
 	});
+	it('the health hold of a recovered place says what still blocks: the failed rollout needs a retry or a new build', () => {
+		const health = (recoveredAt: (h: string) => boolean) => holdRows(gatesOf('invoice-api', 'incident'), P, null, '', new Set(), null, recoveredAt).find((x) => x.kind === 'health')!;
+		const rec = health(() => true);
+		expect(rec.recovered).toBe(true);
+		expect(rec.sentence).toBe('The check passes again; a retry or a new build releases it');
+		const live = health(() => false);
+		expect(live.recovered).toBeUndefined();
+		expect(live.sentence).toBe('Releases when the check starts passing');
+	});
 	it('next arrival and why', () => {
 		const eu = P.find((p) => p.place === 'eu-west')!;
 		expect(nextOf(P, eu.href)).toBe('7 builds behind');
@@ -44,7 +53,7 @@ describe('apps-12 AT1: one pill rule for the tile and the app page', () => {
 	it('the headline is the production place that most needs reading; a dev place moving does not change it', () => {
 		const p = pillOf(placeHolds('invoice-api', 'incident'), 'incident')!;
 		expect(p.place.label).toBe('eu-west');
-		expect(p.word).toBe('FAILED');
+		expect(p.word).toBe('FAILING');
 	});
 	it('apps-13 AL4: the pill is the tab\'s own word AND colour for the headline place (no invented neutral)', () => {
 		for (const sc of ['incident', 'calm', 'quiet'] as const) for (const a of apps(sc).items) {
@@ -297,5 +306,13 @@ describe('no auto-opened step pane on the App page', () => {
 		const src = readFileSync(new URL('./AppDetail.svelte', import.meta.url), 'utf8');
 		expect(src).toMatch(/const leadKey: string \| null = null;/);
 		expect(src).not.toMatch(/leadOpenKey/);
+	});
+});
+
+describe('the header pill word FAILING', () => {
+	const ps = [{ deployedBuild: 'b1', state: 'failed' }, { deployedBuild: 'b1', state: 'deploying' }, { deployedBuild: 'b2', state: 'failed' }] as never;
+	it('lists the failed places that run the build, for FAILING as for FAILED', () => {
+		expect(placesInPillState(ps, 'b1', 'FAILING')).toHaveLength(1);
+		expect(placesInPillState(ps, 'b1', 'FAILED')).toHaveLength(1);
 	});
 });

@@ -19,7 +19,7 @@
 	import { ArrowRightOutline } from 'flowbite-svelte-icons';
 	import { envTheme } from './rollout-view';
 	import { avatarSrc } from './data';
-	import { regionCellParts, type EnvTile } from './environments-page';
+	import { regionCellParts, regionRecovered, type EnvTile } from './environments-page';
 	import { plural } from './envs-model';
 
 	let { tile, wide = false }: { tile: EnvTile; wide?: boolean } = $props();
@@ -40,7 +40,7 @@
 		<div class="et-regions" data-regions>
 			{#each tile.regions.cells as r (r.key)}
 				<a class="et-region" href={r.href} data-truth-kind="region" data-truth-region={r.label}>
-					<span class="et-rtop"><StatusMark state={regionMark(r.mark)} /><span class="et-rnm t-meta font-medium truncate">{r.label}</span></span>
+					<span class="et-rtop"><StatusMark state={regionMark(r.mark)} recovered={regionRecovered(r)} /><span class="et-rnm t-meta font-medium truncate">{r.label}</span></span>
 					<span class="et-rst t-meta">
 						<span class="dot-list block"><span class="dot-list-row flex flex-wrap">{#each regionCellParts(r) as w (w.text)}<span class="whitespace-nowrap {w.ink ? hueInk(w.ink) : ''}">{w.text}</span>{/each}</span></span>
 					</span>

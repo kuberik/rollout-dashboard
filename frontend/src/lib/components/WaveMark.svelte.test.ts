@@ -6,6 +6,28 @@ import { waveMark, type MarkSiteState } from '$lib/view-models/wave-mark';
 
 const draw = (states: MarkSiteState[]) => render(WaveMark, { mark: waveMark(states.map((state) => ({ state })), 'Wave 1') }).container.querySelector('svg')!;
 
+describe('WaveMark: a recovered place is the failed disc with its fill taken out', () => {
+	const ring = (recovered: boolean) => render(WaveMark, { mark: waveMark([{ state: 'failed', recovered }], 'prod') }).container.querySelector('svg')!;
+	it('a 1.5px danger ring, no fill, no filled path', () => {
+		const svg = ring(true);
+		expect(svg.getAttribute('data-kinds')).toBe('recovered');
+		const c = svg.querySelector('circle[stroke-width="1.5"]')!;
+		expect([c.getAttribute('fill'), c.getAttribute('stroke'), c.getAttribute('r')]).toEqual(['none', 'var(--k-danger-solid)', '4.25']);
+		expect(svg.querySelector('path[fill]')).toBeNull();
+	});
+	it('a failing place is still the solid disc', () => {
+		const svg = ring(false);
+		expect(svg.getAttribute('data-kinds')).toBe('failed');
+		expect(svg.querySelector('path[fill="var(--k-danger-solid)"]')).not.toBeNull();
+		expect(svg.querySelector('circle[stroke-width="1.5"]')).toBeNull();
+	});
+	it('in a pie the ring is clipped to its slice', () => {
+		const svg = render(WaveMark, { mark: waveMark([{ state: 'failed' }, { state: 'failed', recovered: true }]) }).container.querySelector('svg')!;
+		expect(svg.querySelector('circle[stroke-width="1.5"]')!.getAttribute('clip-path')).toMatch(/^url\(#wm\d+-c1\)$/);
+		expect(svg.querySelector('path[fill="var(--k-danger-solid)"]')).not.toBeNull();
+	});
+});
+
 describe('WaveMark', () => {
 	it('is the same 16px box in every state (0px rule)', () => {
 		for (const st of ['done', 'checking', 'deploying', 'held', 'failed', 'notreached'] as MarkSiteState[]) {

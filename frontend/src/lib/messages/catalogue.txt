@@ -89,6 +89,7 @@ lib/CommandPalette.svelte	text	… No … match " … " … No matches for " …
 lib/CommandPalette.svelte	text	… result …
 lib/CommandPalette.svelte	code	… rollout…
 lib/CommandPalette.svelte	title	… rollout… here failed or stopped moving
+lib/CommandPalette.svelte	code	a[href], button:not(:disabled)
 lib/CommandPalette.svelte	text	and … more — type to find one, or open
 lib/CommandPalette.svelte	code	approval approve waits for approval waiting
 lib/CommandPalette.svelte	code	Apps across environments
@@ -135,6 +136,7 @@ lib/components/atoms/LeadBar.svelte	aria-label	reached prod in …
 lib/components/atoms/LeadBar.svelte	code	waited … before …
 lib/components/AttentionCard.svelte	label	… of … …
 lib/components/AttentionCard.svelte	aria-label	…… against the limit
+lib/components/AttentionCard.svelte	text	at failure
 lib/components/AttentionCard.svelte	code	Open rollout
 lib/components/AttentionCard.svelte	text	Roll back
 lib/components/Avatar.svelte	code	… (CI)
@@ -186,9 +188,7 @@ lib/components/CadenceStrip.svelte	text	No earlier deploys
 lib/components/CadenceStrip.svelte	code	Not offered as a rollback
 lib/components/CadenceStrip.svelte	text	Roll back
 lib/components/CadenceStrip.svelte	aria-label	Roll back to this
-lib/components/CadenceStrip.svelte	title	Roll back to this
 lib/components/CadenceStrip.svelte	aria-label	Roll back to this build
-lib/components/CadenceStrip.svelte	title	Roll back to this build
 lib/components/CadenceStrip.svelte	code	Running for …
 lib/components/CadenceStrip.svelte	code	Running now
 lib/components/CadenceStrip.svelte	code	same build
@@ -224,7 +224,6 @@ lib/components/ChangeVersionModal.svelte	code	a rule
 lib/components/ChangeVersionModal.svelte	code	Add a note
 lib/components/ChangeVersionModal.svelte	code	Add a note — required for a prod change.
 lib/components/ChangeVersionModal.svelte	code	Already running — turn on Pin build to keep it.
-lib/components/ChangeVersionModal.svelte	code	Another controller owns this rollout's wanted version, so the dashboard cannot pin it.
 lib/components/ChangeVersionModal.svelte	code	another service
 lib/components/ChangeVersionModal.svelte	text	Automatic promotion is held right now — … .
 lib/components/ChangeVersionModal.svelte	aria-label	Available versions
@@ -245,6 +244,7 @@ lib/components/ChangeVersionModal.svelte	code	deployed …
 lib/components/ChangeVersionModal.svelte	code	Deployed …
 lib/components/ChangeVersionModal.svelte	code	Failed to change version
 lib/components/ChangeVersionModal.svelte	code	Failed to deploy version
+lib/components/ChangeVersionModal.svelte	code	Failed to roll back
 lib/components/ChangeVersionModal.svelte	code	Held — …
 lib/components/ChangeVersionModal.svelte	code	Held — …, has …
 lib/components/ChangeVersionModal.svelte	code	Held by
@@ -277,7 +277,6 @@ lib/components/ChangeVersionModal.svelte	text	Show … more
 lib/components/ChangeVersionModal.svelte	text	Show all repo tags
 lib/components/ChangeVersionModal.svelte	code	Successfully pinned and deployed version
 lib/components/ChangeVersionModal.svelte	code	The typed confirmation above does not match yet.
-lib/components/ChangeVersionModal.svelte	code	this environment
 lib/components/ChangeVersionModal.svelte	text	to confirm
 lib/components/ChangeVersionModal.svelte	text	waits for health checks instead of&nbsp;failing.
 lib/components/ChangeVersionModal.svelte	code	Why are you overriding the rules?
@@ -389,7 +388,7 @@ lib/components/DeployVolumeSparkline.svelte	code	…d ago
 lib/components/DeployVolumeSparkline.svelte	code	…h ago
 lib/components/DeployVolumeSparkline.svelte	code	1h ago
 lib/components/DeployVolumeSparkline.svelte	code	this hour
-lib/components/DiffLink.svelte	text	View diff
+lib/components/DiffLink.svelte	text	… View diff …
 lib/components/EnvSitePicker.svelte	text	This rollout
 lib/components/EnvSitePicker.svelte	text	Wave …
 lib/components/ErrorState.svelte	code	Back to all rollouts
@@ -408,6 +407,8 @@ lib/components/FailurePanel.svelte	text	Automated deployments are held until thi
 lib/components/FailurePanel.svelte	title	Deployment failed
 lib/components/FailurePanel.svelte	code	Roll back
 lib/components/FailureSourceRow.svelte	text	&nbsp; …
+lib/components/FailureSourceRow.svelte	text	&nbsp;at failure
+lib/components/FailureToasts.svelte	text	+ … more failure …
 lib/components/FleetCard.svelte	text	all apps
 lib/components/FleetCard.svelte	text	All healthy elsewhere
 lib/components/FleetCard.svelte	text	No deploys in the last 24 h
@@ -581,7 +582,6 @@ lib/components/new/app/app-model.ts	code	next … · ready to deploy
 lib/components/new/app/app-model.ts	code	Nothing to deploy
 lib/components/new/app/app-model.ts	code	On the newest build
 lib/components/new/app/app-model.ts	code	Pinned to …
-lib/components/new/app/app-model.ts	code	Releases when the check starts passing
 lib/components/new/app/app-model.ts	code	Releases when the pin is cleared
 lib/components/new/app/app-model.ts	code	Rolled back
 lib/components/new/app/app-model.ts	code	The bake clock restarts when the check is Healthy again
@@ -591,11 +591,9 @@ lib/components/new/app/app-model.ts	code	wave …
 lib/components/new/app/AppActivity.svelte	code	… of …
 lib/components/new/app/AppActivity.svelte	code	… of … …
 lib/components/new/app/AppActivity.svelte	text	All activity
-lib/components/new/app/AppActivity.svelte	code	Check failed
 lib/components/new/app/AppActivity.svelte	text	Deploys and promotions of this app appear here.
 lib/components/new/app/AppActivity.svelte	text	No activity yet
 lib/components/new/app/AppActivity.svelte	title	Recent activity
-lib/components/new/app/AppActivity.svelte	code	Rolled back
 lib/components/new/app/AppBuilds.svelte	text	… builds not running anywhere
 lib/components/new/app/AppBuilds.svelte	aria-label	…{noReleases ? '' : `, $…`}{s.title ? `, $…` : ''}
 lib/components/new/app/AppBuilds.svelte	text	Builds appear once a rollout deploys it.
@@ -603,14 +601,20 @@ lib/components/new/app/AppBuilds.svelte	text	Builds from deploy history
 lib/components/new/app/AppBuilds.svelte	aria-label	Deploy … to …
 lib/components/new/app/AppBuilds.svelte	text	No details recorded for this build
 lib/components/new/app/AppBuilds.svelte	text	No place runs this app yet
+lib/components/new/app/AppDetail.svelte	code	… · Check restarted
 lib/components/new/app/AppDetail.svelte	aria-label	… context
 lib/components/new/app/AppDetail.svelte	code	(max-width: 639px)
 lib/components/new/app/AppDetail.svelte	text	All environments
 lib/components/new/app/AppDetail.svelte	code	Deploy … to ….
 lib/components/new/app/AppDetail.svelte	text	deployed … ago
 lib/components/new/app/AppDetail.svelte	title	Deployment failed
+lib/components/new/app/AppDetail.svelte	code	Open rollout
+lib/components/new/app/AppDetail.svelte	code	Retry failed
+lib/components/new/app/AppDetail.svelte	code	Retry started
+lib/components/new/app/AppDetail.svelte	code	Roll back
 lib/components/new/app/AppDetail.svelte	code	The health checks are running.
 lib/components/new/app/AppDetail.svelte	headline	This app does not exist
+lib/components/new/app/AppDetail.svelte	text	View logs
 lib/components/new/app/AppGates.svelte	aria-label	… details of …
 lib/components/new/app/AppGates.svelte	text	… Held by
 lib/components/new/app/AppGates.svelte	text	How to approve
@@ -665,7 +669,9 @@ lib/components/new/change/ChangeDetail.svelte	code	by … · merged by …
 lib/components/new/change/ChangeDetail.svelte	text	CI checks
 lib/components/new/change/ChangeDetail.svelte	code	Deployment failed in … · …
 lib/components/new/change/ChangeDetail.svelte	text	none running yet
+lib/components/new/change/ChangeDetail.svelte	code	Open rollout
 lib/components/new/change/ChangeDetail.svelte	text	Places running it
+lib/components/new/change/ChangeDetail.svelte	code	Roll back
 lib/components/new/change/ChangeDetail.svelte	code	Waiting for approval
 lib/components/new/change/ChangeDetail.svelte	aria-label	What holds this change and what happened to it
 lib/components/new/change/ChangeHistory.svelte	verdict	… events
@@ -789,7 +795,6 @@ lib/components/new/data.ts	code	Releases when …
 lib/components/new/data.ts	code	Releases when … ships a newer version
 lib/components/new/data.ts	code	Releases when its dependency ships a newer version
 lib/components/new/data.ts	code	Releases when someone approves
-lib/components/new/data.ts	code	Releases when the check starts passing
 lib/components/new/data.ts	code	Releases when the deploy window opens
 lib/components/new/data.ts	code	Releases when the rule allows this build
 lib/components/new/data.ts	code	Rolled back from … to …
@@ -813,7 +818,6 @@ lib/components/new/env/DayRow.svelte	text	Rolled back
 lib/components/new/env/env-page.ts	code	: versions[0] ?? ''}
 lib/components/new/env/env-page.ts	code	… behind
 lib/components/new/env/env-page.ts	code	… builds
-lib/components/new/env/env-page.ts	code	… failed
 lib/components/new/env/env-page.ts	code	… held
 lib/components/new/env/env-page.ts	code	… not at rest
 lib/components/new/env/env-page.ts	code	… regions
@@ -863,11 +867,8 @@ lib/components/new/envs-model.ts	code	… · … regions
 lib/components/new/envs-model.ts	code	… apps
 lib/components/new/envs-model.ts	code	… arriving: …
 lib/components/new/envs-model.ts	code	… arriving…
-lib/components/new/envs-model.ts	code	… failing
 lib/components/new/envs-model.ts	code	… held
-lib/components/new/envs-model.ts	code	… in progress
 lib/components/new/envs-model.ts	code	… next…
-lib/components/new/envs-model.ts	code	… to approve
 lib/components/new/envs-model.ts	code	· … … held
 lib/components/new/envs-model.ts	code	At rest
 lib/components/new/envs-model.ts	code	in progress
@@ -907,6 +908,7 @@ lib/components/new/Facia.svelte	code	deploying to …
 lib/components/new/Facia.svelte	title	Deployment failed
 lib/components/new/Facia.svelte	code	held: …
 lib/components/new/Facia.svelte	code	held: waiting on
+lib/components/new/Facia.svelte	code	Open rollout
 lib/components/new/Facia.svelte	code	Ready to promote
 lib/components/new/Facia.svelte	code	ready to promote to prod
 lib/components/new/Facia.svelte	code	Ready to promote to prod
@@ -916,6 +918,8 @@ lib/components/new/Facia.svelte	code	Then waits for …approval
 lib/components/new/Facia.svelte	code	waiting for …approval in …
 lib/components/new/Facia.svelte	code	waiting on
 lib/components/new/Facia.svelte	code	waiting on …
+lib/components/new/FailureBanner.svelte	code	Open rollout
+lib/components/new/FailureBanner.svelte	code	Roll back
 lib/components/new/FleetGate.svelte	code	the fleet
 lib/components/new/Footprint.svelte	code	${stateWord('approval', { yours })} in …
 lib/components/new/held-chain.ts	code	… is itself waiting on …
@@ -1013,8 +1017,10 @@ lib/components/new/stages/Stages.svelte	aria-label	Releases in flight
 lib/components/new/stages/Stages.svelte	text	View change
 lib/components/new/stages/Stages.svelte	code	Wave …
 lib/components/new/stages/Stages.svelte	text	Wave …
+lib/components/new/state-words.ts	code	: ''}, so a retry is reasonable.
 lib/components/new/state-words.ts	code	… … approval
 lib/components/new/state-words.ts	code	Needs your approval
+lib/components/new/state-words.ts	code	Recovered${at ?
 lib/components/new/state-words.ts	code	Waiting for approval
 lib/components/new/StrandRow.svelte	label	… steps
 lib/components/new/StrandRow.svelte	text	to prod
@@ -1081,6 +1087,10 @@ lib/components/RetryTestsModal.svelte	text	Re-run tests. Pipeline stays paused u
 lib/components/RetryTestsModal.svelte	text	Retry tests
 lib/components/RetryTestsModal.svelte	text	Skip tests
 lib/components/RetryTestsModal.svelte	code	Unknown test
+lib/components/RolloutHeaderFlows.svelte	code	… · Check restarted
+lib/components/RolloutHeaderFlows.svelte	code	Failed to retry
+lib/components/RolloutHeaderFlows.svelte	code	Retry started
+lib/components/RolloutHeaderFlows.svelte	text	View logs
 lib/components/RolloutNeighbourhood.svelte	text	… … … … … Approved …
 lib/components/RolloutNeighbourhood.svelte	text	… never deployed …
 lib/components/RolloutNeighbourhood.svelte	text	… runs
@@ -1116,7 +1126,7 @@ lib/components/RolloutNeighbourhood.svelte	code	Waits on …
 lib/components/RolloutNeighbourhood.svelte	title	You can't approve this build here
 lib/components/RolloutTabHeader.svelte	title	Open app …
 lib/components/RolloutTabHeader.svelte	text	Roll back
-lib/components/RolloutTabHeader.svelte	title	Roll back to …
+lib/components/RolloutTabHeader.svelte	code	Roll back to …
 lib/components/ScheduleStatus.svelte	text	… Automatic deploys resume in
 lib/components/ScheduleStatus.svelte	text	… rule …
 lib/components/ScheduleStatus.svelte	code	… waiting.
@@ -1234,6 +1244,7 @@ lib/Sidebar.svelte	code	Times shown in UTC. Switch to local time
 lib/smooth-height.ts	code	(prefers-reduced-motion: reduce)
 lib/smooth-height.ts	code	cubic-bezier(0.45, 0, 0.55, 1)
 lib/smooth-height.ts	code	height …ms …
+lib/stores/failure-toasts.svelte.ts	code	… in …
 lib/stores/theme.ts	code	(prefers-color-scheme: dark)
 lib/utils.ts	code	… day…
 lib/utils.ts	code	… hour…
@@ -1247,6 +1258,9 @@ lib/utils.ts	code	failed to deploy
 lib/version-utils.ts	code	… (no linked repository)
 lib/view-models/activity-figures.ts	code	… a day
 lib/view-models/activity-figures.ts	code	… an hour
+lib/view-models/activity-figures.ts	code	… checking
+lib/view-models/activity-figures.ts	code	… deploying
+lib/view-models/activity-figures.ts	code	… paused
 lib/view-models/activity-groups.ts	code	… deploy…
 lib/view-models/activity-groups.ts	code	… prod
 lib/view-models/activity-verb.ts	code	health check
@@ -1255,6 +1269,7 @@ lib/view-models/activity-verb.ts	code	is deploying
 lib/view-models/activity-verb.ts	code	is held
 lib/view-models/activity-verb.ts	code	is paused
 lib/view-models/activity-verb.ts	code	rolled back
+lib/view-models/activity-verb.ts	code	Rolled back
 lib/view-models/activity-verb.ts	code	was approved
 lib/view-models/activity-verb.ts	code	was pinned
 lib/view-models/activity-verb.ts	code	was promoted
@@ -1262,7 +1277,6 @@ lib/view-models/attention.ts	code	Needs your approval
 lib/view-models/attention.ts	code	of …${o.unit ?
 lib/view-models/attention.ts	code	over a … budget
 lib/view-models/attention.ts	code	prod regions
-lib/view-models/attention.ts	code	recovered at …
 lib/view-models/attention.ts	code	under a … floor
 lib/view-models/auto-deploy.ts	code	a rule is holding it
 lib/view-models/auto-deploy.ts	code	a rule is holding it (…)
@@ -1427,6 +1441,8 @@ lib/view-models/changes.ts	code	rolled back in …
 lib/view-models/changes.ts	code	rolled back in … … regions
 lib/view-models/changes.ts	code	waits for you · …
 lib/view-models/changes.ts	code	waits for you in …
+lib/view-models/check-hold-sentence.ts	code	Releases when the check starts passing
+lib/view-models/check-hold-sentence.ts	code	The check passes again; a retry or a new build releases it
 lib/view-models/cluster-errors.ts	code	: ''}. What you see for … is the last known state the hub holds.
 lib/view-models/cluster-errors.ts	code	: 'the clusters answer'}.
 lib/view-models/cluster-errors.ts	code	… answered with JSON that is not a dashboard response.
@@ -1500,18 +1516,18 @@ lib/view-models/deploy-risk.ts	code	Goes back… to a version … has already ru
 lib/view-models/deploy-risk.ts	code	It also pins … to this version, so nothing newer promotes until the pin is cleared.
 lib/view-models/deploy-risk.ts	code	Nothing has vouched for this build in …. Type
 lib/view-models/deploy-risk.ts	code	Prod is selected. Type
-lib/view-models/deploy-risk.ts	code	Redeploy to …
-lib/view-models/deploy-risk.ts	code	Redeploys … to … — the same build whose last deploy here failed.
-lib/view-models/deploy-risk.ts	code	Redeploys the current build to … — the same build whose last deploy here failed.
-lib/view-models/deploy-risk.ts	code	Retrying resets that check to “Pending — reset due to new deployment”, which clears the failure detail shown above.
+lib/view-models/deploy-risk.ts	code	Retries … in … — the same build whose last deploy here failed.
+lib/view-models/deploy-risk.ts	code	Retries the current build in … — the same build whose last deploy here failed.
+lib/view-models/deploy-risk.ts	code	Retrying resets that check to “Pending — reset due to new deployment”, which clears the recorded failure detail.
 lib/view-models/deploy-risk.ts	code	Retrying resets this rollout’s health checks to “Pending — reset due to new deployment”, which erases the record that anything failed here.
-lib/view-models/deploy-risk.ts	code	Retrying resets those checks to “Pending — reset due to new deployment”, which clears the failure detail shown above.
+lib/view-models/deploy-risk.ts	code	Retrying resets those checks to “Pending — reset due to new deployment”, which clears the recorded failure detail.
 lib/view-models/deploy-risk.ts	code	Roll back
 lib/view-models/deploy-risk.ts	code	Several builds are selected, so type the rule's name.
 lib/view-models/deploy-risk.ts	code	This build already failed here. Type
 lib/view-models/deploy-risk.ts	code	This changes …. Every rule currently allows this build, so this is the move the controller would make on its own — it just has not made it yet.…
 lib/view-models/deploy-risk.ts	code	This changes …. Type
 lib/view-models/deploy-risk.ts	code	This deploys to … a build that …. It applies immediately and … starts serving it; nothing checks it first.…
+lib/view-models/deploy-risk.ts	code	This deploys to … again, so it asks you to confirm. Type
 lib/view-models/deploy-risk.ts	code	this environment
 lib/view-models/deploy-risk.ts	code	This overrides the rules holding …, which do not currently allow this build. It applies immediately. It does not deploy to prod — but a build that deploys and passes its checks here can become allowed in whatever environment promotes after ….…
 lib/view-models/deploy-risk.ts	code	This tag is not in …'s release list, so no rule here has vouched for it and the commit list above may be incomplete. It applies immediately.…
@@ -1535,6 +1551,9 @@ lib/view-models/env-rank.ts	code	… is on the newest build available to it
 lib/view-models/env-rank.ts	code	… is running a build that is on no environment’s release list
 lib/view-models/env-rank.ts	code	… of … region… on the newest
 lib/view-models/env-rank.ts	code	…'s distance from the newest build cannot be resolved — the build it is running is not in its own release list
+lib/view-models/failure-actions.ts	code	Open logs
+lib/view-models/failure-actions.ts	code	Roll back
+lib/view-models/failure-text.ts	code	Failed to retry
 lib/view-models/fleet-facts.ts	code	, incl. …
 lib/view-models/fleet-facts.ts	code	… · … in environments · … without
 lib/view-models/fleet-facts.ts	code	… app…
@@ -1565,7 +1584,6 @@ lib/view-models/gate-fact.ts	code	1 gate failing
 lib/view-models/gate-fact.ts	code	1 of … gates failing
 lib/view-models/gate-label.ts	code	… from …
 lib/view-models/health-failures.ts	code	: ' is failing'}
-lib/view-models/health-failures.ts	code	: ''}, so a retry is reasonable.
 lib/view-models/health-failures.ts	code	… …/…${unit ?
 lib/view-models/health-failures.ts	code	… …${o.window ?
 lib/view-models/health-failures.ts	code	… health checks failing: ……
@@ -1579,7 +1597,6 @@ lib/view-models/health-failures.ts	code	+… more
 lib/view-models/health-failures.ts	code	check …
 lib/view-models/health-failures.ts	code	failed …
 lib/view-models/health-failures.ts	code	health check
-lib/view-models/health-failures.ts	code	Recovered${ok ?
 lib/view-models/health-witness.ts	code	… failing
 lib/view-models/health-witness.ts	code	… is failing…. Automatic deploys here are held until it passes; a deploy you start by hand still applies.
 lib/view-models/health-witness.ts	code	… is passing now, but it errored … — inside the window of the deploy that is running. The controller keeps that error as evidence; this mark clears on the next deploy or retry.
@@ -1615,8 +1632,9 @@ lib/view-models/history-approval.ts	code	approved by …
 lib/view-models/history-approval.ts	code	Approved by …
 lib/view-models/history-approval.ts	code	Approved by … (…)
 lib/view-models/history-approval.ts	code	Approved by RolloutApproval … (no verified approver)
+lib/view-models/history-current-chip.ts	code	… check… pending
+lib/view-models/history-current-chip.ts	code	… failed
 lib/view-models/history-current-chip.ts	code	Bake paused
-lib/view-models/history-current-chip.ts	code	Bake paused · … check… pending
 lib/view-models/history-current-chip.ts	code	Checking for
 lib/view-models/history-current-chip.ts	code	Deploying for
 lib/view-models/history-current-chip.ts	code	Paused for
@@ -1668,7 +1686,10 @@ lib/view-models/manifest-diff-summary.ts	code	+… env vars
 lib/view-models/manifest-diff-summary.ts	code	−… env vars
 lib/view-models/manifest-diff-summary.ts	code	added …
 lib/view-models/manifest-diff-summary.ts	code	removed …
+lib/view-models/pin-hold.ts	code	Another controller owns this rollout's wanted version, so the dashboard cannot clear the pin.
+lib/view-models/pin-hold.ts	code	Another controller owns this rollout's wanted version, so the dashboard cannot pin it.
 lib/view-models/pin-hold.ts	code	Held by the pin
+lib/view-models/pin-hold.ts	code	Revert to the previous version.
 lib/view-models/pr-pipeline.ts	code	… … in …
 lib/view-models/pr-pipeline.ts	code	… … in … …
 lib/view-models/pr-pipeline.ts	code	… in …
@@ -1722,6 +1743,7 @@ lib/view-models/release-delta.ts	code	… … (removed)
 lib/view-models/release-delta.ts	code	Same commit as …. What changed: requires ….
 lib/view-models/repo-card.ts	code	… moving
 lib/view-models/repo-card.ts	code	… waiting
+lib/view-models/retry-confirm.ts	code	A health check
 lib/view-models/revision-coverage.ts	code	: envs}
 lib/view-models/revision-coverage.ts	code	… · has not reached … yet
 lib/view-models/revision-coverage.ts	code	… · held in …
@@ -1897,13 +1919,10 @@ routes/activity/+page.svelte	code	… · … failed, resolved
 routes/activity/+page.svelte	code	… · … rolled back
 routes/activity/+page.svelte	code	… · … still going
 routes/activity/+page.svelte	code	… · all fine
-routes/activity/+page.svelte	code	… checking
 routes/activity/+page.svelte	text	… deploy …
 routes/activity/+page.svelte	code	… deploy…
-routes/activity/+page.svelte	code	… deploying
 routes/activity/+page.svelte	code	… deploys failed
 routes/activity/+page.svelte	code	… of … unresolved
-routes/activity/+page.svelte	code	… paused
 routes/activity/+page.svelte	code	… tier…
 routes/activity/+page.svelte	code	…… failed …, on ….
 routes/activity/+page.svelte	code	…… failed on …
@@ -2029,7 +2048,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	a new version
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	a rule we cannot attribute
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	All environments
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	an approval
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Another controller owns this rollout's wanted version, so the dashboard cannot pin it.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	another deploy
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	another service
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	APM service
@@ -2055,8 +2073,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	failed here
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to check for new versions
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to continue rollout
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to continue rollout: …
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to retry deployment
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to retry: …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Held by rules
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Holding … rollout … — … … … .
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Loading releases…
@@ -2163,7 +2179,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	… deplo
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	… deploy details
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	… deploy…
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	… deploying, then … of checks.
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	… failed … … …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	… of … deploys failed
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	… of … deploys finished healthy, … of them by rolling back to an older release
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	… over …
@@ -2189,7 +2204,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	pinned to
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Recorded note
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Roll back
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	aria-label	Roll back to this build
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Roll back to this build
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	rolled back
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Rolled back from
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Same build as …

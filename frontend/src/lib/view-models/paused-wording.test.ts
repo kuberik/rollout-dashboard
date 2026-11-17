@@ -20,9 +20,9 @@ describe('history wording for a held bake', () => {
 		expect(liveStatusVerb({ bakeStatus: 'Failed', bakeHoldStartTime: held.bakeHoldStartTime })).toBeNull();
 	});
 	it('the Deploys rollup names the pause and the pending check', () => {
-		expect(pausedRollup(1)).toBe('Bake paused · 1 check pending');
-		expect(pausedRollup(2)).toBe('Bake paused · 2 checks pending');
-		expect(pausedRollup(0)).toBe('Bake paused');
+		expect(pausedRollup(1)).toEqual([{ text: 'Bake paused', ink: 'text-held' }, { text: '1 check pending', ink: 'text-fg-muted' }]);
+		expect(pausedRollup(2).map((p) => p.text)).toEqual(['Bake paused', '2 checks pending']);
+		expect(pausedRollup(0)).toEqual([{ text: 'Bake paused', ink: 'text-held' }]);
 	});
 	it('the evidence is the live checks that are not Healthy', () => {
 		const live = [

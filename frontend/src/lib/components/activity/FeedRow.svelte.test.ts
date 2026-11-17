@@ -25,21 +25,28 @@ describe('FeedRow manual deploy (QA #14 review)', () => {
 
 describe('FeedRow recovered failure', () => {
 	const base = { app: 'hello', href: '/x', verb: 'failed its health check', tone: 'failed' as const, age: '14:10' };
-	const mark = (extra: Record<string, unknown>) => {
-		const { container } = render(FeedRow, { props: { ...base, ...extra } });
-		const m = container.querySelector('.fr-mk')!.cloneNode(true) as HTMLElement;
-		m.querySelectorAll('.sr-only').forEach((e) => e.remove());
-		m.querySelectorAll('[title]').forEach((e) => e.removeAttribute('title'));
-		return { html: m.innerHTML, verb: container.querySelector('.fr-v')!.className };
-	};
-	test('words go neutral while the mark stays the failed mark; only a superseded failure takes the resolved mark', () => {
-		const live = mark({ live: true });
-		const recovered = mark({ live: false, markLive: true });
-		const superseded = mark({ live: false, markLive: false });
-		expect(recovered.html).toBe(live.html);
-		expect(recovered.verb).not.toContain('text-danger');
-		expect(live.verb).toContain('text-danger');
-		expect(superseded.html).not.toBe(live.html);
-		expect(mark({ live: false }).html).toBe(superseded.html);
+	const chip = (extra: Record<string, unknown>) => render(FeedRow, { props: { ...base, ...extra } }).container.querySelector('.fr-mk span.rounded-full')!.className;
+	test('failing now = solid; current failure with checks OK again = ring; superseded = resolved; unknown stays solid', () => {
+		const solid = chip({ live: true });
+		expect(solid).toContain('bg-danger-solid');
+		const ring = chip({ live: false, markLive: true, markRecovered: true });
+		expect(ring).toContain('ring-[1.5px]');
+		expect(ring).not.toContain('bg-danger-solid');
+		const superseded = chip({ live: false, markLive: false });
+		expect(superseded).toContain('ring-line');
+		expect(chip({ live: false, markLive: false, markRecovered: true })).toBe(superseded);
+		// a current failure with no health evidence kept: the explicit flag is absent, so it stays the solid disc
+		expect(chip({ live: false, markLive: true })).toBe(solid);
+	});
+	test('the words go neutral for a recovered failure, the mark does not follow them', () => {
+		const verb = (extra: Record<string, unknown>) => render(FeedRow, { props: { ...base, ...extra } }).container.querySelector('.fr-v')!.className;
+		expect(verb({ live: false, markLive: true, markRecovered: true })).not.toContain('text-danger');
+		expect(verb({ live: true })).toContain('text-danger');
+	});
+	test('a recovered failure passed as live (the app page feed) still words it in neutral ink, not danger', () => {
+		const verb = (extra: Record<string, unknown>) => render(FeedRow, { props: { ...base, ...extra } }).container.querySelector('.fr-v')!.className;
+		expect(verb({ live: true, markRecovered: true })).toContain('text-fg-muted');
+		expect(verb({ live: true, markRecovered: true })).not.toContain('text-danger');
+		expect(verb({ live: false, markLive: true, markRecovered: true })).toContain('text-fg-muted');
 	});
 });

@@ -122,6 +122,18 @@ describe('CadenceStrip', () => {
 		expect(screen.getAllByLabelText('Roll back to this').length).toBeGreaterThan(0);
 	});
 
+	test('another controller owns the wanted version: the cluster list\'s Roll back rows are disabled with the reason', async () => {
+		const { container } = render(CadenceStrip, { history: dense, now: NOW, range: '7d', onRollback: vi.fn(), rollbackDisabledReason: 'Owned elsewhere.' });
+		await fireEvent.mouseEnter(container.querySelector<HTMLElement>('.cadence-cluster')!);
+		await screen.findAllByRole('listitem');
+		const rb = screen.getAllByLabelText('Roll back to this') as HTMLButtonElement[];
+		expect(rb.length).toBeGreaterThan(0);
+		for (const b of rb) {
+			expect(b.disabled).toBe(true);
+			expect(b.getAttribute('title')).toBe('Owned elsewhere.');
+		}
+	});
+
 	// AD round 7, item 3: "the phone cluster mark gets a ≥44px tap target,
 	// and a tap opens the list card." Regression for the specific bug found
 	// live: a touch `tap()` dispatches a synthetic `mouseenter` BEFORE its
@@ -158,6 +170,15 @@ describe('CadenceStrip', () => {
 			rollbackIndices: new Set([2])
 		});
 		expect(container.querySelector('.cadence-marker-rollback')).not.toBeNull();
+	});
+
+	test('another controller owns the wanted version: the card\'s Roll back is drawn disabled with the reason', async () => {
+		const onRollback = vi.fn();
+		const { container } = render(CadenceStrip, { history, now: NOW, onRollback, rollbackDisabledReason: 'Owned elsewhere.' });
+		await fireEvent.mouseEnter(container.querySelector<HTMLElement>('.cadence-segment[data-state="healthy"]')!);
+		const b = screen.getByRole('button', { name: /Roll back to this/ }) as HTMLButtonElement;
+		expect(b.disabled).toBe(true);
+		expect(b.getAttribute('title')).toBe('Owned elsewhere.');
 	});
 
 	test('one hover-card template: Roll back only on a previous healthy build, failure named on a failed one', async () => {

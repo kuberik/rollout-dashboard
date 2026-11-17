@@ -24,6 +24,8 @@ export type PlumbRow = {
 	key: string; repo: string; ref: string; title: string; href: string; state: string; col: string; age: string; since: number;
 	/** the service named under the state word (a multi-service change whose worst service is not every service) */
 	worst: string | null; services: Svc[] | null;
+	/** a failed change whose checks are all OK again: the row's mark is the ring */
+	recovered?: boolean;
 };
 export type PlumbStop = { col: string; rows: PlumbRow[] };
 export type PlumbLanded = { key: string; repo: string; ref: string; title: string; href: string; age: string; at: number };
@@ -47,7 +49,8 @@ function plumbOfRaw(hs: HomeState, repos: readonly string[]): Plumb {
 
 	const rows: PlumbRow[] = flying.filter((p) => keep(p.c.repo)).map((p) => ({
 		key: p.c.key, repo: p.c.repo, ref: p.ref, title: p.c.title, href: p.c.changeHref ?? p.c.href, state: p.state, col: p.col, age: ago(sinceOf(p)), since: Date.parse(sinceOf(p)),
-		worst: p.services && p.worst && p.services.some((s) => s.app !== p.worst) ? p.worst : null, services: p.services ?? null
+		worst: p.services && p.worst && p.services.some((s) => s.app !== p.worst) ? p.worst : null, services: p.services ?? null,
+		...(p.state === 'failed' && p.c.failure?.recovered ? { recovered: true } : {})
 	}));
 	const stops = STOPS.map((col) => ({ col, rows: rows.filter((r) => r.col === col).sort((a, b) => SEV(a.state) - SEV(b.state) || a.since - b.since) }));
 

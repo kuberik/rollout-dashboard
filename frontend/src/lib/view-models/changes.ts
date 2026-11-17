@@ -1373,6 +1373,8 @@ export type FamilyProgressStep = {
 	builtCount: number;
 	/** Of `builtCount`, how many are `live`. */
 	liveCount: number;
+	/** `tone: 'failed'` and every failed cell's checks are all OK again (the caller's `recoveredOf` said so): the strip draws the recovered ring, not the solid disc. False when unknown. */
+	recovered?: boolean;
 	/** Every contributing mark's own sentence, joined — for the step's
 	 *  `title`/tooltip. */
 	sentence: string;
@@ -1421,6 +1423,15 @@ export type FamilyProgressStep = {
  *  `HELD_LIKE_PR_STATES`; restated as a `MarkTone`-level check below because
  *  `LandingMarkVM` already carries the collapsed `tone`, not the raw state,
  *  for a mark spanning multiple regions. */
+
+/**
+ * The ink of the verdict words of a FAILED change ("failed in prod"): neutral once every failed family has its checks OK again (and at least one failed),
+ * as the ring beside it is; one failing now keeps the danger ink (`tone-bad`).
+ */
+export const failedVerdictInk = (steps: readonly { tone: string; recovered?: boolean }[] | null): 'text-fg-muted' | 'tone-bad' => {
+	const failed = (steps ?? []).filter((s) => s.tone === 'failed');
+	return failed.length > 0 && failed.every((s) => s.recovered === true) ? 'text-fg-muted' : 'tone-bad';
+};
 
 /**
  * THE PER-FAMILY PROGRESS METER, FRONTIER-AWARE. `familyProgress` used to
@@ -1473,7 +1484,7 @@ export type FamilyProgressStep = {
  * OLD mark-only reading — this is additive, never a behaviour change for
  * marks alone.
  */
-export function familyProgress(row: Pick<ChangeRowVM, 'grid' | 'services'>): FamilyProgressStep[] {
+export function familyProgress(row: Pick<ChangeRowVM, 'grid' | 'services'>, recoveredOf?: (cell: PrCell) => boolean): FamilyProgressStep[] {
 	const byFamily = new Map<string, LandingMarkVM[]>();
 	for (const service of row.grid.services) {
 		for (const mark of service.marks) {
@@ -1601,6 +1612,7 @@ export function familyProgress(row: Pick<ChangeRowVM, 'grid' | 'services'>): Fam
 		let state: PrState | null;
 		let approvalWait = false;
 		let anyResolved = false;
+		let recovered = false;
 
 		if (rawCells && rawCells.length > 0) {
 			const builtCells = rawCells.filter((c) => c.state !== 'not-built');
@@ -1625,6 +1637,8 @@ export function familyProgress(row: Pick<ChangeRowVM, 'grid' | 'services'>): Fam
 				if (failedCell) {
 					tone = 'failed';
 					state = failedCell.state;
+					// recovered only when EVERY failed cell's checks are OK again and the caller can say so (no evidence = not known = solid)
+					recovered = !!recoveredOf && builtCells.filter((c) => toneOf(c.state) === 'failed').every((c) => recoveredOf(c));
 				} else if (heldCell) {
 					tone = 'stuck';
 					state = heldCell.state;
@@ -1760,7 +1774,8 @@ export function familyProgress(row: Pick<ChangeRowVM, 'grid' | 'services'>): Fam
 			sentence,
 			approvalWait,
 			resolved,
-			anyResolved
+			anyResolved,
+			...(tone === 'failed' && recovered ? { recovered: true } : {})
 		});
 		if (tone === 'stuck' || tone === 'failed') frozen = true;
 	}

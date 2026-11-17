@@ -13,6 +13,7 @@
  *   C5    search-indexer      Failed          prometheus-alert           Failed      S7  failed 14m ago for 3m, recovered (the witness keeps the bake failed)
  *   C6    catalog-api         Failed          datadog                    Failed      S5  failed 10m ago, OK 1m ago
  *   C7    inventory-api       InProgress      prometheus-alert           InProgress  S8  Pending: the provider's error is the message (5m)
+ *                                                                                      its wanted version is owned by another field manager (Flux): the header's Roll back is disabled and says why
  *
  * EVERY time is computed from `Date.now()` on each request (not from `hcAgo`, which is anchored to the server start and drifts: the take-A shots
  * read "1h ago"). `checkout-api` (the brief's name for C1) already exists in the mock fleet, so C1 is `checkout-gateway`.
@@ -46,6 +47,8 @@ type Case = {
 	/** the failing checks' names, snapshotted onto the head's failedHealthChecks; `snapObs` overrides the snapshot's observations (a recovered check's live ones are healthy) */
 	snapshot: string[];
 	snapObs?: Record<string, Obj[]>;
+	/** builds newer than the failed prod head, already live in dev and staging: the failed place holds them (the app page's Holding card lists the health hold) */
+	newer?: number;
 };
 
 const NS = (app: string) => `${app}-prod-default`;
@@ -189,6 +192,7 @@ function cases(): Case[] {
 		bake: 'Failed',
 		bakeEnd: 10,
 		bakeMessage: 'HighLatency fired during the bake',
+		newer: 1,
 		snapshot: ['search-indexer-prometheus-alerts'],
 		snapObs: { 'search-indexer-prometheus-alerts': [obs({ name: 'HighLatency', kind: 'Threshold', value: '1.9', limit: '1', direction: 'Above', unit: 's', window: '5m', healthy: false, message: 'severity=warning' }, 14)] },
 		checks: [
@@ -212,7 +216,7 @@ function cases(): Case[] {
 		app: 'catalog-api',
 		deployed: 24,
 		bake: 'Failed',
-		bakeEnd: 1,
+		bakeEnd: 10,
 		bakeMessage: 'catalog cache hit ratio fell below its floor during the bake',
 		snapshot: ['catalog-api-datadog'],
 		snapObs: { 'catalog-api-datadog': [obs({ name: 'catalog cache hit ratio', kind: 'Threshold', value: '72', limit: '80', direction: 'Below', unit: '%', window: '5m', healthy: false, message: 'service:catalog, env:prod' }, 10)] },
@@ -283,9 +287,10 @@ function fixtureOf(c: Case, index: number): Fixture {
 					bakeHeldDuration: '1m30s'
 				})
 	};
-	return build(c.app, `hf${index + 1}`, (n) => `1.${n}.0`, 1, 4, [
-		{ tier: 'dev', site: 'default', wave: 1, cluster: 'dev', at: 4, bake: 'Succeeded' },
-		{ tier: 'staging', site: 'default', wave: 1, cluster: 'dev', at: 4, bake: 'Succeeded' },
+	const top = 4 + (c.newer ?? 0);
+	return build(c.app, `hf${index + 1}`, (n) => `1.${n}.0`, 1, top, [
+		{ tier: 'dev', site: 'default', wave: 1, cluster: 'dev', at: top, bake: 'Succeeded' },
+		{ tier: 'staging', site: 'default', wave: 1, cluster: 'dev', at: top, bake: 'Succeeded' },
 		{ tier: 'prod', site: 'default', wave: 1, cluster: 'prod', at: 4, bake: c.bake, head, spec: { healthCheckSelector: { matchLabels: { app: c.app } }, ...(failed ? {} : { bakeTime: '15m' }) } }
 	]);
 }
@@ -341,11 +346,33 @@ export function healthFailuresFleet(): Obj {
 	};
 }
 
+/** C7's rollouts: another manager (Flux) applies `spec.wantedVersion`, so the dashboard cannot pin it and a Roll back (a pin) is unavailable */
+export function ownedElsewhere<R extends { metadata: Obj; spec: Obj; status: { wantedVersion?: unknown } }>(r: R): R {
+	if (r.metadata.name !== 'inventory-api') return r;
+	return {
+		...r,
+		metadata: { ...r.metadata, managedFields: [{ manager: 'flux-controller', operation: 'Apply', fieldsV1: { 'f:spec': { 'f:wantedVersion': {} } } }] },
+		spec: { ...r.spec, wantedVersion: r.status.wantedVersion }
+	};
+}
+
 export const HEALTH_FAILURES_APPS = ['checkout-gateway', 'checkout-web', 'payments-api', 'orders-hub', 'search-indexer', 'catalog-api', 'inventory-api'] as const;
 
-const HEADLINES = ['Tune connection pool sizes', 'Add retry budget to outbound calls', 'Fix flaky readiness handler'];
+/** the newest change of each app: one title per app, so a row or a palette entry names ITS change and none reads as one change failing everywhere */
+const NEWEST_TITLE: Record<string, string> = {
+	'checkout-gateway': 'Raise the upstream timeout for card tokenisation',
+	'checkout-web': 'Debounce the promo code field',
+	'payments-api': 'Cap refund batches at 200 per run',
+	'orders-hub': 'Skip duplicate order webhooks',
+	'search-indexer': 'Reindex the product catalogue in smaller shards',
+	'catalog-api': 'Fix flaky readiness handler',
+	'inventory-api': 'Read stock levels from the replica'
+};
+/** the change of a build NEWER than the failed head (an app with `newer` builds held behind its failed place): a real title, never the generic "Deploy <tag>" */
+const NEWER_TITLE: Record<string, string> = { 'search-indexer': 'Raise the shard rebalance threshold' };
+const headlinesOf = (app: string): string[] => ['Tune connection pool sizes', 'Add retry budget to outbound calls', NEWEST_TITLE[app] ?? 'Fix flaky readiness handler', ...(NEWER_TITLE[app] ? [NEWER_TITLE[app]] : [])];
 const ghOf = (fs: Fixture[]): Record<string, AppFixture> =>
-	Object.fromEntries(fs.map((f) => [f.app, curated(OWNER, f.app, f.releases.map((r) => r.tag), HEADLINES, undefined, `Initial ${f.app} release`)]));
+	Object.fromEntries(fs.map((f) => [f.app, curated(OWNER, f.app, f.releases.map((r) => r.tag), headlinesOf(f.app), undefined, `Initial ${f.app} release`)]));
 const mergeOf = (fs: Fixture[]): Record<string, number> =>
 	Object.fromEntries(fs.flatMap((f) => f.releases.map((r, k) => [r.tag, (f.releases.length - k) * 150 + 20] as const)));
 
@@ -362,6 +389,6 @@ export function install(on = true, withReleaseSwitch = false): void {
 	}
 	build_();
 	setExtraHealthChecks({ one: healthFailuresChecks, fleet: healthFailuresFleet });
-	setExtraFixtures('health-failures', { environments: () => fixtures.flatMap(environmentsOf), rollouts: () => (build_(), fixtures.flatMap(rolloutsOf)), restamp });
+	setExtraFixtures('health-failures', { environments: () => fixtures.flatMap(environmentsOf), rollouts: () => (build_(), fixtures.flatMap(rolloutsOf).map(ownedElsewhere)), restamp });
 	registerExtraApps({ ...(withReleaseSwitch ? RS_GH : {}), ...ghOf(fixtures) }, { ...(withReleaseSwitch ? RS_MERGE : {}), ...mergeOf(fixtures) });
 }

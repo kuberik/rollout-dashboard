@@ -10,6 +10,7 @@
  * Honest fallbacks: no `observations[]` on the list payload, so a failing card leads with the check NAME + message (attention.ts), never a figure;
  * a prod approval card counts its regions (the region meter, as on Home); other approvals stay title-led.
  */
+import { attentionRank } from '$lib/view-models/failure-actions';
 import { shortRevision } from '$lib/version-utils';
 import { oldestFirst } from '$lib/instant';
 import { beadRank } from '$lib/view-models/severity';
@@ -24,7 +25,7 @@ import { rowAction, actionHref } from './rollout-view';
 import { attentionModel, type AttentionModel } from '$lib/view-models/attention';
 import { repoCardModel, rollupParts, type RepoCardModel, type RepoChange, type RollupPart } from '$lib/view-models/repo-card';
 import type { BeadState } from '$lib/view-models/bead';
-import { failedParts } from './state-words';
+import { attentionRollupOf } from './state-words';
 import { failedBannerTitle } from '$lib/view-models/banner';
 import { failingNowOf, bannerMeta, type BannerMeta, type ChangeLine } from './rollouts-page';
 import { servicesOf, spreadOf, type Svc } from './change/service-spread';
@@ -51,11 +52,12 @@ export type PChange = {
 	worst?: string;
 };
 
-export type AttentionItem = { key: string; p: PChange; model: AttentionModel; href: string; openHref: string; rollbackHref: string | null; yours: boolean; id: { name: string; ref: string; person?: string; you: boolean }; card: RepoCardModel };
+export type AttentionItem = { key: string; p: PChange; model: AttentionModel; href: string; openHref: string; rollbackHref: string | null; /** the rollout the failure is on (where Retry lives), not the change page */ retryHref?: string; yours: boolean; id: { name: string; ref: string; person?: string; you: boolean }; card: RepoCardModel };
 export type RepoGroup = { repo: string; changes: PChange[]; landed: PChange[]; flying: number; worst: number; href: string };
 export type RestRepo = { key: string; repo: string; href: string; ref: string; title: string; age: string };
-export type Banner = { p: PChange; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine; openHref: string; rollbackHref: string | null; meta: BannerMeta };
-export type Rollup = (string | { text: string; ink: 'danger' | 'held' })[];
+export type Banner = { p: PChange; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine; openHref: string; rollbackHref: string | null; recovered?: boolean; meta: BannerMeta };
+/** `fold`: the part is dropped on a phone when it is not the last (a count the header can do without there) */
+export type Rollup = (string | { text: string; ink?: 'danger' | 'held'; fold?: boolean })[];
 
 export type ChangesPage = {
 	banner: Banner | null;
@@ -130,9 +132,11 @@ function classifyChangesRaw(hs: HomeState): { mineP: PChange[]; teamP: PChange[]
 	return { mineP: classify(mineAll, leadKey, true), teamP: classify(teamAll, null, false), leadKey };
 }
 
-/** Attention order: failing first, then the OLDEST ask first (compared as instants; a change with no clock goes last). */
+/** Attention order: failing now first, then the approvals, then recovered failures, the OLDEST ask first inside a tier (compared as instants; a change with no clock goes last). */
 export function attentionOrder<T extends { state: string }>(ps: T[], askSince: (p: T) => string | null): T[] {
-	return [...ps].sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed') || oldestFirst(askSince(a), askSince(b)));
+	/* tiers: a failure live now, an approval, then a recovered one (its checks are OK again); the oldest ask first only inside a tier */
+	const tier = (p: T) => attentionRank(p.state === 'failed' ? 'failed' : 'approval', !!(p as { c?: { failure?: { recovered?: boolean } | null } }).c?.failure?.recovered);
+	return [...ps].sort((a, b) => tier(a) - tier(b) || oldestFirst(askSince(a), askSince(b)));
 }
 /** When an Attention item began asking: an approval from its wait clock, a failure from when its check began failing
  *  (the instant its card prints), else the ride's or change's own clock. */
@@ -144,9 +148,9 @@ export function attentionSince(
 	if (p.state === 'failed') return p.c.failure?.since ?? p.ride.since ?? p.c.since ?? null;
 	return p.ride.since ?? p.c.since ?? null;
 }
-/** the Attention rollup: only a check failing now is danger ink, a recovered `failed` and the rest follow (the shared failing/failed split, state-words `failedParts`) */
+/** the Attention rollup: only a check failing now is danger ink, a recovered `failed` and the rest follow (the shared failing/failed split, state-words `failedRollup`) */
 export function attentionRollupParts(failing: number, recovered: number, toApprove: number): Rollup {
-	return [...failedParts(failing, recovered).map((text) => (text.endsWith(' failing') ? { text, ink: 'danger' as const } : text)), ...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])];
+	return attentionRollupOf(failing, recovered, toApprove ? { text: `${toApprove} to approve`, ink: 'held' as const } : null);
 }
 export function changesPage(hs: HomeState): ChangesPage {
 	return inScope(() => changesPageRaw(hs));
@@ -166,7 +170,7 @@ function changesPageRaw(hs: HomeState): ChangesPage {
 	};
 	const changeLine = (p: PChange): ChangeLine => { const you = isViewer(p.c.who); const person = personName(p.c.who); return { title: p.c.title, ref: p.ref, person: you ? 'you' : person ?? undefined, you, src: you || !person ? null : avatarSrc(person) ?? null }; };
 	const banner: Banner | null = lead
-		? { p: lead, title: failedBannerTitle(lead.ride.app, gateOf(lead.c) || lead.c.at || '', placeOf(lead.c), failingNowOf(lead.ride.row)), check: lead.c.failure?.check ? { name: lead.c.failure.check, message: lead.c.failure.message ?? '' } : null, line: lead.c.failure?.line ?? null, change: changeLine(lead), meta: bannerMeta(lead.ride.row), openHref: lead.ride.href, rollbackHref: rollbackOf(lead) }
+		? { p: lead, title: failedBannerTitle(lead.ride.app, gateOf(lead.c) || lead.c.at || '', placeOf(lead.c), failingNowOf(lead.ride.row)), check: lead.c.failure?.check ? { name: lead.c.failure.check, message: lead.c.failure.message ?? '' } : null, line: lead.c.failure?.line ?? null, change: changeLine(lead), meta: bannerMeta(lead.ride.row), openHref: lead.ride.href, rollbackHref: rollbackOf(lead), recovered: !!lead.ride.row?.failure?.recovered }
 		: null;
 
 	/* Attention: your changes that need you (failing, or an approval you can give), minus the banner's; failing first, then oldest ask first */
@@ -190,7 +194,7 @@ function changesPageRaw(hs: HomeState): ChangesPage {
 		});
 		const one: RepoGroup = { repo: p.c.repo, changes: [p], landed: [], flying: 1, worst: 0, href: '' };
 		return {
-			key: p.c.key, p, model, href: p.c.changeHref ?? p.ride.href, openHref: p.c.changeHref ?? p.ride.href, rollbackHref: failed ? rollbackOf(p) : null, yours: !failed,
+			key: p.c.key, p, model, href: p.c.changeHref ?? p.ride.href, openHref: p.c.changeHref ?? p.ride.href, rollbackHref: failed ? rollbackOf(p) : null, retryHref: p.ride.href, yours: !failed,
 			id: { name: p.ride.app, ref: p.ref, person: you ? undefined : person ?? undefined, you },
 			card: cardOf(one, TIERS.filter((t) => p.c.tiers.includes(t)))
 		};

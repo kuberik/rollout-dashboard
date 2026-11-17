@@ -39,7 +39,7 @@ import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/release
 import { catalogueOrder, newestOf, behindIn, catalogueBehind } from '$lib/releases/order';
 import type { NoReleases } from '$lib/releases/catalogue';
 import { formatTimeAgoCompact, buildAge } from '$lib/utils';
-import { HELD_BY_PIN, newerBuildsShown, pinSince } from '$lib/view-models/pin-hold';
+import { HELD_BY_PIN, newerBuildsShown, pinSince, dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
 import { formatShortDuration } from '$lib/view-models/stage-advance';
 import { behindOfStatus } from '$lib/view-models/behind';
 import { newerReleaseCountLive } from '$lib/view-models/failed-builds';
@@ -64,6 +64,7 @@ import { avatarForLogin } from '$lib/github-avatar';
 import { respondGithub } from '$lib/demo/github-data';
 import { githubJson, rangeUrl } from './github-read.svelte';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
+import { checkHoldSentence } from '$lib/view-models/check-hold-sentence';
 import { deployActs } from '$lib/history-marks';
 import { upToDateHeadline } from '$lib/view-models/up-to-date';
 import * as RD from '$lib/components/home/roster/roster-data';
@@ -120,6 +121,12 @@ export const legacyPolicyAt = (href: string): string | null => {
 /** an app none of whose rollouts has releases (by rollout name): its changes cannot be promoted */
 export const noReleasesApp = (app: string): NoReleases | undefined => { const rs = raws().filter((r) => r.metadata.name === app); const ns = rs.map((r) => noReleasesOf(r as unknown as Rollout)); return rs.length > 0 && ns.every(Boolean) ? ns[0]! : undefined; };
 const rawOf = (href: string) => { approvalRev(); const h = hrefParts(href); return h ? raws().find((r) => r.metadata.namespace === h.ns && r.metadata.name === h.name) ?? null : null; };
+
+/** Why Roll back is refused on the rollout behind `href` (a rollout path, a query allowed): another controller owns its wanted version. The ONE reason every Roll back entry point (cards, banners, tiles, the palette) disables with; null when the dashboard may pin. */
+export const rollbackOwnedReason = (href: string | null | undefined): string | null => {
+	const raw = href ? rawOf(href.split(/[?#]/)[0]!) : null;
+	return raw && !dashboardManagesWantedVersion(raw as unknown as Rollout) ? WANTED_VERSION_OWNED_REASON : null;
+};
 
 /* ═══ steps (defects 7, 8) ═══ */
 export type StepState = 'done' | 'active' | 'fail' | 'todo' | 'hold';
@@ -248,7 +255,11 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 
 /** A failed place whose checks are all OK again (what its Attention card, Fleet row and strip box read as "Failed", not "Failing"): the failure reason's own `recovered`, by href. */
 export const failureRecovered = (href: string): boolean => !!failureReason({ group: 'failed', href })?.recovered;
+/** A failed place with a health check failing right now (its pill reads "FAILING"); false for a deploy failure with no check involved and for all-recovered checks. The `failingNowOf` rule, by href. */
+export const failingNowAt = (href: string): boolean => !!failureReason({ group: 'failed', href })?.pool?.some((c) => c.verdict === 'failing');
 /** THE ONE age of a failed place: when its failure began (the instant the banners and the Health checks card print), null when no health evidence was kept */
+/** the recovered flag of a place that is STILL failed (its newest deploy failed): history of an earlier failure is never "recovered" by the place's later health */
+export const failureRecoveredNow = (href: string): boolean => rawOf(href)?.status.history?.[0]?.bakeStatus === 'Failed' && failureRecovered(href);
 export const failureSinceAt = (href: string): string | null => failureReason({ group: 'failed', href })?.since ?? null;
 
 /* ═══ places (defect 5) ═══ */
@@ -1054,7 +1065,7 @@ export function gateName(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key'
 	const sentence = row.state === 'awaiting-approval' ? 'Releases when someone approves'
 		: kind === 'dependency' ? 'Releases when its dependency ships a newer version'
 		: kind === 'schedule' ? 'Releases when the deploy window opens'
-		: homeModel(state).fleet.needsYou.find((n) => `${n.app}@${n.env}` === row.key)?.facts?.reason === 'check' ? 'Releases when the check starts passing' : 'Releases when the rule allows this build';
+		: homeModel(state).fleet.needsYou.find((n) => `${n.app}@${n.env}` === row.key)?.facts?.reason === 'check' ? checkHoldSentence(failureRecoveredNow(row.href)) : 'Releases when the rule allows this build';
 	return { name: title, sentence, label };
 }
 /* ═══ ONE commit identity per build (AD v2 m) ═══ */
@@ -1174,6 +1185,12 @@ export function gate(row: Pick<RolloutRow, 'state' | 'href' | 'word' | 'key' | '
 }
 export type HealthCheckRow = { name: string; state: 'failing' | 'passing' | 'pending'; since: string | null; message: string | null };
 type RawHC = { metadata: { name: string; namespace: string }; status?: { status?: string; message?: string; lastChangeTime?: string; lastErrorTime?: string } };
+/** The raw HealthCheck resources the API lists for the place's rollout (what the Overview's Health checks card and a Retry's consequences read). */
+export function liveHealthChecks(href: string): HealthCheck[] {
+	const h = hrefParts(href);
+	if (!h) return [];
+	return ((source().healthChecks ?? []).find((i) => i.metadata.namespace === h.ns && i.metadata.name === h.name)?.healthChecks ?? []) as HealthCheck[];
+}
 /** The Overview's Health checks card for the place: failing checks of the deployed entry (named as the tab, aged from the bake end), the namespace's HealthCheck resources, then "Flux Deployment" (passing since the deploy). */
 export function healthChecks(row: Pick<RolloutRow, 'href'>): HealthCheckRow[] {
 	const h = hrefParts(row.href);
@@ -1276,10 +1293,10 @@ export function stepDetail(row: Pick<RolloutRow, 'state' | 'href' | 'since' | 'g
 		checkTimer: live === 'checking' ? 'Checking' : live === 'done' ? 'Done' : 'Pending'
 	};
 }
-/** The tab's state pill (rolloutStateChip on the deployed entry, upper-cased as drawn) and its gate-holding count ("1 gate holding", "1 of 5 gates holding"; null when no gate holds). */
+/** The tab's state pill (rolloutStateChip on the deployed entry, upper-cased as drawn; FAILING while a check fails now, FAILED once recovered or when no check was involved) and its gate-holding count ("1 gate holding", "1 of 5 gates holding"; null when no gate holds). */
 export function tabPill(row: Pick<RolloutRow, 'href'>): { word: string; role: string; holding: string | null } {
 	const st = rawOf(row.href)?.status;
-	const chip = rolloutStateChip(st?.history?.[0]?.bakeStatus ?? null, st?.history?.[0]);
+	const chip = rolloutStateChip(st?.history?.[0]?.bakeStatus ?? null, st?.history?.[0], failingNowAt(row.href));
 	const cand = liveCands(st)?.[0]?.tag ?? liveCands(st)?.[0]?.version;
 	const gs = st?.gates ?? [];
 	const n = gs.filter((g) => g.allowedVersions != null && !!cand && !g.allowedVersions.includes(cand)).length;
@@ -1389,7 +1406,7 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		const reason: PlaceHold['holdReason'] = p.state === 'failed' ? 'failed' : pv?.state === 'running' ? null : approval ? 'approval' : rule ? 'rule' : held.length && p.state !== 'healthy' ? 'health' : null;
 		const g0 = approval || rule ? gateName({ state: approval ? 'awaiting-approval' : 'held-by-rule', href: p.href, word: '', key: `${app}@${p.env}` }, state) : null;
 		/* a rule hold no gate object names (the dependency is a RolloutDependency join): the cause the banner and the Holding card both read is `heldCauses`' own; the sentence is the Gates tab's wording per kind */
-		const g = g0 ?? (rule && !approval ? (() => { const h = heldCauses(state).find((x) => x.rows.some((r) => r.href === p.href || r.hrefs?.includes(p.href))); const c = h?.cause.replace(/^Waiting on /, ''); return c && c !== 'Held by a rule' ? { name: c, label: { kind: 'named', text: c } as GateLabel, sentence: h?.reason === 'check' ? 'Releases when the check starts passing' : `Releases when ${c} ships a newer version` } : null; })() : null);
+		const g = g0 ?? (rule && !approval ? (() => { const h = heldCauses(state).find((x) => x.rows.some((r) => r.href === p.href || r.hrefs?.includes(p.href))); const c = h?.cause.replace(/^Waiting on /, ''); return c && c !== 'Held by a rule' ? { name: c, label: { kind: 'named', text: c } as GateLabel, sentence: h?.reason === 'check' ? checkHoldSentence(failureRecoveredNow(p.href)) : `Releases when ${c} ships a newer version` } : null; })() : null);
 		const cat = appOrder(app, state);
 		const failedBuilds = (p.version ? cat.slice(cat.lastIndexOf(buildName(app, p.version) ?? p.version) + 1) : []).filter((b) => failedHere(rawOf(p.href)?.status as never, { tag: b, version: b, revision: b }, waveFailedRevisions(rawOf(p.href) as never, envsOfSource())));
 		return { bakePaused: p.bakePaused, wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, failedHere: failedBuilds, heldBuilds: held, newerShown: newerBuildsShown(rawOf(p.href) as never, envsOfSource(), true).map((c) => { const b = (c as { version?: string; tag?: string }).version ?? (c as { tag?: string }).tag ?? ''; return shortBuild(b) ?? b; }), runs: p.version };

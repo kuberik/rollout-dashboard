@@ -43,6 +43,9 @@
 			{:else if s.kind === 'deploying'}
 				<path class="wm-track" d={slicePath(s.from, s.to, R)} fill={TONE.deploying.solid} fill-opacity="0.5" />
 				<g clip-path="url(#{id}-c{i})"><path class="wm-sweep" d={wedge} fill={TONE.deploying.solid} /></g>
+			{:else if s.kind === 'recovered'}
+				<!-- RECOVERED: the failed disc with its fill taken out: a 1.5px danger ring (outer edge at R, so it fills exactly the disc's box), clipped to the slice -->
+				<circle cx="8" cy="8" r={R - 0.75} fill="none" stroke={TONE.recovered.solid} stroke-width="1.5" clip-path="url(#{id}-c{i})" />
 			{:else}
 				<path d={slicePath(s.from, s.to, R)} fill={TONE[s.kind].solid} />
 			{/if}

@@ -95,7 +95,8 @@
 		rollbackIndices = new Set<number>(),
 		now = Date.now(),
 		diffHref,
-		onRollback
+		onRollback,
+		rollbackDisabledReason = null
 	}: {
 		/** Newest-first, the exact shape of `rollout.status.history`. */
 		history: Entry[];
@@ -111,6 +112,8 @@
 		diffHref?: (index: number) => string | undefined;
 		/** The card's "Roll back to this": the page owns the confirm dialog. */
 		onRollback?: (index: number) => void;
+		/** Another controller owns the wanted version: Roll back stays drawn, disabled, with this reason. */
+		rollbackDisabledReason?: string | null;
 	} = $props();
 
 	const HOUR_MS = 3_600_000;
@@ -1063,7 +1066,8 @@
 						type="button"
 						class="btn btn-secondary btn-xs"
 						aria-label="Roll back to this build"
-						title="Roll back to this build"
+						title={rollbackDisabledReason ?? 'Roll back to this build'}
+						disabled={!!rollbackDisabledReason}
 						onclick={() => onRollback?.(seg.i)}
 					>
 						<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -1143,7 +1147,8 @@
 									type="button"
 									class="cadence-cluster-action btn btn-secondary btn-xs px-1.5"
 									aria-label="Roll back to this"
-									title="Roll back to this"
+									title={rollbackDisabledReason ?? 'Roll back to this'}
+									disabled={!!rollbackDisabledReason}
 									onclick={() => onRollback?.(seg.i)}
 								>
 									<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />

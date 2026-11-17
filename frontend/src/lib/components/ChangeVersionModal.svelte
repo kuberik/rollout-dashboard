@@ -30,6 +30,9 @@
 	import EmptyGlyph from './EmptyGlyph.svelte';
 	import type { NodeState } from '$lib/view-models/promotion-lanes';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
+	import { DIALOG_ERROR_CLASS } from '$lib/view-models/failure-text';
+	import { failureRecovered } from '$lib/components/new/data';
+	import { rolloutPath } from '$lib/source-dashboard';
 	import {
 		manualDeployNote,
 		autoDeployWhy,
@@ -78,6 +81,10 @@
 	import FactList, { type Fact } from './FactList.svelte';
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
+	import { WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
+	import { paneScrollDelta, scrollPaneOf } from '$lib/view-models/scroll-into-pane';
+	import { tick } from 'svelte';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	import { resolveGateName } from '$lib/view-models/gate-name';
 	import { gateLabel, gateLabelText, promotionSourceOf, labelPart, causeText, type Cause } from '$lib/view-models/gate-label';
@@ -156,7 +163,9 @@
 		 * `rolloutEnvironmentName`, so no surface can silently lose it.
 		 */
 		environmentName?: string | null;
+		site?: string | null;
 		onSuccess?: (message: string) => void;
+		/** A failed confirm prints its reason inside the open dialog (`data-deploy-error`) and is not reported here; if the dialog was closed while the request was in flight, this is called with the same sentence instead. */
 		onError?: (message: string) => void;
 		/**
 		 * ⭐ THE MUTATION'S PENDING STATUS, FOR THE PAGE BEHIND THIS DIALOG.
@@ -170,6 +179,8 @@
 		 * not 5-8s later when the response finally lands.
 		 */
 		onDeployStart?: () => void;
+		/** the request was refused or failed, whether the dialog is still open or not: clears what `onDeployStart` raised */
+		onDeployFail?: () => void;
 		/**
 		 * ⭐ RECOVERY MODE CARRIES INTO THE CONFIRM. (squad-rollout, Lane D,
 		 * round 6 — AD round 4, item 2.) `RecoveryModeWarningModal` asks for
@@ -192,10 +203,12 @@
 		initialExplanation = '',
 		cluster,
 		environmentName = null,
+		site = null,
 		contractHeldVersions,
 		onSuccess = () => {},
 		onError = () => {},
 		onDeployStart = () => {},
+		onDeployFail = () => {},
 		recoveryMode = undefined
 	}: Props = $props();
 
@@ -591,6 +604,10 @@
 	 * it permanently spinning.
 	 */
 	let deploying = $state(false);
+	let confirmBtnEl = $state<HTMLButtonElement | null>(null);
+	const hideLocalToast = toastHideTimer(() => (showLocalToast = false));
+	/** A failed confirm prints its reason INSIDE the open dialog (a toast hides behind the sheet and its backdrop); cleared when the dialog opens or the request is sent again. */
+	let deployError = $state('');
 
 	let showLocalToast = $state(false);
 	let localToastMessage = $state('');
@@ -604,6 +621,7 @@
 			searchQuery = '';
 			showAllTags = false;
 			deploying = false;
+			deployError = '';
 			activeVersionIndex = 0;
 			// `initialSelectedVersion` is never a picker pick — see
 			// `reachedViaPicker`'s own doc comment.
@@ -1220,7 +1238,7 @@
 	 * `view-models/deploy-risk.ts` where it has tests. A safety rule that
 	 * lives only in a template is one refactor from being lost.
 	 */
-	const intent = $derived(deployIntent(rollout, selectedVersion, environmentName));
+	const intent = $derived(deployIntent(rollout, selectedVersion, environmentName, site));
 	const direction = $derived(intent.direction);
 	/** `targetPhrase` capitalized for the one place it opens a sentence. */
 	const targetPhraseCapitalized = $derived.by(() => {
@@ -1652,7 +1670,7 @@
 	 * (`envLabel`, the cluster's own spelling) never is. `intent.environment`
 	 * is that same spelling — unconditional, tier or not.
 	 */
-	const dialogTitleTarget = $derived(intent.environment || 'this environment');
+	const dialogTitleTarget = $derived(targetPhrase(intent)); // `prod · eu-west`: the one place name every Roll back / Retry confirm uses
 	const dialogTitle = $derived.by(() => {
 		if (!selectedVersion) return 'Change version';
 		const build = getDisplaySelectedVersion();
@@ -2309,6 +2327,9 @@
 	async function handleDeploy() {
 		if (!rollout || !selectedVersion || deploying) return;
 		deploying = true;
+		// The pressed button is about to be disabled; park focus on the dialog so it never drops to <body>.
+		void tick().then(() => confirmBtnEl?.closest('dialog')?.focus());
+		deployError = '';
 		onDeployStart();
 		try {
 			const response = await fetch(
@@ -2333,11 +2354,11 @@
 					response.status === 500 &&
 					errorData.details?.includes('dashboard is not managing the wantedVersion field')
 				) {
-					throw new Error(
-						"Another controller owns this rollout's wanted version, so the dashboard cannot pin it."
-					);
+					throw new Error(WANTED_VERSION_OWNED_REASON);
 				}
-				throw new Error('Failed to change version');
+				const reason = [errorData.details, errorData.error, errorData.message].find((v) => typeof v === 'string' && v.trim());
+				const failed = direction === 'rollback' ? 'Failed to roll back' : 'Failed to change version';
+				throw new Error(reason ? `${failed}: ${reason}` : failed);
 			}
 			notifySuccess(
 				pinVersionToggle
@@ -2350,7 +2371,22 @@
 			open = false;
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Failed to deploy version';
-			notifyError(message);
+			onDeployFail();
+			if (open) {
+				deployError = message;
+				deploying = false;
+				// The pressed button was disabled while the request ran, so focus fell to <body>: put it back inside the dialog.
+				await tick();
+				confirmBtnEl?.focus();
+				// The callout takes room from the pane's scrolling area: if the field the person just typed in is now out of view, scroll the PANE (never the field).
+				const fields = rightContentEl?.querySelectorAll<HTMLElement>('textarea, input[type="text"]');
+				const field = fields?.[fields.length - 1];
+				const pane = field ? scrollPaneOf(field) : null;
+				if (pane && field) {
+					const delta = paneScrollDelta(pane.getBoundingClientRect(), field.getBoundingClientRect());
+					if (delta !== 0) pane.scrollTop += delta;
+				}
+			} else onError(message);
 			announce(message, 'assertive');
 		} finally {
 			// On success `open = false` already unmounts this dialog, so this is
@@ -2366,17 +2402,7 @@
 			localToastType = 'success';
 			localToastMessage = message;
 			showLocalToast = true;
-			setTimeout(() => (showLocalToast = false), 3000);
-		}
-	}
-
-	function notifyError(message: string) {
-		if (onError) onError(message);
-		else {
-			localToastType = 'error';
-			localToastMessage = message;
-			showLocalToast = true;
-			setTimeout(() => (showLocalToast = false), 3000);
+			hideLocalToast('success');
 		}
 	}
 </script>
@@ -2492,6 +2518,8 @@
 	dismissable={!selectedVersion}
 	role="dialog"
 	aria-modal="true"
+	tabindex={-1}
+	aria-busy={deploying}
 	classes={{
 		body: selectedVersion ? 'max-sm:max-h-dvh' : 'max-sm:h-full',
 		close:
@@ -2926,6 +2954,7 @@
 													: currentRowRole === 'deploying'
 														? 'deploying'
 														: 'behind'}
+											recovered={currentRowRole === 'failing' && failureRecovered(rolloutPath(cluster ?? '', rollout?.metadata?.namespace ?? '', rollout?.metadata?.name ?? ''))}
 											label="running"
 										/>
 									{:else if isNewestOfAll}
@@ -3073,7 +3102,6 @@
 								type="button"
 								class="btn btn-ghost btn-sm btn-icon hit-44 -my-1 -mr-2 shrink-0"
 								aria-label="Close"
-								disabled={deploying}
 								onclick={() => (open = false)}
 							>
 								<CloseOutline class="h-4 w-4" aria-hidden="true" />
@@ -3791,6 +3819,14 @@
 		     scrollable content area, above this footer — while this footer
 		     (and the blocker paragraph after it) land flush against the
 		     sheet's actual bottom edge, not a phantom one 170px short of it. -->
+		{#if deployError}
+			<div class="shrink-0 px-4 pt-3 pb-3">
+				<div role="alert" class={DIALOG_ERROR_CLASS} data-dialog-error>
+					<ExclamationCircleSolid class="mt-0.5 h-4 w-4 shrink-0" />
+					<p class="min-w-0 flex-1" data-deploy-error>{deployError}</p>
+				</div>
+			</div>
+		{/if}
 		<div
 			class="border-line flex shrink-0 items-center justify-between gap-2 border-t px-4 py-3 max-sm:min-h-11 max-sm:pb-[calc(12px+env(safe-area-inset-bottom))]"
 		>
@@ -3817,7 +3853,6 @@
 				<button
 					type="button"
 					class="btn btn-sm btn-secondary max-sm:min-h-11 max-sm:flex-1 max-sm:basis-0"
-					disabled={deploying}
 					onclick={() => (open = false)}>Cancel</button
 				>
 				{#if selectedVersion}
@@ -3841,6 +3876,7 @@
 					<button
 						type="button"
 						class="btn btn-sm {confirmBtnClass} max-sm:min-h-11 max-sm:min-w-0 max-sm:flex-1 max-sm:basis-0"
+						bind:this={confirmBtnEl}
 						disabled={confirmDisabled}
 						onclick={handleDeploy}
 						aria-label={deploying ? undefined : deployButtonLabel}

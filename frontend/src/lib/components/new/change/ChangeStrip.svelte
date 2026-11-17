@@ -1,5 +1,14 @@
 <svelte:options runes={true} />
 
+<script module lang="ts">
+	import { toneInk } from '$lib/view-models/state-tone';
+	import type { StageState, StagePlace } from '../stages/stages-model';
+	const QUIET = new Set<StageState>(['deployed', 'notreached', 'notaffected', 'replaced']);
+	/** a site picker row's word ink: quiet states none; a recovered failure (every check OK again) says "Failed" in neutral ink, failing now in danger ink */
+	export const siteWordInk = (p: Pick<StagePlace, 'state' | 'recovered'>): string | undefined =>
+		QUIET.has(p.state) && p.state !== 'notreached' ? undefined : toneInk(p.state === 'failed' && p.recovered ? 'recovered' : p.state);
+</script>
+
 <script lang="ts">
 	/**
 	 * THE CHANGE'S ENVIRONMENT STRIP (change-strip r1, owner 2026-11-12: "using the environment progression mini boxes strip we
@@ -11,16 +20,14 @@
 	 * No words in the strip: a word appearing would widen its box and push the next one (0px rule, tools/stability.mjs).
 	 * Several apps: one row per app on a shared grid (EnvRow `lanes`).
 	 */
-	import { toneInk } from '$lib/view-models/state-tone';
 	import EnvRow, { type EnvCell, type EnvLane, type EnvSite } from '$lib/components/EnvRow.svelte';
 	import type { SiteState } from '$lib/components/SiteMark.svelte';
 	import type { TChange, HomeState } from '../data';
-	import { stagesOf, type StageState, type StagePlace } from '../stages/stages-model';
+	import { stagesOf } from '../stages/stages-model';
 
 	let { change: c, scenario = 'incident', class: className = '' }: { change: TChange; scenario?: HomeState; class?: string } = $props();
 
 	const SITE: Record<StageState, SiteState> = { deployed: 'done', checking: 'checking', paused: 'held', deploying: 'deploying', held: 'held', approval: 'approval', failed: 'failed', notreached: 'notreached', notaffected: 'notaffected', replaced: 'notaffected' };
-	const QUIET = new Set<StageState>(['deployed', 'notreached', 'notaffected', 'replaced']);
 
 	const stages = $derived(stagesOf({ kind: 'change', change: c }, scenario));
 	const tiers = $derived([...new Set(stages.columns.map((col) => col.tier))]);
@@ -34,7 +41,7 @@
 		/* AD strip r2 N1: line 2 says the same fact in every scope (the App / Rollout lanes carry no step count): the state, then the currency; steps are one tap away on the rollout */
 		detail: p.lag || undefined,
 		build: p.current ?? undefined,
-		wordInk: QUIET.has(p.state) && p.state !== 'notreached' ? undefined : toneInk(p.state),
+		wordInk: siteWordInk(p),
 		aside: p.age ?? undefined,
 		href: p.href
 	});

@@ -30,6 +30,8 @@
 	import { approveAct } from '../approvals.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
+	import type { Act } from '$lib/components/ActRow.svelte';
+	import { failureActs } from '$lib/view-models/failure-actions';
 	import Card from '$lib/components/Card.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
@@ -40,11 +42,11 @@
 	import ChangeCard from './ChangeCard.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import ChangeHistory from './ChangeHistory.svelte';
-	import { heldCauses, changeTruth, approvalTarget, ago, avatarSrc, type TChange, type HomeState, noReleasesApp } from '../data';
-	import { actionHref, rowAction, holdWord } from '../rollout-view';
+	import { heldCauses, changeTruth, approvalTarget, ago, avatarSrc, rollbackOwnedReason, type TChange, type HomeState, noReleasesApp } from '../data';
+	import { actionHref, retryActionHref, rowAction, holdWord } from '../rollout-view';
 	import { isViewer, plural } from '../change-view';
 	import { failedWord } from '../state-words';
-	import { classified, statementOf, rollbackTo, commitsOf, spineOf, howFacts, countsOf, headFacts, changeProd, notReached, type Place } from './detail-model';
+	import { classified, statementOf, rollbackTo, commitsOf, spineOf, howFacts, countsOf, headFacts, changeProd, notReached, summaryInk, type Place } from './detail-model';
 
 	let { change: c, scenario = 'incident', checks = null }: { change: TChange; scenario?: HomeState; checks?: { text: string; href: string | null } | null } = $props();
 	/** the change's apps have no releases (no source, or an empty catalogue): nothing will carry it to production */
@@ -94,6 +96,12 @@
 	/* a check line that says "passing" while the change fails in production would be a lie: only the link survives a failure */
 	const checkText = $derived(checks && !checks.href && !failed.length ? checks.text : null);
 	const prod = $derived(changeProd(c, scenario));
+	/* the one order of a failed place's actions (view-models/failure-actions.ts): Retry leads for a recovered failure, so it is the phone row's one visible action, not an entry behind "⋯" */
+	const failActs = $derived(failureActs<Act>(!!lead?.row?.failure?.recovered, {
+		rollback: backHref ? (rollbackOwnedReason(backHref) ? { label: 'Roll back', icon: UndoOutline, key: 'rollback', disabled: true, title: rollbackOwnedReason(backHref)! } : { label: 'Roll back', href: backHref, icon: UndoOutline, key: 'rollback' }) : null,
+		retry: lead ? { label: 'Retry', href: retryActionHref(lead.href), icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
+		rest: lead ? [{ label: 'Open rollout', href: lead.href, quiet: true, key: 'open-rollout' }] : []
+	}));
 	/* change-strip r2 (coordinator: restore the facts "Where it runs" carried): the strip's own count (stages-model rollup, so the two agree) and the builds that carry the change */
 	const stg = $derived(stagesOf({ kind: 'change', change: c }, scenario));
 	const reach = $derived(stg.rollup);
@@ -141,10 +149,9 @@
 	<div class="mt-6 max-sm:mt-4 empty:hidden" data-statement>
 		{#if st.kind === 'failed' && check}
 			<!-- changedetail-9 CE8: the tab's set and order for a failed deploy: [Retry] [Roll back] + the quiet "Open rollout ›"; r34 S1a: the shared StatementBanner owns the shell and the phone action row -->
-			<StatementBanner severity="failed" title={failTitle} {check}
-				phoneMax={1}
-				primary={backHref ? { label: 'Roll back', title: back ? `Roll back to ${back}` : undefined, href: backHref, icon: UndoOutline, key: 'rollback' } : undefined}
-				secondary={lead ? [{ label: 'Retry', href: lead.href, icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' }, { label: 'Open rollout', href: lead.href, quiet: true, key: 'open-rollout' }] : []} />
+			<StatementBanner severity="failed" title={failTitle} {check} recovered={!!lead?.row?.failure?.recovered}
+				primary={failActs.primary?.key === 'rollback' && back ? (failActs.primary.disabled ? failActs.primary : { ...failActs.primary, title: `Roll back to ${back}` }) : failActs.primary}
+				secondary={failActs.secondary.map((a) => (a.key === 'rollback' && back && !a.disabled ? { ...a, title: `Roll back to ${back}` } : a))} />
 		{:else if (st.kind === 'waiting' || st.kind === 'held') && lead}
 			<!-- the tab's held banner: the held hue with the pause disc; ONE button, and it says what it does: it navigates (CF1) -->
 			<StatementBanner severity="held" title={st.title} message={st.line ?? (st.kind === 'held' && lead.row ? (holdWord(lead.row, scenario) ?? undefined) : undefined)} messageDesktopOnly={st.kind !== 'held'}
@@ -171,11 +178,11 @@
 			{#if holds.some((h) => h.rows.length > 1 || h.rows[0]?.href !== lead?.href)}<HoldingCard {holds} class="cd-hold" />{/if}
 			<Card icon={ChartLineUpOutline} title="Summary" verdict="{ago(c.mergedAt)} since {c.prNumber != null ? 'merge' : 'commit'}" padded={false} class="cd-summary">
 				<dl class="divide-y divide-line-subtle">
-					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-places><dt class="t-meta text-fg-subtle">Places running it</dt><dd class="t-ui tabular-nums">{#each reach.parts as part, i (part.text)}{#if i > 0}<span class="text-fg-subtle">{" · "}</span>{/if}<span class={hueInk(part.ink === 'muted' ? 'fg' : part.ink)}>{i === 0 ? (part.short ?? part.text) : part.text}</span>{/each}</dd></div>
+					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-places><dt class="t-meta text-fg-subtle">Places running it</dt><dd class="t-ui tabular-nums">{#each reach.parts as part, i (part.text)}{#if i > 0}<span class="text-fg-subtle">{" · "}</span>{/if}<span class={hueInk(summaryInk(part.ink))}>{i === 0 ? (part.short ?? part.text) : part.text}</span>{/each}</dd></div>
 					{#if prodPl.length > 1}<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-prod><dt class="t-meta text-fg-subtle">{multiApp ? 'Production places deployed' : 'Production regions deployed'}</dt><dd class="t-ui tabular-nums text-fg">{prodDone} of {prodPl.length}</dd></div>{/if}
 					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-builds><dt class="t-meta text-fg-subtle">Builds carrying it</dt><dd class="t-ui tabular-nums text-fg">{#if carrying}{carrying}{:else}<span class="t-meta text-fg-subtle" data-pending>none running yet</span>{/if}</dd></div>
-					{#each [[`${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, how.toFirst ?? 'not deployed yet'], [`${c.prNumber != null ? 'Merge' : 'Commit'} to production`, how.toProd ?? (noReleases ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet')], ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
-						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{k}</dt><dd class="t-ui tabular-nums {k === 'Failed deploys' && how.failed ? 'text-danger' : 'text-fg'}">{#if /^(not |won't )/.test(v)}<span class="t-meta text-fg-subtle" data-pending>{v}</span>{:else if v.endsWith(' · failing')}{v.slice(0, -' · failing'.length)}<span class="text-fg-subtle">{" · "}</span><span class={hueInk('danger')} data-failing>failing</span>{:else}{v}{/if}</dd></div>
+					{#each [{ k: `${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, v: how.toFirst ?? 'not deployed yet', parts: null }, { k: `${c.prNumber != null ? 'Merge' : 'Commit'} to production`, v: noReleases && !how.toProd ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet', parts: how.toProd }, ...(how.failed ? [{ k: 'Failed deploys', v: String(how.failed), parts: null }] : [])] as row (row.k)}
+						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{row.k}</dt><dd class="t-ui tabular-nums {row.k === 'Failed deploys' && how.failedNow ? 'text-danger' : 'text-fg'}">{#if row.parts}{#each row.parts as part, i (part.text)}{#if i > 0}<span class="text-fg-subtle">{" · "}</span>{/if}<span class={hueInk(summaryInk(part.ink))} data-failing={part.ink === 'danger' ? '' : undefined}>{part.text}</span>{/each}{:else if /^(not |won't )/.test(row.v)}<span class="t-meta text-fg-subtle" data-pending>{row.v}</span>{:else}{row.v}{/if}</dd></div>
 					{/each}
 				</dl>
 			</Card>

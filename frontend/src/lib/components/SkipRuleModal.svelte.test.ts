@@ -4,6 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
 import SkipRuleModal from './SkipRuleModal.svelte';
 import SkipRuleModalHost from '$lib/testing/SkipRuleModalHost.svelte';
+import { toastVisibility, resetToastVisibility } from '$lib/stores/toast-visibility.svelte';
 import type { SkipRow, SkipTarget } from '$lib/view-models/skip-rule';
 
 // jsdom has neither the Web Animations API nor a working <dialog> (see ClearPinModal.svelte.test.ts).
@@ -143,4 +144,14 @@ describe('SkipRuleModal', () => {
 		await waitFor(() => expect(screen.getByText('Skip Ledger sign-off once')).toBeInTheDocument());
 		expect(document.querySelector('dialog')?.open).toBe(true);
 	});
+});
+
+describe('SkipRuleModal toast', () => {
+	test('the success confirmation hides by itself (a success keeps the shared 3s lifetime)', async () => {
+		resetToastVisibility();
+		renderModal([row('staging', 'ledger-api-staging', 'ledger-api', 'staging')]);
+		await fireEvent.click(screen.getByRole('button', { name: /Skip for 1 rollout/ }));
+		await waitFor(() => expect(toastVisibility.count).toBe(1), { timeout: 3000 });
+		await waitFor(() => expect(toastVisibility.count, 'closed itself').toBe(0), { timeout: 5000 });
+	}, 15_000);
 });

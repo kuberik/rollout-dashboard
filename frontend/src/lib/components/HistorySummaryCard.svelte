@@ -126,7 +126,7 @@
 			{#if failed > 0}
 				<div class="t-meta flex items-center justify-between text-fg-subtle">
 					<span>Failed</span>
-					<span class={failedOpen ? 'text-danger' : 'text-fg-muted'}>{failed}</span>
+					<span data-summary-failed class={failedOpen ? 'text-danger' : 'text-fg-muted'}>{failed}</span>
 				</div>
 			{/if}
 			{#if rolledBack > 0}
@@ -169,7 +169,7 @@
 		     figure here does. -->
 		<div class="grid grid-cols-3 gap-4">
 			<div class="flex flex-col">
-				<span class="t-stat-sm tabular-nums {failed > 0 && failedOpen ? 'text-danger' : 'text-fg'}"
+				<span data-summary-failed class="t-stat-sm tabular-nums {failed > 0 && failedOpen ? 'text-danger' : 'text-fg'}"
 					>{failed}</span
 				>
 				<span class="t-meta text-fg-subtle">Failed</span>

@@ -1,4 +1,15 @@
 <script lang="ts">
+	import { tick, untrack } from 'svelte';
+	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
+	import { rolloutFailureTarget } from '$lib/view-models/failure-target';
+	import { siteOf } from '$lib/view-models/sites-waves';
+	import RetryConfirmModal from '$lib/components/RetryConfirmModal.svelte';
+	import Toast from '$lib/components/Toast.svelte';
+	import { failureText, retryOutcome, RETRY_FAILED } from '$lib/view-models/failure-text';
+	import { toastHideTimer } from '$lib/view-models/toast-timer';
+	import RolloutHeaderFlows from '$lib/components/RolloutHeaderFlows.svelte';
+	import { retryConfirm } from '$lib/view-models/retry-confirm';
+	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
 	import { newestFirst } from '$lib/instant';
 	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
 		import { releaseCandidates } from '$lib/releases/registry.svelte';
@@ -41,6 +52,8 @@
 	import Card from '$lib/components/Card.svelte';
 	import { causeText, splitCause, type Cause } from '$lib/view-models/gate-label';
 	import StatementBanner from '$lib/components/StatementBanner.svelte';
+	import type { Act } from '$lib/components/ActRow.svelte';
+	import { failureActs } from '$lib/view-models/failure-actions';
 	import StarToggle from '$lib/components/StarToggle.svelte';
 	import PromotionLane from '$lib/components/PromotionLane.svelte';
 	import ChangeVersionFlow from '$lib/components/ChangeVersionFlow.svelte';
@@ -59,7 +72,7 @@
 	import AppPulse from './AppPulse.svelte';
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
-	import { failureRecovered, failureSinceAt, apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, pinSinceOfHref, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
+	import { rollbackOwnedReason, liveHealthChecks, failureRecovered, failureSinceAt, apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, pinSinceOfHref, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
 	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme, byFailRank } from '../rollout-view';
 	import FailureDetails from '$lib/components/FailureDetails.svelte';
 	import { bannerEvidence } from '$lib/view-models/health-failures';
@@ -83,6 +96,11 @@
 
 	/* ── one row per PLACE: the model's row where the place has one (unfolded per region), else a closed healthy place ── */
 	const places = $derived(placeHolds(name, scenario));
+	/** a rollout's place has a current failure whose checks are all OK again (the recovered ring; its words read neutral) */
+	const rolloutRecovered = (r: Rollout): boolean => {
+		const p = places.find((x) => x.href.endsWith(`/${encodeURIComponent(r.metadata?.namespace ?? '')}/${encodeURIComponent(r.metadata?.name ?? '')}`));
+		return !!p && failureRecovered(p.href);
+	};
 	/* round 2 B4: the held places' gate objects (the Gates tab's own source, same query key) give the pretty names the fleet list lacks */
 	const heldPlaces = $derived(places.filter((p) => p.holdReason === 'approval' || p.holdReason === 'rule'));
 	const gateQueries = createQueries(() => ({
@@ -279,14 +297,70 @@
 	const failEv = $derived(failRow?.failure?.pool ? bannerEvidence(failRow.failure.pool, failRow.failure.pendingN ?? 0, failRow.failure.since ? formatTimeAgoCompact(failRow.failure.since, $now) : null) : null);
 	const failCheck = $derived(failRow?.failure ? { name: failRow.failure.check ?? failRow.failure.line, message: failRow.failure.check ? (failRow.failure.message ?? undefined) : undefined } : null);
 	const failAct = $derived(failRow ? rowAction(failRow) : null);
+	/* the one order of a failed place's actions (view-models/failure-actions.ts): a recovered failure retries first, a failing one rolls back first */
+	const failActs = $derived.by(() => {
+		if (!failRow) return { primary: undefined, secondary: [] as Act[] };
+		return failureActs<Act>(failureRecovered(failRow.href), {
+			rollback: failAct ? { label: 'Roll back', onclick: () => pressRollback(failRow), icon: UndoOutline, key: 'rollback', ...(rollbackOwnedReason(failRow.href) ? { disabled: true, title: rollbackOwnedReason(failRow.href)! } : {}) } : null,
+			retry: { label: retry === 'done' ? 'Retry started' : retry === 'error' ? 'Retry failed' : 'Retry', onclick: () => retryDeploy(failRow), busy: retry === 'busy', icon: PlaySolid, key: 'retry' },
+			rest: [{ label: 'Open rollout', href: failRow.href, after: true, key: 'open-rollout' }]
+		});
+	});
+	/* Roll back opens its confirm HERE, as Retry does and as the rollout tabs' headers do (the same host, `RolloutHeaderFlows`): Cancel leaves you on the app page. */
+	let rollbackRequest = $state(0);
+	let rollbackHref = $state('');
+	function pressRollback(r: TRow | null) {
+		if (!r) return;
+		rollbackHref = r.href;
+		rollbackRequest++;
+	}
+	const rollbackPath = $derived(rollbackHref.split('/').filter(Boolean));
 	let retry = $state<'idle' | 'busy' | 'done' | 'error'>('idle');
-	async function retryDeploy(r: TRow) {
+	/* the rollout tabs' own toasts: "Retry started · <build> · Check restarted" with View logs, or "Failed to retry: <reason>" */
+	let retryToast = $state<{ tone: 'success' | 'danger'; message: string; description: string; logsHref: string } | null>(null);
+	let retryToastOpen = $state(false);
+	// a success toast belongs to the app it was about
+	$effect(() => {
+		void name;
+		untrack(() => (retryToastOpen = false));
+	});
+	const hideRetryToast = toastHideTimer(() => (retryToastOpen = false));
+	function announceRetry(t: NonNullable<typeof retryToast>, about: Rollout | null = retryRollout ?? null) {
+		// a failure is reported app-wide, naming the rollout and its place, and waits to be dismissed; only successes are page-local
+		if (t.tone === 'danger') {
+			const env = about ? environments.find((e) => rolloutMatchesEnvironment(about, e)) : undefined;
+			reportFailure(rolloutFailureTarget(about, env?.spec?.environment ?? null, env ? siteOf(env) : null), t.message);
+			return;
+		}
+		retryToast = t;
+		retryToastOpen = true;
+		hideRetryToast(t.tone);
+	}
+	/** The Retry button was disabled while the request ran, so focus fell to <body> (or stayed on a dialog that is gone): put it back on Retry through the label swap. */
+	async function restoreRetryFocus() {
+		await tick();
+		const a = document.activeElement;
+		if (!a || a === document.body || (!showRetryConfirm && a.closest('dialog'))) document.querySelector<HTMLElement>('[data-action="retry"]')?.focus();
+	}
+	/** Posts the retry. Rejects with the reason (the typed confirm prints it inside itself); the toast follows either way once the dialog is gone. */
+	async function postRetry(r: TRow, rethrow = false) {
 		const p = r.href.split('/').filter(Boolean);
 		retry = 'busy';
 		try {
 			const res = await fetch(apiPath(p[1], `/rollouts/${p[2]}/${p[3]}/retry`), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kruiseRolloutName: '', testAction: '' }) });
-			retry = res.ok ? 'done' : 'error';
-		} catch { retry = 'error'; }
+			if (!res.ok) throw new Error(await failureText(RETRY_FAILED, res));
+			retry = 'done';
+			announceRetry({ tone: 'success', message: 'Retry started', description: `${retryDecision.displayTag ?? r.app} · Check restarted`, logsHref: `${r.href.replace(/\/$/, '')}/logs` });
+		} catch (e) {
+			retry = 'error';
+			const { message: failure, toast } = retryOutcome(e, rethrow);
+			if (!toast) {
+				setTimeout(() => (retry = 'idle'), 3000);
+				throw new Error(failure);
+			}
+			announceRetry({ tone: 'danger', message: failure, description: '', logsHref: '' });
+		}
+		await restoreRetryFocus();
 		setTimeout(() => (retry = 'idle'), 3000);
 	}
 	const hrefFor = (n: { card: unknown }) => (n.card as { href?: string }).href ?? '';
@@ -300,6 +374,22 @@
 		return (query.data?.rollouts?.items ?? []).filter((r) => keys.has(`${r.metadata?.namespace}/${r.metadata?.name}`));
 	});
 	const environments = $derived(query.data?.environments?.items ?? []);
+	/* Retry asks exactly as the rollout Overview's failure panel does: the one shared rule (view-models/retry-confirm.ts), `none` fires on click, otherwise RetryConfirmModal */
+	let confirmRetryFor = $state<TRow | null>(null);
+	let showRetryConfirm = $state(false);
+	const retryRollout = $derived.by(() => {
+		const r = confirmRetryFor;
+		if (!r) return null;
+		const k = keyOf(r.href);
+		return live.find((x) => `${x.metadata?.namespace}/${x.metadata?.name}` === k) ?? null;
+	});
+	const retryCluster = $derived(retryRollout ? environments.find((e) => rolloutMatchesEnvironment(retryRollout, e)) : undefined);
+	const retryDecision = $derived(retryConfirm(retryRollout, retryCluster?.spec?.environment ?? null, confirmRetryFor ? liveHealthChecks(confirmRetryFor.href) : [], (retryRollout?.status?.history?.[0]?.failedHealthChecks ?? []) as { name: string; namespace?: string }[], retryCluster ? siteOf(retryCluster) : null));
+	function retryDeploy(r: TRow) {
+		confirmRetryFor = r;
+		if (retryDecision.level === 'none') { void postRetry(r); return; }
+		showRetryConfirm = true;
+	}
 	const SPARK_DAYS = 7;
 	const deploys7d = $derived.by(() => {
 		const end = $now.getTime(), start = end - SPARK_DAYS * 86_400_000;
@@ -384,12 +474,8 @@
 			{#if failRow}
 				<div data-ad-statement>
 					{#snippet failDetails()}{#if failEv}<FailureDetails pool={failEv.pool} />{/if}{/snippet}
-					<StatementBanner severity="failed" title="Deployment failed" check={failEv ? failEv.check : failCheck ?? undefined} observations={failEv ? failEv.observations : failRow.failure?.observations} message={failEv?.message} footnoteLabel={failEv ? 'Details' : undefined} footnoteBody={failEv ? failDetails : undefined}
-						primary={failAct ? { label: 'Roll back', href: actionHref(failAct), icon: UndoOutline, key: 'rollback' } : undefined}
-						secondary={[
-							{ label: retry === 'done' ? 'Retry started' : retry === 'error' ? 'Retry failed' : 'Retry', onclick: () => retryDeploy(failRow), busy: retry === 'busy', icon: PlaySolid, key: 'retry' },
-							{ label: 'Open rollout', href: failRow.href, after: true, key: 'open-rollout' }
-						]} />
+					<StatementBanner severity="failed" title="Deployment failed" recovered={!!failRow.failure?.recovered} check={failEv ? failEv.check : failCheck ?? undefined} observations={failEv ? failEv.observations : failRow.failure?.observations} message={failEv?.message} footnoteLabel={failEv ? 'Details' : undefined} footnoteBody={failEv ? failDetails : undefined}
+						primary={failActs.primary} secondary={failActs.secondary} />
 				</div>
 			{/if}
 
@@ -407,16 +493,24 @@
 				<aside class="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6 lg:self-start" aria-label="{item.app} context">
 					<AppGates rows={gateRows} />
 					{#if deploys7d > 0}
-						<AppPulse deploys={deploys7d} days={SPARK_DAYS} rollouts={live} />
+						<AppPulse deploys={deploys7d} days={SPARK_DAYS} rollouts={live} recoveredOf={rolloutRecovered} />
 					{/if}
-					<AppActivity rollouts={live} {environments} limit={builds.length ? 6 : 4} />
+					<AppActivity rollouts={live} {environments} recoveredOf={rolloutRecovered} limit={builds.length ? 6 : 4} />
 				</aside>
 			</div>
 			{/if}
 		</div>
 	</div>
 
-	<ChangeVersionFlow bind:open={modalOpen} rollout={modalRollout} isPinVersionMode={false} initialSelectedVersion={modalVersion} initialExplanation={modalExplanation} cluster={modalCluster ?? ''} />
+	<RetryConfirmModal bind:open={showRetryConfirm} intent={retryDecision.intent} consequences={retryDecision.consequences} tag={retryDecision.displayTag} onConfirm={async () => { if (confirmRetryFor) await postRetry(confirmRetryFor, true); }} onClosedFailure={(m) => { announceRetry({ tone: 'danger', message: m, description: '', logsHref: '' }); void restoreRetryFocus(); }} />
+	{#snippet retryLogs()}<a href={retryToast?.logsHref} class="nav-link shrink-0">View logs</a>{/snippet}
+	<Toast bind:open={retryToastOpen} tone={retryToast?.tone ?? 'info'} message={retryToast?.message ?? ''} description={retryToast?.description ?? ''} action={retryToast?.tone === 'success' ? retryLogs : undefined} />
+	{#if rollbackRequest > 0}
+		{#key rollbackHref}
+			<RolloutHeaderFlows cluster={rollbackPath[1] ?? ''} namespace={rollbackPath[2] ?? ''} name={rollbackPath[3] ?? ''} request={0} {rollbackRequest} />
+		{/key}
+	{/if}
+	<ChangeVersionFlow bind:open={modalOpen} rollout={modalRollout} isPinVersionMode={false} initialSelectedVersion={modalVersion} initialExplanation={modalExplanation} cluster={modalCluster ?? ''} onError={(m) => announceRetry({ tone: 'danger', message: m, description: '', logsHref: '' }, modalRollout)} />
 {/if}
 
 <style>

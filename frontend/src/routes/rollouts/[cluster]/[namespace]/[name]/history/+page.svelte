@@ -1,9 +1,11 @@
 <script lang="ts">
+	import { siteOf } from '$lib/view-models/sites-waves';
+	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { toneInk } from '$lib/view-models/state-tone';
 	import { lastFailureAgoOf } from '$lib/view-models/event-age';
 	import { failedAfterRest } from '$lib/view-models/diff-page-title';
 	import NotFound from '$lib/components/NotFound.svelte';
-	import { currentRowChip, liveStatusVerb, pausedRollup } from '$lib/view-models/history-current-chip';
+	import { currentRowChip, liveStatusVerb, pausedRollup, deploysFailedParts } from '$lib/view-models/history-current-chip';
 	import { behindWhenSettled, fleetSettled } from '$lib/view-models/behind';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
@@ -11,6 +13,7 @@
 	import { historyPool, failureSince } from '$lib/view-models/health-failures';
 	import { deployWindowStart } from '$lib/view-models/health-witness';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
+	import { headFailingNow, headRecovered } from '$lib/view-models/health-failures';
 	import { displayTimeZone } from '$lib/timezone.svelte';
 	import type {
 		Rollout,
@@ -20,6 +23,7 @@
 	} from '../../../../../../types';
 	import { Spinner } from 'flowbite-svelte';
 	import Chip from '$lib/components/Chip.svelte';
+	import StatusMark from '$lib/components/StatusMark.svelte';
 	import PendingCheckBlock from '$lib/components/PendingCheckBlock.svelte';
 	import {
 		UndoOutline,
@@ -43,6 +47,9 @@
 	} from '$lib/utils';
 	import { changePathForRollout, displayVersionForTag, githubOwnerRepo, repoKeyFor, shortRevision } from '$lib/version-utils';
 	import { rolloutEnvironmentName, rollbackTarget } from '$lib/view-models/deploy-risk';
+	import { dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
+	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
+	import { rolloutFailureTarget } from '$lib/view-models/failure-target';
 	import { stripEmphasisMarkers } from '$lib/view-models/plain-text-note';
 	import { isHistoryCurrentlyFailed } from '$lib/view-models/deploy-history';
 	import { bakePaused } from '$lib/bake-hold';
@@ -797,6 +804,7 @@
 	 *  read from the Card's `rollup` snippet, which is not itself the
 	 *  immediate child of an `{#if}`/`{:else}`/`{#each}` the way `{@const}`
 	 *  requires. */
+	const headState = $derived({ open: openFailed, failingNow: headFailingNow(liveChecks as never, rollout?.status?.history?.[0] as never), recovered: headRecovered(liveChecks as never, rollout?.status?.history?.[0] as never) });
 	const rangeFailed = $derived(filteredHistory.filter(({ e }) => e.bakeStatus === 'Failed').length);
 	const rangeRolledBack = $derived(
 		filteredHistory.filter(({ i }) => acts[i]?.kind === 'rollback').length
@@ -1093,6 +1101,7 @@
 	}
 
 	// Rollback modal
+	/* a Roll back that failed after its dialog was closed: the reason has no dialog to print in */
 	let showChangeVersionModal = $state(false);
 	let selectedVersionTag = $state<string | null>(null);
 	let deployExplanation = $state('');
@@ -1247,7 +1256,10 @@
 			`/rollouts/${cluster}/${rollout?.metadata?.namespace}/${rollout?.metadata?.name}/diff/${entry.version.tag}`
 		);
 	}
+	/** Another controller owning `spec.wantedVersion` refuses every Roll back here, as the header and the Overview do. */
+	const managesPin = $derived(dashboardManagesWantedVersion(rollout));
 	function openRollbackModalFor(index: number) {
+		if (!managesPin) return;
 		const history = rollout?.status?.history ?? [];
 		const entry = history[index];
 		if (!entry) return;
@@ -1401,6 +1413,10 @@
 		}
 		if (rollbackPending && rollout && rollbackNow) {
 			rollbackPending = false;
+			if (!managesPin) {
+				clearActionParam();
+				return;
+			}
 			selectedVersionTag = rollbackNow.tag;
 			deployExplanation = '';
 			isPinVersionMode = false;
@@ -1503,15 +1519,16 @@
 				{name}
 				{rollout}
 				quietRollback
-				rollbackHref={href(`/rollouts/${cluster}/${namespace}/${name}/history?action=rollback`)}
+				failingNow={headFailingNow(liveChecks as never, rollout?.status?.history?.[0] as never)}
+				recovered={headRecovered(liveChecks as never, rollout?.status?.history?.[0] as never)}
 			>
 				<!-- ⭐ ONE ACTION SET ON EVERY TAB (LOGOPEN r11, item 4): History,
 				     Gates and Logs carry the same header move, Roll back, rightmost
 				     (failed: the primary; calm: the secondary "Roll back to <sha>",
 				     `quietRollback`). View on GitHub and Change version live on the
 				     Overview, one tab away; a second copy here made History's header
-				     a different object from its siblings'. `rollbackHref` keeps the
-				     modal in this page (`?action=rollback` handler below). -->
+				     a different object from its siblings'. The header opens its own
+				     Roll back / Retry confirm in place on every tab. -->
 				{#snippet meta()}
 					<!--
 						⭐ `metaSeparated` NOW, NOT HAND-WRITTEN "·" SPANS. (2026-10-09,
@@ -1616,10 +1633,7 @@
 							     Card rollup's ink does); the word was a second copy of
 							     a fact the Card states in full. -->
 							<span title="{headerFailed} of {headerTotal} deploys failed">
-								<span class="tabular-nums {openFailed ? 'text-danger' : 'text-fg'}"
-									>{headerFailed}</span
-								>
-								failed
+								{#each deploysFailedParts(headerFailed, headState) as part, i (part.text)}{#if i > 0}<span class="text-fg-muted">{' \u00b7 '}</span>{/if}<span class="tabular-nums {part.ink}">{part.text}</span>{/each}
 							</span>
 						{:else if headerRolledBack > 0}
 							<!-- ⛔ "all healthy" DROPPED HERE (AD round 6, nits): "drop
@@ -1644,9 +1658,10 @@
 					<!-- D5: chip · fact · age. The newest deploy's age, last; sm+ only
 					     (r11, item 5: no age on a phone meta line that has another
 					     fact). -->
-					{#if allHistory[0]?.timestamp && totalDeploys !== 1}
-						<span class="tabular-nums max-lg:hidden" title={formatDate(allHistory[0].timestamp)}
-							>{formatTimeAgoCompact(allHistory[0].timestamp, $now)} ago</span
+					{@const headAt = headDeployedAt(rollout)}
+					{#if headAt && totalDeploys !== 1}
+						<span class="tabular-nums max-lg:hidden" title={formatDate(headAt)}
+							>{formatTimeAgoCompact(headAt, $now)} ago</span
 						>
 					{/if}
 				{/snippet}
@@ -1673,6 +1688,7 @@
 							now={$now.getTime()}
 							diffHref={diffHrefForIndex}
 							onRollback={openRollbackModalFor}
+							rollbackDisabledReason={managesPin ? null : WANTED_VERSION_OWNED_REASON}
 						/>
 					{/if}
 				{/snippet}
@@ -1797,15 +1813,13 @@
 						<Card icon={ListOutline} title="Deploys" padded={false}>
 							{#snippet rollup()}
 								{#if rangeFailed > 0}
-									<span class="t-ui-sm tabular-nums {openFailed ? 'text-danger' : 'text-fg'}"
-										>{rangeFailed} failed{#if !openFailed}{' · resolved'}{/if}</span
-									>
+									<span class="t-ui-sm tabular-nums">{#each deploysFailedParts(rangeFailed, headState) as part, i (part.text)}{#if i > 0}<span class="text-fg-muted">{' \u00b7 '}</span>{/if}<span class={part.ink}>{part.text}</span>{/each}{#if !openFailed}<span class="text-fg-muted">{' · resolved'}</span>{/if}</span>
 								{:else if rangeRolledBack > 0}
 									<span class="t-ui-sm text-fg-subtle tabular-nums"
 										>{rangeRolledBack} rolled back</span
 									>
 								{:else if currentHeld}
-									<span class="t-ui-sm text-held">{pausedRollup(heldCheckSnaps(liveChecks).length)}</span>
+									<span class="t-ui-sm">{#each pausedRollup(heldCheckSnaps(liveChecks).length) as part, i (part.text)}{#if i > 0}<span class="text-fg-muted">{' \u00b7 '}</span>{/if}<span class={part.ink}>{part.text}</span>{/each}</span>
 								{:else if filteredHistory.length > 0}
 									<span class="t-ui-sm text-fg-subtle">All healthy</span>
 								{/if}
@@ -1872,21 +1886,11 @@
 												{@const approved = historyApprovalFact(entry.approval, byVerified)}
 												{@const commitTitle = commitTitleOf(i)}
 												{@const commitAuthor = commitAuthorOf(i)}
-												<!-- ⛔ THE AT-REST ROW BUTTON THAT USED TO LIVE HERE IS GONE
-							     (AD round 5, item 8): "on incident, remove the at-rest
-							     'Roll back to 3f1ed09' row button — RolloutTabHeader's
-							     primary header button already says it." Round 3 added a
-							     row-level always-visible "Roll back to {name}" on the
-							     last healthy entry specifically so an incident reader
-							     never needed hover to find it — correct instinct, wrong
-							     place: `RolloutTabHeader` now carries that exact button
-							     as the page's ONE primary action (`rollbackHref` wired at
-							     this page's own header call, pointing at History's own
-							     `?action=rollback`), so the row repeated a decision the
-							     header already states louder. The row's hover-reveal
-							     rollback button (below, desktop-only) and the expanded
-							     panel's own button are what remain — same two actions,
-							     no second always-on copy. -->
+												<!-- NO AT-REST ROLL BACK ON A ROW. An incident reader finds the rollback in
+							     the tab header: `RolloutTabHeader` carries it as the page's one primary
+							     action and opens the confirm in place (`RolloutHeaderFlows`), so a row
+							     does not repeat it. A row's own Roll back is hover-revealed (desktop
+							     only), and the expanded panel has its own button. -->
 
 												<div
 													use:registerEntry={i}
@@ -1957,13 +1961,18 @@
 															class="deploy-spine-col flex h-5 shrink-0 items-center justify-center"
 															data-spine-mark
 														>
-															<RestGlyph
-																bakeStatus={entry.bakeStatus}
-																state={isCurrent && entry.bakeStatus === 'InProgress' && bakePaused(entry) ? 'paused' : null}
-																timestamp={entry.timestamp}
-																now={$now.getTime()}
-																class="deploy-glyph-ring"
-															/>
+															{#if isCurrent && entry.bakeStatus === 'Failed' && headState.recovered}
+																<!-- the head deploy failed and its checks are OK again: the recovered ring, like every other surface; the surface fill keeps the spine from showing through the hollow -->
+																<span class="deploy-glyph-ring inline-flex rounded-full bg-surface" data-head-recovered><StatusMark state="failed" recovered /></span>
+															{:else}
+																<RestGlyph
+																	bakeStatus={entry.bakeStatus}
+																	state={isCurrent && entry.bakeStatus === 'InProgress' && bakePaused(entry) ? 'paused' : null}
+																	timestamp={entry.timestamp}
+																	now={$now.getTime()}
+																	class="deploy-glyph-ring"
+																/>
+															{/if}
 														</div>
 
 														<!-- Version -->
@@ -2019,7 +2028,7 @@
 												same role and word (`rolloutStateChip`, visual audit #3,
 												2026-11-13): a grey FAILING under a red FAILED drew the
 												tab's most adverse fact in its quietest chip. -->
-																	{#if isCurrent}{@const rowChip = currentRowChip(entry.bakeStatus, currencyBehind, entry)}{#if rowChip}
+																	{#if isCurrent}{@const rowChip = currentRowChip(entry.bakeStatus, currencyBehind, entry, headState.failingNow)}{#if rowChip}
 																		<Chip role={rowChip.role} wide label={rowChip.label} />
 																	{/if}{/if}
 																	<!--
@@ -2153,7 +2162,8 @@
 												     or how far it moved — and split so only the ONE word
 												     that needs colour gets it. -->
 																			<span class="tabular-nums" title={wait.title}>
-																				<span class={wait.outcome === 'Failed' ? 'text-danger' : ''}
+																				<!-- a check failing now reads in danger ink; the head deploy whose checks are all OK again reads neutral (the recovered failure keeps its word, not its alarm) -->
+																				<span data-outcome-word class={wait.outcome === 'Failed' ? (isCurrent && headState.recovered ? 'text-fg-muted' : 'text-danger') : ''}
 																					>{wait.outcome}</span
 																				>
 																				{wait.rest}
@@ -2301,30 +2311,52 @@
 										is unchanged and demoted to the second line, because seventeen
 										other callers depend on exactly what it does today.
 									-->
-														<!-- ⭐ THE TIME COLUMN, THE HOVER-ACTIONS' OWN ANCHOR (AD
-									     round 6, item 2): "hidden hover actions reserve width at
-									     rest." The actions `<div>` used to be a THIRD flex sibling
-									     here — `opacity-0` hides it, but opacity never removes an
-									     element from layout, so its ~230px of buttons were reserved
-									     on every row, every width, all the time. Measured live: rows
-									     68/87/105px tall for one kind of row, and 55f1a2c's own
-									     meta line wrapped to 3 lines because the invisible buttons
-									     were still eating the width its text needed. `position:
-									     relative` here, `position: absolute` on the actions overlay
-									     below, makes the actions reserve exactly 0px at rest.
-									     ⭐ NO PATCH (AD round 9, item 1): round 6 painted the
-									     overlay with its own `bg-surface` fill so the clock/ago
-									     text underneath would never show through — which drew a
-									     visibly different-toned rectangle over part of the row,
-									     "a hover patch," floating on top of the row's own
-									     `hover:bg-hover` tint instead of sitting IN it. Removed:
-									     the clock/ago text now fades out on its own (`opacity-0`
-									     on group-hover, right below) so there is nothing left for
-									     a patch to cover, and the buttons sit directly on the
-									     row's own hover colour like every other control on it. -->
-														<div class="relative hidden shrink-0 text-right sm:block">
+														<!-- ⭐ THE ACTION COLUMN, RESERVED (hover-capable widths only; revealed on hover or focus-within). Roll back and an icon-only View diff live in their own column
+										     BEFORE the time, so the summary truncates before it and nothing slides over text or over the date.
+										     The column is as wide as its pair (8.25rem: 92px Roll back, a 6px gap, the 34px icon) on every row that can show actions, so the summaries share one measure.
+										     The running row and an expanded one have no actions, so they draw no column and their summary takes the room (the
+										     time column is right-aligned and fixed-width, so the dates still line up). Below lg the same two actions stay in the expanded panel. -->
+																								{#if !isCurrent && !isExpanded}
+														<div class="hidden w-[8.25rem] shrink-0 items-center justify-end lg:flex" data-row-actions>
+																	<div
+																		class="pointer-events-none flex items-center justify-end gap-1.5 opacity-0 transition-opacity lg:group-hover:pointer-events-auto lg:group-hover:opacity-100 lg:focus-within:pointer-events-auto lg:focus-within:opacity-100"
+																	>
+																		{#if entry.bakeStatus === 'Succeeded'}
+																			<button
+																				title={managesPin ? 'Roll back to this build' : WANTED_VERSION_OWNED_REASON}
+																				aria-label="Roll back to this build"
+																				type="button"
+																				class="btn btn-secondary btn-xs"
+																				disabled={!managesPin}
+																				data-action="rollback"
+																				onclick={(ev) => {
+																					ev.stopPropagation();
+																					selectedVersionTag = entry.version.tag;
+																					deployExplanation = '';
+																					showChangeVersionModal = true;
+																				}}
+																			>
+																				<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
+																				Roll back
+																			</button>
+																		{/if}
+																		<DiffLink
+																			{cluster}
+																			namespace={rollout?.metadata?.namespace ?? ''}
+																			name={rollout?.metadata?.name ?? ''}
+																			history={rollout?.status?.history ?? []}
+																			index={i}
+																			{atLimit}
+																			compact
+																		/>
+																	</div>
+															
+														</div>
+																	{/if}
+
+														<div class="hidden shrink-0 text-right sm:block">
 															<div
-																class="t-meta text-fg-muted tabular-nums transition-opacity lg:group-focus-within:opacity-0 lg:group-hover:opacity-0"
+																class="t-meta text-fg-muted tabular-nums"
 																title={formatDate(entry.timestamp)}
 															>
 																{clockTime(entry.timestamp)}
@@ -2334,62 +2366,10 @@
 										     Who did it is a fact ABOUT the deploy and belongs with
 										     the other facts about it, not stacked under a timestamp. -->
 															<div
-																class="t-meta text-fg-subtle mt-0.5 flex items-center justify-end gap-1 transition-opacity lg:group-focus-within:opacity-0 lg:group-hover:opacity-0"
+																class="t-meta text-fg-subtle mt-0.5 flex items-center justify-end gap-1"
 															>
 																<span>{formatTimeAgoCompact(entry.timestamp, $now)} ago</span>
 															</div>
-															<!-- ⭐ HOVER/FOCUS-WITHIN ACTIONS (spec §1), DESKTOP ONLY, NEVER
-										     ON THE RUNNING ROW. `opacity-0 pointer-events-none` at rest
-										     so a resting row carries no more ink than before and the
-										     overlay never steals a click meant for the clock/date under
-										     it; `lg:group-hover:opacity-100` (+ `pointer-events-auto`)
-										     avoids the ghost-affordance mistake the design rules call
-										     out by name (something hover-only on desktop rendering at
-										     REST on a touch screen, where hover never fires) — below
-										     `lg` these controls simply never render, and the same two
-										     actions stay reachable inside the expanded panel at every
-										     width. The last healthy row during an incident used to get
-										     a THIRD, always-visible copy of this button here (round 3)
-										     — removed in round 5, item 8: `RolloutTabHeader`'s own
-										     primary button already says "Roll back to {name}" for
-										     exactly that row, so a reader never needed this row to
-										     repeat it.
-										     ⭐ HIDDEN WHILE EXPANDED (AD round 4, item 3) — the exact
-										     same two actions already sit at the panel's own bottom
-										     once a row is open; hovering an expanded row floated a
-										     second "Roll back to this"/"View diff" pair above the
-										     first, both clickable, both doing the same thing. -->
-															{#if !isCurrent && !isExpanded}
-																<div
-																	class="pointer-events-none absolute inset-y-0 right-0 z-10 hidden items-center justify-end gap-2 opacity-0 transition-opacity lg:flex lg:group-hover:pointer-events-auto lg:group-hover:opacity-100 lg:focus-within:pointer-events-auto lg:focus-within:opacity-100"
-																>
-																	{#if entry.bakeStatus === 'Succeeded'}
-																		<button
-																			title="Roll back to this build"
-																			aria-label="Roll back to this build"
-																			type="button"
-																			class="btn btn-secondary btn-xs"
-																			onclick={(ev) => {
-																				ev.stopPropagation();
-																				selectedVersionTag = entry.version.tag;
-																				deployExplanation = '';
-																				showChangeVersionModal = true;
-																			}}
-																		>
-																			<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-																			Roll back
-																		</button>
-																	{/if}
-																	<DiffLink
-																		{cluster}
-																		namespace={rollout?.metadata?.namespace ?? ''}
-																		name={rollout?.metadata?.name ?? ''}
-																		history={rollout?.status?.history ?? []}
-																		index={i}
-																		{atLimit}
-																	/>
-																</div>
-															{/if}
 														</div>
 
 														<!-- Expand affordance, and now the row's `.tap-link`. A bare 16px
@@ -2992,10 +2972,13 @@
 											     not a button that would redeploy the same break. -->
 																{#if entry.version.tag !== rollout?.status?.history?.[0]?.version?.tag && entry.bakeStatus === 'Succeeded'}
 																	<button
-																		title="Roll back to this build"
+																		title={managesPin ? 'Roll back to this build' : WANTED_VERSION_OWNED_REASON}
 																		aria-label="Roll back to this build"
+																		aria-describedby={managesPin ? undefined : `owned-reason-${i}`}
 																		type="button"
 																		class="btn btn-secondary btn-xs"
+																		disabled={!managesPin}
+																		data-action="rollback"
 																		onclick={() => {
 																			selectedVersionTag = entry.version.tag;
 																			if (
@@ -3080,6 +3063,10 @@
 																	/>
 																{/if}
 															</div>
+															<!-- a disabled Roll back has no hover on a phone and the header's reason is a screen above: the same reason, beside the buttons (below lg, where this panel carries the actions) -->
+															{#if !managesPin && entry.version.tag !== rollout?.status?.history?.[0]?.version?.tag && entry.bakeStatus === 'Succeeded'}
+																<p id="owned-reason-{i}" class="t-meta text-fg-subtle mt-2 lg:hidden" data-owned-reason-inline>{WANTED_VERSION_OWNED_REASON}</p>
+															{/if}
 														</div>
 													{/if}
 												</div>
@@ -3132,7 +3119,7 @@
 								all: 'all time'
 							}[cadenceRange]}
 							failed={filteredHistory.filter(({ e }) => e.bakeStatus === 'Failed').length}
-							failedOpen={openFailed}
+							failedOpen={openFailed && !headState.recovered}
 							rolledBack={filteredHistory.filter(({ i }) => acts[i]?.kind === 'rollback').length}
 							{medianHealthyMs}
 							{lastFailureAgo}
@@ -3157,6 +3144,8 @@
 			initialExplanation={deployExplanation}
 			{cluster}
 			environmentName={environment?.spec?.environment ?? null}
+			site={environment ? siteOf(environment) : null}
+			onError={(m) => reportFailure(rolloutFailureTarget(rollout, environment?.spec?.environment ?? null, environment ? siteOf(environment) : null), m)}
 		/>
 	{/if}
 </div>

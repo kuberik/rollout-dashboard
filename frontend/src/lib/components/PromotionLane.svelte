@@ -95,7 +95,9 @@
 	const longWord = (n: LaneNode) => (wordOf(n) === stripWord(n) ? '' : ' · ' + wordOf(n));
 	const stripWord = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? 'Waiting' : n.state === 'failed' ? wordOf(n) : WORD[n.state] || (n.state === 'none' ? '' : 'Deployed'));
 	/** a healthy box says "Deployed" quietly (the picker's word) so the reserved slot is not an empty tail */
-	const stripInk = (n: LaneNode) => (WORD[n.state] ? toneInk(n.state) : 'text-fg-subtle');
+	/** a recovered failure (failed, every check OK again) says "Failed" in neutral ink beside its ring; failing now keeps the danger ink */
+	const inkOf = (n: LaneNode) => toneInk(n.state === 'failed' && !!recovered?.(n) ? 'recovered' : n.state);
+	const stripInk = (n: LaneNode) => (WORD[n.state] ? inkOf(n) : 'text-fg-subtle');
 	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking', 'paused']);
 	const markOf = (n: LaneNode): EnvCell['mark'] =>
 		n.state === 'held' && n.card.heldCause === 'person' && mine(n) ? { state: 'approval-yours' } : MARKED.has(n.state) ? { state: (n.state === 'paused' ? 'held' : n.state) as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking', recovered: n.state === 'failed' && !!recovered?.(n) } : undefined;
@@ -138,7 +140,7 @@
 				: {
 						word: wordOf(n) || undefined,
 						wordShort: n.state === 'held' && n.card.heldCause === 'person' && words ? (stateWord('approval', { compact: true }) ?? undefined) : undefined,
-						wordInk: toneInk(n.state)
+						wordInk: inkOf(n)
 					}),
 			hot: MARKED.has(n.state),
 			fact: n.behind > 0 ? (size === 'M' ? `${n.behind} behind` : lagLabel({ builds: n.behind })) : noRel(n) && !quietNoReleases ? 'no releases' : undefined,
@@ -186,7 +188,7 @@
 				recovered: n.state === 'failed' && !!recovered?.(n),
 				word: siteWord(n),
 				detail: siteDetail(n),
-				wordInk: toneInk(n.state),
+				wordInk: inkOf(n),
 				build: n.card.version ? shortenVersion(n.card.version) : undefined,
 				aside: asideOf(n),
 				href: hrefFor(n),
