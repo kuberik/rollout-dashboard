@@ -43,7 +43,8 @@
 	import { announce } from '$lib/stores/announce.svelte';
 	import { CLEAR_PIN_LABEL, clearPinDialogTitle } from './pin-copy';
 	import { toastHideTimer } from '$lib/view-models/toast-timer';
-	import { reportFailure, failureTarget } from '$lib/stores/failure-toasts.svelte';
+	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
+	import { rolloutFailureTarget } from '$lib/view-models/failure-target';
 	import { apiPath } from '$lib/api/urls';
 
 	interface Props {
@@ -71,6 +72,8 @@
 		 * knows a truer name than the rollout can derive on its own.
 		 */
 		environmentName?: string | null;
+		/** the Environment's site, so a failure names the same place the dialog titles do */
+		site?: string | null;
 		onSuccess?: ((message: string) => void) | null;
 		onError?: ((message: string) => void) | null;
 		/**
@@ -87,6 +90,7 @@
 		cluster,
 		autoDeploy = null,
 		environmentName = null,
+		site = null,
 		onSuccess = null,
 		onError = null,
 		toast = true
@@ -127,7 +131,7 @@
 		if (!toast) return;
 		// a failure is reported app-wide (the dialog is already closed, so this is the only record) and waits to be dismissed
 		if (kind === 'error') {
-			reportFailure(failureTarget(rollout?.metadata?.name, envLabel), message);
+			reportFailure(rolloutFailureTarget(rollout, envLabel, site), message);
 			return;
 		}
 		localToastType = kind;

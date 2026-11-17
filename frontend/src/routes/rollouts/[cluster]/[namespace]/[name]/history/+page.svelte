@@ -48,7 +48,8 @@
 	import { changePathForRollout, displayVersionForTag, githubOwnerRepo, repoKeyFor, shortRevision } from '$lib/version-utils';
 	import { rolloutEnvironmentName, rollbackTarget } from '$lib/view-models/deploy-risk';
 	import { dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
-	import { reportFailure, failureTarget } from '$lib/stores/failure-toasts.svelte';
+	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
+	import { rolloutFailureTarget } from '$lib/view-models/failure-target';
 	import { stripEmphasisMarkers } from '$lib/view-models/plain-text-note';
 	import { isHistoryCurrentlyFailed } from '$lib/view-models/deploy-history';
 	import { bakePaused } from '$lib/bake-hold';
@@ -3144,7 +3145,7 @@
 			{cluster}
 			environmentName={environment?.spec?.environment ?? null}
 			site={environment ? siteOf(environment) : null}
-			onError={(m) => reportFailure(failureTarget(name, environment?.spec?.environment), m)}
+			onError={(m) => reportFailure(rolloutFailureTarget(rollout, environment?.spec?.environment ?? null, environment ? siteOf(environment) : null), m)}
 		/>
 	{/if}
 </div>

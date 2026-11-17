@@ -18,7 +18,6 @@
 	import { provideShellChrome } from '$lib/shell-chrome.svelte';
 	import { ScrollDirectionTracker } from '$lib/scroll-direction.svelte';
 	import { scrollMemoryKey, saveScrollPosition, getScrollPosition } from '$lib/scroll-memory';
-	import { toastVisibility } from '$lib/stores/toast-visibility.svelte';
 
 	// ⭐ FIX PASS ITEM 7 (2026-09-10). Namespaces a document-scroller entry
 	// apart from an `<main>`-scroller entry for the SAME url — see the
@@ -91,11 +90,7 @@
 	// reports hidden there; `.header-group`'s own media query is still what
 	// makes that state inert, this is just cheap to leave running unguarded.
 	//
-	// qa9 B2: `data-hidden` below also checks `toastVisibility.count` — a
-	// floating `Toast` docks at this bar's position on a phone, so while one
-	// is open the bar must stay revealed no matter what `headerScroll` says,
-	// or the toast ends up over content instead of chrome. See
-	// `$lib/stores/toast-visibility.svelte`'s doc comment.
+	// Toasts dock at the bottom (the toast dock), clear of this bar, so the bar's auto-hide no longer has to wait for them.
 	const headerScroll = new ScrollDirectionTracker(24);
 	let headerGroupEl: HTMLElement | undefined = $state();
 
@@ -403,7 +398,7 @@
 			<div
 				bind:this={headerGroupEl}
 				class="header-group"
-				data-hidden={headerScroll.hidden && toastVisibility.count === 0}
+				data-hidden={headerScroll.hidden}
 			>
 				<Navbar />
 				{#if shellChrome.tabStrip && !isDesktop}

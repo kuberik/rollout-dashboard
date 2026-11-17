@@ -52,7 +52,7 @@ describe('AppDetail Retry confirmation', () => {
 		install(true);
 		if (!Element.prototype.animate) Element.prototype.animate = (() => ({ finished: Promise.resolve(), cancel() {}, onfinish: null, play() {}, pause() {}, addEventListener() {} })) as never;
 	});
-	afterEach(() => { siteOfProd = null; retryStatus = 200; retryDelay = 0; owner = null; installLiveSource(null); posts.length = 0; vi.unstubAllGlobals(); });
+	afterEach(() => { resetFailureToasts(); siteOfProd = null; retryStatus = 200; retryDelay = 0; owner = null; installLiveSource(null); posts.length = 0; vi.unstubAllGlobals(); });
 	it('a production failed place: Retry opens the confirm; the POST follows the confirm', async () => {
 		const { findByRole, findByLabelText, getByRole } = mountApp('search-indexer');
 		await fireEvent.click(await findByRole('button', { name: /^Retry$/ }));
@@ -109,6 +109,17 @@ describe('AppDetail Retry confirmation', () => {
 		await waitFor(() => expect(document.querySelector('[data-action="retry"]')!.textContent).not.toContain('Retry failed'), { timeout: 4500 });
 		expect(document.activeElement!.getAttribute('data-action')).toBe('retry');
 	}, 10_000);
+	it('the failure toast spells the place like the confirm title: site and all, or just "prod"', async () => {
+		retryStatus = 500;
+		retryDelay = 400;
+		siteOfProd = 'eu-west';
+		const m = mountApp('search-indexer');
+		await typedRetry(m);
+		await waitFor(() => expect(posts.length).toBe(1));
+		await fireEvent.click([...m.getByRole('dialog').querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Cancel') as HTMLButtonElement);
+		await waitFor(() => expect(failureToasts.items.length).toBe(1), { timeout: 3000 });
+		expect(failureToasts.items[0].message).toBe('search-indexer in prod · eu-west: Failed to retry: nope');
+	}, 15_000);
 	it('an accepted Retry closes the confirm and says "Retry started"', async () => {
 		await typedRetry(mountApp('search-indexer'));
 		await waitFor(() => expect(document.body.textContent).toContain('Check restarted'));

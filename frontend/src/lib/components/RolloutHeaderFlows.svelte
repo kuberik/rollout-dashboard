@@ -33,7 +33,8 @@
 	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { stalledKruiseName, hasFailedStepTests } from '$lib/view-models/retry-context';
 	import { failureText, RETRY_FAILED } from '$lib/view-models/failure-text';
-	import { reportFailure, failureTarget } from '$lib/stores/failure-toasts.svelte';
+	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
+	import { rolloutFailureTarget } from '$lib/view-models/failure-target';
 	import { toastHideTimer } from '$lib/view-models/toast-timer';
 	import { retryActionHref } from '$lib/components/new/rollout-view';
 	import type { ManagedResourceStatus } from '../../types';
@@ -122,7 +123,7 @@
 	function announce(next: NonNullable<typeof toast>) {
 		// a failure is reported app-wide, naming this rollout, and waits to be dismissed; only successes are page-local
 		if (next.tone === 'danger') {
-			reportFailure(failureTarget(name, environmentName), next.message);
+			reportFailure(rolloutFailureTarget(rollout, environmentName, site), next.message);
 			return;
 		}
 		toast = next;

@@ -47,6 +47,9 @@ export const placeStateWithPin = (state: EnvState, pinned: boolean | undefined):
 /** The one sentence for a disabled Roll back / pin / change-version control when another manager owns `spec.wantedVersion` (the Overview prints the same words). */
 export const WANTED_VERSION_OWNED_REASON = "Another controller owns this rollout's wanted version, so the dashboard cannot pin it.";
 
+/** The same fact for a disabled Clear pin: what is refused is clearing the pin. */
+export const WANTED_VERSION_OWNED_CLEAR_REASON = "Another controller owns this rollout's wanted version, so the dashboard cannot clear the pin.";
+
 /** The hover tooltip of the failure banner's Roll back: what it does, or, when another manager owns the field, the same reason its title and aria-describedby carry. */
 export const rollbackTooltip = (managed: boolean): string => (managed ? 'Revert to the previous version.' : WANTED_VERSION_OWNED_REASON);
 

@@ -1685,6 +1685,7 @@ lib/view-models/manifest-diff-summary.ts	code	+… env vars
 lib/view-models/manifest-diff-summary.ts	code	−… env vars
 lib/view-models/manifest-diff-summary.ts	code	added …
 lib/view-models/manifest-diff-summary.ts	code	removed …
+lib/view-models/pin-hold.ts	code	Another controller owns this rollout's wanted version, so the dashboard cannot clear the pin.
 lib/view-models/pin-hold.ts	code	Another controller owns this rollout's wanted version, so the dashboard cannot pin it.
 lib/view-models/pin-hold.ts	code	Held by the pin
 lib/view-models/pin-hold.ts	code	Revert to the previous version.

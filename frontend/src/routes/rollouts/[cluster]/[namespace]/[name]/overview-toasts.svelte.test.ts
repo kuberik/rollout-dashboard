@@ -41,9 +41,11 @@ import { failureToasts, resetFailureToasts } from '$lib/stores/failure-toasts.sv
 beforeAll(() => install(true));
 afterEach(() => vi.unstubAllGlobals());
 
-afterEach(() => { resetToastVisibility(); resetFailureToasts(); });
+afterEach(() => { resetToastVisibility(); resetFailureToasts(); siteOfProd = null; appUnder = 'orders-hub'; });
 
 let changeStatus = 500;
+let siteOfProd: string | null = null;
+let appUnder = 'orders-hub';
 function openOverview(app = 'orders-hub', query = '?action=change-version') {
 	resetDemoState('calm');
 	const ns = `${app}-prod-default`;
@@ -58,7 +60,16 @@ function openOverview(app = 'orders-hub', query = '?action=change-version') {
 				return new Response(changeStatus === 200 ? '{}' : '{"details":"boom"}', { status: changeStatus, headers: { 'Content-Type': 'application/json' } });
 			}
 			const r = respond((init?.method ?? 'GET') as string, url.replace(/^https?:\/\/[^/]+/, ''));
-			return new Response(r.body ?? '', { status: r.status, headers: r.headers });
+			let body = r.body ?? '';
+			if (siteOfProd && body.includes('"environment"')) {
+				try {
+					const j = JSON.parse(body);
+					const envs = [j.environment, ...(j.environments?.items ?? [])].filter(Boolean);
+					for (const e of envs) if (e.spec?.environment === 'prod') e.spec.site = siteOfProd;
+					body = JSON.stringify(j);
+				} catch { /* not JSON */ }
+			}
+			return new Response(body, { status: r.status, headers: r.headers });
 		})
 	);
 	document.body.innerHTML = '';
@@ -68,11 +79,12 @@ const dlgs = () => [...document.querySelectorAll<HTMLElement>('dialog[open]')];
 const press = (root: ParentNode, re: RegExp) => [...root.querySelectorAll('button')].find((b) => re.test(b.textContent!.trim())) as HTMLButtonElement | undefined;
 
 /** The Overview's own Change version flow, confirmed, then (optionally) closed while the request runs. */
-async function deploy(closeWhileRunning: boolean, viaButton = false) {
+async function deploy(closeWhileRunning: boolean, viaButton: boolean | string = false) {
 	if (viaButton) {
-		openOverview('orders-hub', '');
-		await waitFor(() => expect(document.querySelector('#status-change-version-btn:not([disabled])')).not.toBeNull(), { timeout: 15_000 });
-		const opener = document.querySelector<HTMLButtonElement>('#status-change-version-btn')!;
+		const sel = typeof viaButton === 'string' ? viaButton : '#status-change-version-btn';
+		openOverview(appUnder, '');
+		await waitFor(() => expect(document.querySelector(`${sel}:not([disabled])`)).not.toBeNull(), { timeout: 15_000 });
+		const opener = document.querySelector<HTMLButtonElement>(sel)!;
 		opener.focus();
 		await fireEvent.click(opener);
 	} else openOverview();
@@ -112,6 +124,16 @@ describe('rollout page: the Change version flow reports where the operator is', 
 	});
 });
 
+describe('rollout page: the failure toast spells the place like the confirm titles', () => {
+	test('a site in the environment: "orders-hub in prod · eu-west"', async () => {
+		siteOfProd = 'eu-west';
+		changeStatus = 500;
+		await deploy(true);
+		await waitFor(() => expect(failureToasts.items.length).toBe(1), { timeout: 8000 });
+		expect(failureToasts.items[0].message).toMatch(/^orders-hub in prod · eu-west: /);
+	}, 40_000);
+});
+
 describe('rollout page: the header after a Change version submit', () => {
 	const opener = () => document.querySelector<HTMLButtonElement>('#status-change-version-btn')!;
 	test('a refused request clears "Deploy requested — starting" and re-enables Change version at once', async () => {
@@ -134,6 +156,19 @@ describe('rollout page: the header after a Change version submit', () => {
 	}, 40_000);
 });
 
+describe('rollout page: the Newer builds Deploy', () => {
+	test('stays focusable while a deploy is pending, and closing its confirm in flight returns focus to it', async () => {
+		changeStatus = 500;
+		appUnder = 'search-indexer';
+		await deploy(true, '.nb-deploy-btn');
+		await new Promise((r) => setTimeout(r, 100));
+		const btn = document.querySelector<HTMLButtonElement>('.nb-deploy-btn')!;
+		expect(btn.disabled).toBe(false);
+		expect(btn.getAttribute('aria-disabled')).toBe('true');
+		expect(document.activeElement, 'focus is on the Deploy button while the request still runs').toBe(btn);
+	}, 40_000);
+});
+
 describe('rollout page: a pin another controller owns', () => {
 	test('every disabled Clear pin gives the same reason as Roll back (title and aria-describedby)', async () => {
 		openOverview('inventory-api', '');
@@ -141,8 +176,10 @@ describe('rollout page: a pin another controller owns', () => {
 		await waitFor(() => expect(pins().length).toBeGreaterThan(0), { timeout: 15_000 });
 		for (const b of pins()) {
 			expect(b.disabled).toBe(true);
-			expect(b.getAttribute('title')).toBe("Another controller owns this rollout's wanted version, so the dashboard cannot pin it.");
-			expect(b.getAttribute('aria-describedby')).toBe('owned-reason');
+			expect(b.getAttribute('title')).toBe("Another controller owns this rollout's wanted version, so the dashboard cannot clear the pin.");
+			expect(b.getAttribute('aria-describedby')).toBe('owned-clear-reason');
+			expect(document.getElementById('owned-clear-reason')?.textContent).toBe("Another controller owns this rollout's wanted version, so the dashboard cannot clear the pin.");
 		}
 	}, 40_000);
 });
+

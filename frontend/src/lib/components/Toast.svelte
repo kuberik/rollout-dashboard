@@ -50,6 +50,7 @@
 		CloseOutline
 	} from 'flowbite-svelte-icons';
 	import StatusSpinner from './StatusSpinner.svelte';
+	import { toDock } from '$lib/toast-dock';
 	import { HUE_INK } from '$lib/view-models/state-tone';
 	import { showToast, hideToast } from '$lib/stores/toast-visibility.svelte';
 	import { untrack, type Snippet } from 'svelte';
@@ -114,6 +115,8 @@
 	// `untrack` that read makes THIS effect depend on `showing`, so its own
 	// write to `showing` re-triggers it: an infinite `effect_update_depth_exceeded`
 	// loop (reproduced in dev before this fix).
+	// The dock sits at the bottom, clear of the header, so nothing holds the header open for it any more; the count is the number of open toasts.
+	let docked = $state(false);
 	$effect(() => {
 		if (open && floating) {
 			untrack(showToast);
@@ -125,9 +128,12 @@
 {#if open}
 	<div
 		role={tone === 'danger' ? 'alert' : 'status'}
-		class="{floating
-			? 'fixed right-2 left-2 z-[60] bottom-[calc(var(--tabbar-h,0px)+8px)] sm:right-4 sm:bottom-4 sm:left-auto sm:w-[380px]'
-			: 'relative w-full max-w-[380px]'} flex items-start gap-3 rounded-md bg-overlay px-4 py-3"
+		use:toDock={{ enabled: floating, onDocked: () => (docked = true) }}
+		class="{docked
+			? 'relative w-full'
+			: floating
+				? 'fixed right-2 left-2 z-[60] bottom-[calc(var(--tabbar-h,0px)+8px)] sm:right-4 sm:bottom-4 sm:left-auto sm:w-[380px]'
+				: 'relative w-full max-w-[380px]'} flex items-start gap-3 rounded-md bg-overlay px-4 py-3"
 		style="box-shadow: var(--k-shadow-overlay)"
 		in:fly={{ y: 8, duration: 160, easing: cubicOut }}
 		out:fade={{ duration: 120 }}
@@ -152,7 +158,7 @@
 		{#if dismissable}
 			<button
 				type="button"
-				class="btn btn-ghost btn-icon btn-xs -my-1 -mr-2"
+				class="btn btn-ghost btn-icon btn-xs -my-1 -mr-2 max-sm:-my-3 max-sm:-mr-3 max-sm:min-h-11 max-sm:min-w-11"
 				aria-label="Dismiss"
 				onclick={() => {
 					open = false;

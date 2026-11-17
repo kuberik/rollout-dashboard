@@ -55,7 +55,7 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import { windowBar } from '$lib/view-models/window-bar';
 	import { CLEAR_PIN_LABEL } from './pin-copy';
-	import { WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
+	import { WANTED_VERSION_OWNED_CLEAR_REASON } from '$lib/view-models/pin-hold';
 	import { stateWord } from '$lib/components/new/state-words';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import { StableOrder, RetainedRows } from '$lib/view-models/stable-order';
@@ -766,7 +766,8 @@
 				<p class="gh-line t-meta min-w-0 break-words text-held" data-gate-release>{type === 'window' || type === 'freeze' ? windowLine(b) : boxReleaseLine(b)}</p>
 			{/if}
 			{#if b.kind === 'pin' && onClearPin}
-				<button type="button" class="gh-line btn btn-xs btn-secondary mt-1 self-start" disabled={clearPinDisabled} title={clearPinDisabled ? WANTED_VERSION_OWNED_REASON : undefined} aria-describedby={clearPinDisabled ? 'owned-reason' : undefined} onclick={onClearPin}>{CLEAR_PIN_LABEL}</button>
+				<button type="button" class="gh-line btn btn-xs btn-secondary mt-1 self-start" disabled={clearPinDisabled} title={clearPinDisabled ? WANTED_VERSION_OWNED_CLEAR_REASON : undefined} aria-describedby={clearPinDisabled ? 'nb-owned-clear-reason' : undefined} onclick={onClearPin}>{CLEAR_PIN_LABEL}</button>
+				{#if clearPinDisabled}<span id="nb-owned-clear-reason" class="sr-only">{WANTED_VERSION_OWNED_CLEAR_REASON}</span>{/if}
 			{/if}
 			{#if offer}
 				<div class="gh-line mt-1 self-start">{@render skipButton(offer)}</div>

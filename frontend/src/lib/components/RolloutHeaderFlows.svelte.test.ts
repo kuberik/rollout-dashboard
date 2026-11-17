@@ -298,7 +298,7 @@ describe('the toasts across navigation', () => {
 		await waitFor(() => expect(failureToasts.items.length).toBe(1), { timeout: 3000 });
 		await gotoOther(r);
 		await new Promise((res) => setTimeout(res, 300));
-		expect(failureToasts.items.map((t) => t.message)).toEqual(['invoice-api in prod: Failed to retry: nope']);
+		expect(failureToasts.items.map((t) => t.message)).toEqual(['invoice-api in prod · eu-west: Failed to retry: nope']);
 	});
 });
 

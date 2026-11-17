@@ -4,7 +4,8 @@
 	import { failureText, retryOutcome, RETRY_FAILED } from '$lib/view-models/failure-text';
 	import { toastHideTimer } from '$lib/view-models/toast-timer';
 	import { untrack } from 'svelte';
-	import { reportFailure, failureTarget } from '$lib/stores/failure-toasts.svelte';
+	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
+	import { rolloutFailureTarget } from '$lib/view-models/failure-target';
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { HUE_INK, HUE_SOLID } from '$lib/view-models/state-tone';
@@ -160,7 +161,7 @@
 		rowShowsFailed
 	} from '$lib/view-models/deploy-risk';
 	import { blockingGateNames, promotionCandidates } from '$lib/view-models/promotion';
-	import { dashboardManagesWantedVersion, newerBuildsShown, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
+	import { dashboardManagesWantedVersion, newerBuildsShown, WANTED_VERSION_OWNED_REASON, WANTED_VERSION_OWNED_CLEAR_REASON } from '$lib/view-models/pin-hold';
 	import { fleetSettled } from '$lib/view-models/behind';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import type { SnapCheck } from '$lib/view-models/health-failures';
@@ -1517,7 +1518,7 @@
 		if (showToast && toastType === 'error') {
 			const message = toastMessage;
 			untrack(() => {
-				reportFailure(failureTarget(name, environment?.spec?.environment), message);
+				reportFailure(rolloutFailureTarget(rollout, environment?.spec?.environment ?? null, environment ? siteOf(environment) : null), message);
 				showToast = false;
 			});
 		}
@@ -3086,10 +3087,12 @@
 							<button
 								type="button"
 								class="btn btn-secondary max-lg:h-11"
-								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
-								title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_REASON}
-								aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion}
+								aria-disabled={pendingAction ? 'true' : undefined}
+								title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_CLEAR_REASON}
+								aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-clear-reason'}
 								onclick={() => {
+								if (pendingAction) return;
 									showClearPinModal = true;
 								}}
 							>
@@ -3148,7 +3151,8 @@
 								id="status-rollback-btn"
 								class="btn btn-secondary max-lg:h-11"
 								data-phone-end
-								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+								disabled={!permissionsKnown || !isDashboardManagingWantedVersion}
+								aria-disabled={pendingAction ? 'true' : undefined}
 								aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
 								title={!isDashboardManagingWantedVersion
 									? WANTED_VERSION_OWNED_REASON
@@ -3160,6 +3164,7 @@
 										}`
 									: `Go back to ${rollbackDisplay}, the release directly below the one running (never deployed here)`}
 								onclick={() => {
+								if (pendingAction) return;
 									const running = rollout?.status?.history?.[0]?.version;
 									if (isDashboardManagingWantedVersion && rollbackNow && running) {
 										isPinVersionMode = true;
@@ -3181,6 +3186,7 @@
 						{#if !isDashboardManagingWantedVersion}
 							<!-- THE REASON IS TEXT AT EVERY WIDTH (a tooltip is hover-only and a disabled button is out of the keyboard's reach): one quiet line under the row, the buttons it explains point at it with aria-describedby. -->
 							<p id="owned-reason" class="t-meta text-fg-subtle max-lg:w-full lg:w-0 lg:min-w-full lg:text-right" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>
+							<span id="owned-clear-reason" class="sr-only">{WANTED_VERSION_OWNED_CLEAR_REASON}</span>
 						{/if}
 					{/if}
 				{/snippet}
@@ -3389,10 +3395,12 @@
 								<button
 									type="button"
 									class="btn btn-secondary"
-									disabled={!isDashboardManagingWantedVersion || !!pendingAction}
-									title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_REASON}
-									aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
+									disabled={!isDashboardManagingWantedVersion}
+								aria-disabled={pendingAction ? 'true' : undefined}
+									title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_CLEAR_REASON}
+									aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-clear-reason'}
 									onclick={() => {
+								if (pendingAction) return;
 										showClearPinModal = true;
 									}}
 								>
@@ -3980,10 +3988,12 @@
 												<button
 													type="button"
 													class="btn btn-secondary btn-xs shrink-0"
-													disabled={!isDashboardManagingWantedVersion || !!pendingAction}
-													title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_REASON}
-													aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
+													disabled={!isDashboardManagingWantedVersion}
+								aria-disabled={pendingAction ? 'true' : undefined}
+													title={isDashboardManagingWantedVersion ? undefined : WANTED_VERSION_OWNED_CLEAR_REASON}
+													aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-clear-reason'}
 													onclick={() => {
+								if (pendingAction) return;
 														showClearPinModal = true;
 													}}
 												>
@@ -4167,7 +4177,7 @@
 														     failed / promoting. -->
 														<button
 															type="button"
-															class="btn btn-xs nb-deploy-btn {isOlderRow ||
+															class="btn btn-xs nb-deploy-btn {pendingAction ? 'opacity-60 cursor-progress' : ''} {isOlderRow ||
 															isBlocked ||
 															justFailed ||
 															heldByHealth ||
@@ -4176,10 +4186,10 @@
 																? 'btn-secondary'
 																: 'btn-primary'}"
 															aria-label={`Deploy version ${getDisplayVersion(releaseCandidate)}`}
-															disabled={(!isDashboardManagingWantedVersion &&
-																!hasForceDeployAnnotation(rollout)) ||
-																!!pendingAction}
+															disabled={!isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout)}
+															aria-disabled={pendingAction ? 'true' : undefined}
 															onclick={() => {
+																if (pendingAction) return;
 																selectedVersion = version;
 																const isCustom = isSelectedVersionCustom(version);
 																isPinVersionMode = isOlderThanCurrent(version) || isCustom;
@@ -4858,7 +4868,7 @@
 							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
 							aria-describedby={noReleases ? "change-version-reason-2" : undefined}
 								onclick={() => {
-									if (pendingAction) return;
+								if (pendingAction) return;
 									if (isDashboardManagingWantedVersion) {
 										isPinVersionMode = false;
 										selectedVersion = null;

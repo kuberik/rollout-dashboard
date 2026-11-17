@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { reportFailure, failureTarget } from '$lib/stores/failure-toasts.svelte';
+	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
+	import { rolloutFailureTarget } from '$lib/view-models/failure-target';
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import RetryConfirmModal from '$lib/components/RetryConfirmModal.svelte';
 	import Toast from '$lib/components/Toast.svelte';
@@ -324,10 +325,11 @@
 		untrack(() => (retryToastOpen = false));
 	});
 	const hideRetryToast = toastHideTimer(() => (retryToastOpen = false));
-	function announceRetry(t: NonNullable<typeof retryToast>) {
-		// a failure is reported app-wide, naming this app and place, and waits to be dismissed; only successes are page-local
+	function announceRetry(t: NonNullable<typeof retryToast>, about: Rollout | null = retryRollout ?? null) {
+		// a failure is reported app-wide, naming the rollout and its place, and waits to be dismissed; only successes are page-local
 		if (t.tone === 'danger') {
-			reportFailure(failureTarget(name, failRow ? rowPlaceName(failRow) : null), t.message);
+			const env = about ? environments.find((e) => rolloutMatchesEnvironment(about, e)) : undefined;
+			reportFailure(rolloutFailureTarget(about, env?.spec?.environment ?? null, env ? siteOf(env) : null), t.message);
 			return;
 		}
 		retryToast = t;
@@ -508,7 +510,7 @@
 			<RolloutHeaderFlows cluster={rollbackPath[1] ?? ''} namespace={rollbackPath[2] ?? ''} name={rollbackPath[3] ?? ''} request={0} {rollbackRequest} />
 		{/key}
 	{/if}
-	<ChangeVersionFlow bind:open={modalOpen} rollout={modalRollout} isPinVersionMode={false} initialSelectedVersion={modalVersion} initialExplanation={modalExplanation} cluster={modalCluster ?? ''} onError={(m) => announceRetry({ tone: 'danger', message: m, description: '', logsHref: '' })} />
+	<ChangeVersionFlow bind:open={modalOpen} rollout={modalRollout} isPinVersionMode={false} initialSelectedVersion={modalVersion} initialExplanation={modalExplanation} cluster={modalCluster ?? ''} onError={(m) => announceRetry({ tone: 'danger', message: m, description: '', logsHref: '' }, modalRollout)} />
 {/if}
 
 <style>
