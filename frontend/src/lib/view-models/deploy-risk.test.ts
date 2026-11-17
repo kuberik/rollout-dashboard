@@ -17,7 +17,8 @@ import {
 	splitLeadSentence,
 	targetPhrase,
 	typedPrompt,
-	retryTitle
+	retryTitle,
+	placeTarget
 } from './deploy-risk';
 import { blockingGateNames } from './promotion';
 import type { Rollout } from '../../types';
@@ -759,4 +760,38 @@ describe('holdersPhrase (QA #22 / round 2): the notice counts, the rule list nam
 	it('one', () => expect(holdersPhrase(['Manual approval'])).toBe('a rule is still holding back'));
 	it('several', () => expect(holdersPhrase(['A', 'B', 'C'])).toBe('3 rules are still holding back'));
 	it('none known', () => expect(holdersPhrase([])).toBe('a rule is still holding back'));
+});
+
+/** One name for where a rollback or retry lands: a rollout in one site of a tier says both, and every confirm title reads it. */
+describe('placeTarget: the tier and the site, one spelling', () => {
+	const at = (labelEnv: string, ns = 'invoice-api-prod-eu-west') => rollout({ metadata: { name: 'invoice-api', namespace: ns, labels: { environment: labelEnv } } });
+	it('a rollout whose label carries the site, named by the tier from the Environment: prod · eu-west', () => {
+		expect(placeTarget(at('prod-eu-west'), 'prod')).toBe('prod · eu-west');
+	});
+	it('the same place with no Environment name at all: still prod · eu-west, not prod-eu-west', () => {
+		expect(placeTarget(at('prod-eu-west'))).toBe('prod · eu-west');
+		expect(placeTarget(at('prod-eu-west'), 'prod-eu-west')).toBe('prod · eu-west');
+	});
+	it('the Environment\'s own site names the place even when the rollout is labelled just prod; the label stays the fallback', () => {
+		expect(placeTarget(at('prod'), 'prod', 'eu-west')).toBe('prod · eu-west');
+		expect(placeTarget(at('prod'), 'prod', 'default')).toBe('prod');
+		expect(placeTarget(at('prod-eu-west'), 'prod', null)).toBe('prod · eu-west');
+		expect(targetPhrase(retryIntent(at('prod'), 'prod', 'eu-west'))).toBe('prod · eu-west');
+		expect(targetPhrase(deployIntent(at('prod'), NEWEST, 'prod', 'eu-west'))).toBe('prod · eu-west');
+	});
+	it('without a site the name is the environment, unchanged', () => {
+		expect(placeTarget(at('prod'), 'prod')).toBe('prod');
+		expect(placeTarget(at('staging'), 'staging')).toBe('staging');
+	});
+	it('a site that is only a tier word is the default site: not printed', () => {
+		expect(placeTarget(at('prod-default'), 'prod')).toBe('prod');
+	});
+	it('the titles name it: Roll back/Retry for the same regional rollout say the same place', () => {
+		const r = at('prod-eu-west');
+		const retry = retryIntent(r, 'prod');
+		const back = deployIntent(r, NEWEST, 'prod');
+		expect(targetPhrase(retry)).toBe('prod · eu-west');
+		expect(targetPhrase(back)).toBe('prod · eu-west');
+		expect(retryTitle(retry, '1.4.0')).toBe('Retry 1.4.0 in prod · eu-west');
+	});
 });

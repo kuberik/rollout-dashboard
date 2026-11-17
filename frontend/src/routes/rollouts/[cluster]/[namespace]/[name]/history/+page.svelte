@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { siteOf } from '$lib/view-models/sites-waves';
 	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { toneInk } from '$lib/view-models/state-tone';
 	import { lastFailureAgoOf } from '$lib/view-models/event-age';
@@ -1509,15 +1510,14 @@
 				quietRollback
 				failingNow={headFailingNow(liveChecks as never, rollout?.status?.history?.[0] as never)}
 				recovered={headRecovered(liveChecks as never, rollout?.status?.history?.[0] as never)}
-				rollbackHref={href(`/rollouts/${cluster}/${namespace}/${name}/history?action=rollback`)}
 			>
 				<!-- ⭐ ONE ACTION SET ON EVERY TAB (LOGOPEN r11, item 4): History,
 				     Gates and Logs carry the same header move, Roll back, rightmost
 				     (failed: the primary; calm: the secondary "Roll back to <sha>",
 				     `quietRollback`). View on GitHub and Change version live on the
 				     Overview, one tab away; a second copy here made History's header
-				     a different object from its siblings'. `rollbackHref` keeps the
-				     modal in this page (`?action=rollback` handler below). -->
+				     a different object from its siblings'. The header opens its own
+				     Roll back / Retry confirm in place on every tab. -->
 				{#snippet meta()}
 					<!--
 						⭐ `metaSeparated` NOW, NOT HAND-WRITTEN "·" SPANS. (2026-10-09,
@@ -2307,30 +2307,49 @@
 										is unchanged and demoted to the second line, because seventeen
 										other callers depend on exactly what it does today.
 									-->
-														<!-- ⭐ THE TIME COLUMN, THE HOVER-ACTIONS' OWN ANCHOR (AD
-									     round 6, item 2): "hidden hover actions reserve width at
-									     rest." The actions `<div>` used to be a THIRD flex sibling
-									     here — `opacity-0` hides it, but opacity never removes an
-									     element from layout, so its ~230px of buttons were reserved
-									     on every row, every width, all the time. Measured live: rows
-									     68/87/105px tall for one kind of row, and 55f1a2c's own
-									     meta line wrapped to 3 lines because the invisible buttons
-									     were still eating the width its text needed. `position:
-									     relative` here, `position: absolute` on the actions overlay
-									     below, makes the actions reserve exactly 0px at rest.
-									     ⭐ NO PATCH (AD round 9, item 1): round 6 painted the
-									     overlay with its own `bg-surface` fill so the clock/ago
-									     text underneath would never show through — which drew a
-									     visibly different-toned rectangle over part of the row,
-									     "a hover patch," floating on top of the row's own
-									     `hover:bg-hover` tint instead of sitting IN it. Removed:
-									     the clock/ago text now fades out on its own (`opacity-0`
-									     on group-hover, right below) so there is nothing left for
-									     a patch to cover, and the buttons sit directly on the
-									     row's own hover colour like every other control on it. -->
-														<div class="relative hidden shrink-0 text-right sm:block">
+														<!-- ⭐ THE ACTION COLUMN, RESERVED (hover-capable widths only; revealed on hover or focus-within, never on the running row or an expanded one). Roll back and
+										     View diff live in their own column BEFORE the time, so the summary
+										     truncates before it and nothing slides over text or over the date.
+										     It is empty (and invisible) at rest, on the running row and on an
+										     expanded one, and does not exist below lg, where the same two actions
+										     stay in the expanded panel. -->
+														<div class="hidden w-52 shrink-0 items-center justify-end lg:flex" data-row-actions>
+															{#if !isCurrent && !isExpanded}
+																	<div
+																		class="pointer-events-none flex items-center justify-end gap-2 opacity-0 transition-opacity lg:group-hover:pointer-events-auto lg:group-hover:opacity-100 lg:focus-within:pointer-events-auto lg:focus-within:opacity-100"
+																	>
+																		{#if entry.bakeStatus === 'Succeeded'}
+																			<button
+																				title="Roll back to this build"
+																				aria-label="Roll back to this build"
+																				type="button"
+																				class="btn btn-secondary btn-xs"
+																				onclick={(ev) => {
+																					ev.stopPropagation();
+																					selectedVersionTag = entry.version.tag;
+																					deployExplanation = '';
+																					showChangeVersionModal = true;
+																				}}
+																			>
+																				<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
+																				Roll back
+																			</button>
+																		{/if}
+																		<DiffLink
+																			{cluster}
+																			namespace={rollout?.metadata?.namespace ?? ''}
+																			name={rollout?.metadata?.name ?? ''}
+																			history={rollout?.status?.history ?? []}
+																			index={i}
+																			{atLimit}
+																		/>
+																	</div>
+															{/if}
+														</div>
+
+														<div class="hidden shrink-0 text-right sm:block">
 															<div
-																class="t-meta text-fg-muted tabular-nums transition-opacity lg:group-focus-within:opacity-0 lg:group-hover:opacity-0"
+																class="t-meta text-fg-muted tabular-nums"
 																title={formatDate(entry.timestamp)}
 															>
 																{clockTime(entry.timestamp)}
@@ -2340,62 +2359,10 @@
 										     Who did it is a fact ABOUT the deploy and belongs with
 										     the other facts about it, not stacked under a timestamp. -->
 															<div
-																class="t-meta text-fg-subtle mt-0.5 flex items-center justify-end gap-1 transition-opacity lg:group-focus-within:opacity-0 lg:group-hover:opacity-0"
+																class="t-meta text-fg-subtle mt-0.5 flex items-center justify-end gap-1"
 															>
 																<span>{formatTimeAgoCompact(entry.timestamp, $now)} ago</span>
 															</div>
-															<!-- ⭐ HOVER/FOCUS-WITHIN ACTIONS (spec §1), DESKTOP ONLY, NEVER
-										     ON THE RUNNING ROW. `opacity-0 pointer-events-none` at rest
-										     so a resting row carries no more ink than before and the
-										     overlay never steals a click meant for the clock/date under
-										     it; `lg:group-hover:opacity-100` (+ `pointer-events-auto`)
-										     avoids the ghost-affordance mistake the design rules call
-										     out by name (something hover-only on desktop rendering at
-										     REST on a touch screen, where hover never fires) — below
-										     `lg` these controls simply never render, and the same two
-										     actions stay reachable inside the expanded panel at every
-										     width. The last healthy row during an incident used to get
-										     a THIRD, always-visible copy of this button here (round 3)
-										     — removed in round 5, item 8: `RolloutTabHeader`'s own
-										     primary button already says "Roll back to {name}" for
-										     exactly that row, so a reader never needed this row to
-										     repeat it.
-										     ⭐ HIDDEN WHILE EXPANDED (AD round 4, item 3) — the exact
-										     same two actions already sit at the panel's own bottom
-										     once a row is open; hovering an expanded row floated a
-										     second "Roll back to this"/"View diff" pair above the
-										     first, both clickable, both doing the same thing. -->
-															{#if !isCurrent && !isExpanded}
-																<div
-																	class="pointer-events-none absolute inset-y-0 right-0 z-10 hidden items-center justify-end gap-2 opacity-0 transition-opacity lg:flex lg:group-hover:pointer-events-auto lg:group-hover:opacity-100 lg:focus-within:pointer-events-auto lg:focus-within:opacity-100"
-																>
-																	{#if entry.bakeStatus === 'Succeeded'}
-																		<button
-																			title="Roll back to this build"
-																			aria-label="Roll back to this build"
-																			type="button"
-																			class="btn btn-secondary btn-xs"
-																			onclick={(ev) => {
-																				ev.stopPropagation();
-																				selectedVersionTag = entry.version.tag;
-																				deployExplanation = '';
-																				showChangeVersionModal = true;
-																			}}
-																		>
-																			<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-																			Roll back
-																		</button>
-																	{/if}
-																	<DiffLink
-																		{cluster}
-																		namespace={rollout?.metadata?.namespace ?? ''}
-																		name={rollout?.metadata?.name ?? ''}
-																		history={rollout?.status?.history ?? []}
-																		index={i}
-																		{atLimit}
-																	/>
-																</div>
-															{/if}
 														</div>
 
 														<!-- Expand affordance, and now the row's `.tap-link`. A bare 16px
@@ -3163,6 +3130,7 @@
 			initialExplanation={deployExplanation}
 			{cluster}
 			environmentName={environment?.spec?.environment ?? null}
+			site={environment ? siteOf(environment) : null}
 		/>
 	{/if}
 </div>

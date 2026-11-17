@@ -158,6 +158,7 @@
 		 * `rolloutEnvironmentName`, so no surface can silently lose it.
 		 */
 		environmentName?: string | null;
+		site?: string | null;
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
 		/**
@@ -194,6 +195,7 @@
 		initialExplanation = '',
 		cluster,
 		environmentName = null,
+		site = null,
 		contractHeldVersions,
 		onSuccess = () => {},
 		onError = () => {},
@@ -1222,7 +1224,7 @@
 	 * `view-models/deploy-risk.ts` where it has tests. A safety rule that
 	 * lives only in a template is one refactor from being lost.
 	 */
-	const intent = $derived(deployIntent(rollout, selectedVersion, environmentName));
+	const intent = $derived(deployIntent(rollout, selectedVersion, environmentName, site));
 	const direction = $derived(intent.direction);
 	/** `targetPhrase` capitalized for the one place it opens a sentence. */
 	const targetPhraseCapitalized = $derived.by(() => {
@@ -1654,7 +1656,7 @@
 	 * (`envLabel`, the cluster's own spelling) never is. `intent.environment`
 	 * is that same spelling — unconditional, tier or not.
 	 */
-	const dialogTitleTarget = $derived(intent.environment || 'this environment');
+	const dialogTitleTarget = $derived(targetPhrase(intent)); // `prod · eu-west`: the one place name every Roll back / Retry confirm uses
 	const dialogTitle = $derived.by(() => {
 		if (!selectedVersion) return 'Change version';
 		const build = getDisplaySelectedVersion();

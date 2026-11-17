@@ -33,10 +33,11 @@
 		hasUnblockFailedAnnotation
 	} from '$lib/utils';
 	import { rollbackTarget } from '$lib/view-models/deploy-risk';
+	import { dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
 	import { page } from '$app/state';
 	import { href } from '$lib/paths';
 	import { UndoOutline, PlaySolid } from 'flowbite-svelte-icons';
-	import { retryActionHref } from '$lib/components/new/rollout-view';
+	import RolloutHeaderFlows from './RolloutHeaderFlows.svelte';
 	import { failureRecovered } from '$lib/components/new/data';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { changePathForRollout } from '$lib/version-utils';
@@ -49,7 +50,6 @@
 		meta: metaRender,
 		actions,
 		identityExtra,
-		rollbackHref,
 		titleAfter: titleAfterOverride,
 		chip: chipOverride,
 		inlineRollback = true,
@@ -79,12 +79,6 @@
 		 * the Overview-sibling tabs) renders exactly as before.
 		 */
 		identityExtra?: Snippet;
-		/**
-		 * Where the header's failed-state "Roll back to X" goes. Default: the
-		 * Overview with `?action=rollback` (it opens the same dialog its banner
-		 * does). A tab that hosts the dialog itself (History) passes its own.
-		 */
-		rollbackHref?: string;
 		/**
 		 * Replaces the `/ build` part of the title line. A page about ONE deploy
 		 * that is not the running one (the diff page: `/ b7e0d41 → d09e6f4`)
@@ -138,20 +132,25 @@
 	const rollbackNow = $derived(rollout ? rollbackTarget(rollout) : null);
 	/**
 	 * The failed place's checks are all OK again: Retry is the primary (view-models/failure-actions.ts), printed after Roll back as on the Overview banner.
-	 * Retry lives on the rollout's Overview, so here it is a link there; Roll back stays beside it on lg+ (the phone's one
-	 * meta-line action is the lead).
+	 * Retry and Roll back open their confirm in place (`RolloutHeaderFlows`); Roll back stays beside Retry on lg+.
 	 */
 	const recovered = $derived(isFailed && (recoveredIn ?? failureRecovered(rolloutPath(page.params.cluster ?? '', page.params.namespace ?? '', page.params.name ?? name))));
-	const retryLink = $derived(retryActionHref(href(`/rollouts/${page.params.cluster}/${page.params.namespace}/${page.params.name ?? name}`)));
 	const rollbackDisplay = $derived(
 		rollbackNow ? getDisplayVersion({ tag: rollbackNow.tag, version: rollbackNow.version }) : ''
 	);
-	const rollbackLink = $derived(
-		rollbackHref ??
-			href(
-				`/rollouts/${page.params.cluster}/${page.params.namespace}/${page.params.name ?? name}?action=rollback`
-			)
-	);
+	/**
+	 * Roll back and Retry open their confirm IN PLACE, on every tab (`RolloutHeaderFlows`, mounted on the first press): Cancel leaves the
+	 * operator on the Logs, Gates or History they were reading, with the URL unchanged. They are buttons, not links to the Overview.
+	 */
+	let retryRequest = $state(0);
+	let rollbackRequest = $state(0);
+	const pressRetry = () => retryRequest++;
+	/** another field manager (Flux) owns `spec.wantedVersion`: Roll back is a pin, so it is disabled, with the Overview's own reason */
+	const managesPin = $derived(dashboardManagesWantedVersion(rollout));
+	const rollbackTitle = $derived(managesPin ? `Roll back to ${rollbackDisplay}` : WANTED_VERSION_OWNED_REASON);
+	const pressRollback = () => {
+		if (managesPin) rollbackRequest++;
+	};
 	const subtitle = $derived(
 		rollout?.status?.title && rollout.status.title !== name ? rollout.status.title : null
 	);
@@ -194,30 +193,32 @@
 		<!-- sm+ only: below sm the action sits on the meta line (`metaRow`).
 		     `data-desktop-only` lets the actions cell collapse when this is its
 		     only child (language.css, "LOGOPEN r8"), so no empty 12px row. -->
-		<a
+		<button type="button"
 			class="btn {recovered ? 'btn-secondary' : 'btn-primary'} max-lg:hidden"
 			data-desktop-only
-			href={rollbackLink}
-			title="Roll back to {rollbackDisplay}"
+			onclick={pressRollback}
+			title={rollbackTitle}
+			disabled={!managesPin}
 		>
 			<UndoOutline class="h-4 w-4" aria-hidden="true" />
 			Roll back
-		</a>
-		<a class="btn {recovered ? 'btn-primary' : 'btn-secondary'} max-lg:hidden" data-desktop-only data-action="retry" href={retryLink}>
+		</button>
+		<button type="button" class="btn {recovered ? 'btn-primary' : 'btn-secondary'} max-lg:hidden" data-desktop-only data-action="retry" onclick={pressRetry}>
 			<PlaySolid class="h-4 w-4" aria-hidden="true" />
 			Retry
-		</a>
+		</button>
 	{/if}
 	{#if quietRollback && !isFailed && rollbackNow}
-		<a
+		<button type="button"
 			class="btn btn-secondary max-lg:h-11"
 			data-phone-end
-			href={rollbackLink}
-			title="Roll back to {rollbackDisplay}"
+			onclick={pressRollback}
+			title={rollbackTitle}
+			disabled={!managesPin}
 		>
 			<UndoOutline class="h-4 w-4" aria-hidden="true" />
 			Roll back
-		</a>
+		</button>
 	{/if}
 	{#if actions}{@render actions()}{/if}
 {/snippet}
@@ -262,14 +263,15 @@
 	     language.css hides the cell from lg up when this is its only child. -->
 	{#if inlineRollback && isFailed && rollbackNow}
 		<div class="flex flex-wrap items-center gap-2 lg:hidden" data-phone-actions>
-			<a class="btn {recovered ? 'btn-secondary' : 'btn-primary bg-none'} h-11 px-4" data-phone-only data-action="rollback" href={rollbackLink} title="Roll back to {rollbackDisplay}">
+			<button type="button" class="btn {recovered ? 'btn-secondary' : 'btn-primary bg-none'} h-11 px-4" data-phone-only data-action="rollback" onclick={pressRollback} title={rollbackTitle} disabled={!managesPin}>
 				<UndoOutline class="h-4 w-4" aria-hidden="true" />
 				Roll back
-			</a>
-			<a class="btn {recovered ? 'btn-primary bg-none' : 'btn-secondary'} h-11 px-4" data-phone-only data-action="retry" href={retryLink}>
+			</button>
+			<button type="button" class="btn {recovered ? 'btn-primary bg-none' : 'btn-secondary'} h-11 px-4" data-phone-only data-action="retry" onclick={pressRetry}>
 				<PlaySolid class="h-4 w-4" aria-hidden="true" />
 				Retry
-			</a>
+			</button>
+			{#if !managesPin}<p class="t-meta basis-full text-fg-subtle" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>{/if}
 		</div>
 	{/if}
 {/snippet}
@@ -277,6 +279,16 @@
 	{@render phoneActions()}
 	{#if below}{@render below()}{/if}
 {/snippet}
+
+{#if retryRequest > 0 || rollbackRequest > 0}
+	<RolloutHeaderFlows
+		cluster={page.params.cluster ?? ''}
+		namespace={page.params.namespace ?? ''}
+		name={page.params.name ?? name}
+		request={retryRequest}
+		rollbackRequest={rollbackRequest}
+	/>
+{/if}
 
 <PageHeader
 	title={name}

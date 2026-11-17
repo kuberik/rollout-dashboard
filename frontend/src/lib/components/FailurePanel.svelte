@@ -42,6 +42,8 @@
 		 * loose in one direction only — see `rolloutEnvironmentName`.
 		 */
 		environmentName?: string | null;
+		/** the Environment's site (`siteOf`), for the confirm titles */
+		site?: string | null;
 		onRetry: (kruiseRolloutName?: string, testAction?: string) => Promise<void>;
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
@@ -62,6 +64,7 @@
 		isDashboardManagingWantedVersion,
 		cluster,
 		environmentName = null,
+		site = null,
 		onRetry,
 		onSuccess = () => {},
 		onError = () => {},
@@ -131,7 +134,7 @@
 	const failingNow = $derived(healthChecks.filter((h) => h?.status?.status === 'Unhealthy'));
 
 	/** Retry's risk, decided by the one shared rule (view-models/retry-confirm.ts) */
-	const confirm = $derived(retryConfirm(rollout, environmentName, healthChecks, failedHCList));
+	const confirm = $derived(retryConfirm(rollout, environmentName, healthChecks, failedHCList, site));
 	const intent = $derived(confirm.intent);
 	const level = $derived(confirm.level);
 	const displayTag = $derived(confirm.displayTag);
@@ -323,6 +326,8 @@
 	initialSelectedVersion={rollbackVersionTag}
 	initialExplanation={rollbackExplanation}
 	cluster={cluster ?? ''}
+	{environmentName}
+	{site}
 	{onSuccess}
 	{onError}
 />

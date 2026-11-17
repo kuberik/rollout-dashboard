@@ -17,9 +17,11 @@ export function retryConfirm(
 	environmentName: string | null | undefined,
 	healthChecks: HealthCheck[],
 	/** the failed checks recorded on the deployed history entry */
-	failedHCList: Array<{ name: string; namespace?: string }> = []
+	failedHCList: Array<{ name: string; namespace?: string }> = [],
+	/** the Environment's site, so the title names `prod · eu-west` */
+	site?: string | null
 ) {
-	const intent = retryIntent(rollout, environmentName);
+	const intent = retryIntent(rollout, environmentName, site);
 	const level = confirmLevel(intent);
 	const currentTag = retryTag(rollout);
 	const v = rollout?.status?.history?.[0]?.version;
