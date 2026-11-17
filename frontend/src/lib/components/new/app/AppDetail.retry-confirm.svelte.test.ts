@@ -9,11 +9,14 @@ import { installLiveSource, type FleetSource } from '$lib/components/home/sketch
 /** Retry on the app page asks exactly as the rollout Overview's failure panel does (view-models/retry-confirm.ts). */
 const posts: string[] = [];
 let siteOfProd: string | null = null;
+let retryStatus = 200;
+let owner: string | null = null;
 const load = () => {
 	resetDemoState('calm');
 	const l = JSON.parse(respond('GET', '/api/rollouts').body ?? '{}');
 	const gh = JSON.parse(respond('GET', '/api/github/changes?days=365').body!);
 	const hc = JSON.parse(respond('GET', '/api/health-checks').body ?? 'null');
+	if (owner) for (const r of l.rollouts.items) if (r.metadata?.name === 'search-indexer') { r.metadata.managedFields = [{ manager: owner, operation: 'Apply', fieldsV1: { 'f:spec': { 'f:wantedVersion': {} } } }]; r.spec = { ...(r.spec ?? {}), wantedVersion: 'pinned' }; }
 	if (siteOfProd) for (const e of l.environments.items) if (e.spec?.environment === 'prod') e.spec.site = siteOfProd;
 	installLiveSource({ rollouts: l.rollouts.items, environments: l.environments.items, rolloutDependencies: l.rolloutDependencies, kustomizations: [], kruiseRollouts: [], changes: gh.changes, changesState: 'ok', healthChecks: hc?.rolloutHealthChecks?.items ?? null, github: { configured: true, connected: true, login: 'demo' }, me: 'demo', now: new Date() } as unknown as FleetSource);
 };
@@ -21,7 +24,7 @@ const mountApp = (app: string) => {
 	load();
 	vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
 		const method = init?.method ?? 'GET';
-		if (method === 'POST' && /\/retry$/.test(String(url))) { posts.push(String(url)); return new Response('{}', { status: 200 }); }
+		if (method === 'POST' && /\/retry$/.test(String(url))) { posts.push(String(url)); return new Response(retryStatus === 200 ? '{}' : JSON.stringify({ error: 'nope' }), { status: retryStatus }); }
 		const r = respond(method, String(url));
 		if (siteOfProd && r.body?.includes('"environments"')) {
 			const j = JSON.parse(r.body);
@@ -44,7 +47,7 @@ describe('AppDetail Retry confirmation', () => {
 		install(true);
 		if (!Element.prototype.animate) Element.prototype.animate = (() => ({ finished: Promise.resolve(), cancel() {}, onfinish: null, play() {}, pause() {}, addEventListener() {} })) as never;
 	});
-	afterEach(() => { siteOfProd = null; installLiveSource(null); posts.length = 0; vi.unstubAllGlobals(); });
+	afterEach(() => { siteOfProd = null; retryStatus = 200; owner = null; installLiveSource(null); posts.length = 0; vi.unstubAllGlobals(); });
 	it('a production failed place: Retry opens the confirm; the POST follows the confirm', async () => {
 		const { findByRole, findByLabelText, getByRole } = mountApp('search-indexer');
 		await fireEvent.click(await findByRole('button', { name: /^Retry$/ }));
@@ -72,5 +75,29 @@ describe('AppDetail Retry confirmation', () => {
 		await fireEvent.click(await findByRole('button', { name: /^Retry$/ }));
 		await findByRole('dialog');
 		expect(document.querySelector('#rcm-title')!.textContent).toMatch(/ in prod · eu-west\?$/);
+	});
+	const typedRetry = async (m: ReturnType<typeof mountApp>) => {
+		await fireEvent.click(await m.findByRole('button', { name: /^Retry$/ }));
+		const input = (await m.findByLabelText(/to confirm/)) as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: input.labels?.[0]?.querySelector('span')?.textContent ?? '' } });
+		await fireEvent.click([...m.getByRole('dialog').querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Retry') as HTMLButtonElement);
+	};
+	it('a failed Retry prints its reason inside the open confirm', async () => {
+		retryStatus = 500;
+		await typedRetry(mountApp('search-indexer'));
+		await waitFor(() => expect(document.querySelector('[data-retry-error]')?.textContent).toBe('Failed to retry deployment: nope'));
+		expect(document.querySelector('#rcm-title')).not.toBeNull();
+	});
+	it('an accepted Retry closes the confirm and says "Retry started"', async () => {
+		await typedRetry(mountApp('search-indexer'));
+		await waitFor(() => expect(document.body.textContent).toContain('Retry started'));
+		expect(document.querySelector('[data-retry-error]')).toBeNull();
+	});
+	it('Roll back is disabled, with the reason, when another controller owns the wanted version', async () => {
+		owner = 'flux-controller';
+		const { findByRole } = mountApp('search-indexer');
+		const btn = (await findByRole('button', { name: /^Roll back$/ })) as HTMLButtonElement;
+		expect(btn.disabled).toBe(true);
+		expect(btn.getAttribute('title')).toBe("Another controller owns this rollout's wanted version, so the dashboard cannot pin it.");
 	});
 });

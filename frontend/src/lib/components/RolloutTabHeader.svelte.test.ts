@@ -212,6 +212,13 @@ describe('RolloutTabHeader: a disabled quiet Roll back prints its reason', () =>
 		expect(container.querySelector<HTMLButtonElement>('[data-phone-end]')!.disabled).toBe(true);
 		expect(container.querySelector('[data-owned-reason]')?.textContent).toBe(WANTED_VERSION_OWNED_REASON);
 	});
+	test('the reason is text at every width (not lg:hidden) and the disabled button points at it', () => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('flux-controller'), quietRollback: true } });
+		const reason = container.querySelector('[data-owned-reason]')!;
+		expect(reason.closest('.lg\\:hidden')).toBeNull();
+		expect(reason.id).toBe('owned-reason');
+		expect(container.querySelector('[data-phone-end]')!.getAttribute('aria-describedby')).toBe('owned-reason');
+	});
 	test('owned by the dashboard: no reason line', () => {
 		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('rollout-dashboard'), quietRollback: true } });
 		expect(container.querySelector('[data-owned-reason]')).toBeNull();
