@@ -45,6 +45,7 @@ const withOwner = (r: ReturnType<typeof rolloutOf>, owner: string) => ({ ...r, m
 type Calls = { url: string; body: unknown }[];
 let calls: Calls;
 let changeStatus = 200;
+let retryStatus = 200;
 let managed: unknown[] = [];
 let rolloutBody: unknown;
 
@@ -56,7 +57,7 @@ function stubFetch() {
 			const url = String(input);
 			if (init?.method === 'POST') calls.push({ url, body: init.body ? JSON.parse(String(init.body)) : null });
 			if (url.includes('/change-version')) return new Response(JSON.stringify(changeStatus === 200 ? {} : { details: 'boom' }), { status: changeStatus });
-			if (url.includes('/retry')) return new Response('{}', { status: 200 });
+			if (url.includes('/retry')) return new Response(retryStatus === 200 ? '{}' : JSON.stringify({ error: 'nope' }), { status: retryStatus });
 			if (url.includes('/managed-resources')) return new Response(JSON.stringify({ managedResources: managed }), { status: 200 });
 			if (/\/rollouts\/invoice-api-prod-eu-west\/invoice-api$/.test(url)) return new Response(JSON.stringify(rolloutBody), { status: 200 });
 			return new Response('{}', { status: 200 });
@@ -67,6 +68,7 @@ function stubFetch() {
 beforeEach(() => {
 	goto.mockClear();
 	changeStatus = 200;
+	retryStatus = 200;
 	managed = [];
 	stubFetch();
 });
@@ -97,7 +99,19 @@ describe('header Roll back reports its result where the operator is', () => {
 		changeStatus = 500;
 		mount({ env: 'dev', failed: false, rollbackRequest: 1 });
 		await confirmRollback();
-		expect(await screen.findByText('Failed to change version')).toBeInTheDocument();
+		expect(await screen.findByText(/^Failed to change version/)).toBeInTheDocument();
+	});
+	test('a failed request prints the server\'s reason inside the OPEN dialog (a toast would sit under its backdrop)', async () => {
+		changeStatus = 500;
+		mount({ env: 'dev', failed: false, rollbackRequest: 1 });
+		await confirmRollback();
+		const err = await waitFor(() => {
+			const e = document.querySelector('[data-deploy-error]');
+			expect(e).not.toBeNull();
+			return e!;
+		});
+		expect(err.textContent).toBe('Failed to change version: boom');
+		expect(screen.getByPlaceholderText('Why are you rolling back?')).toBeInTheDocument();
 	});
 	test('an accepted one shows the success toast', async () => {
 		mount({ env: 'dev', failed: false, rollbackRequest: 1 });
@@ -127,6 +141,23 @@ describe('the confirm names the Environment\'s site when the rollout label says 
 	test('Roll back names prod · eu-west', async () => {
 		mount({ env: 'prod', failed: false, site: 'eu-west', rollbackRequest: 1 });
 		await waitFor(() => expect(document.body.textContent).toMatch(/prod · eu-west/));
+	});
+});
+
+describe('header Retry failures', () => {
+	test('prod: the typed confirm stays open and prints the failure inside itself', async () => {
+		retryStatus = 500;
+		mount({ env: 'prod', failed: true, site: 'eu-west', request: 1 });
+		await waitFor(() => expect(document.querySelector('#rcm-title')).not.toBeNull());
+		await fireEvent.input(document.querySelector('#rcm-confirm')!, { target: { value: '064b655' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^Retry$/ }));
+		await waitFor(() => expect(document.querySelector('[data-retry-error]')?.textContent).toBe('Failed to retry: nope'));
+		expect(document.querySelector('#rcm-title')).not.toBeNull();
+	});
+	test('dev: no confirm is open, so the failure is a toast', async () => {
+		retryStatus = 500;
+		mount({ env: 'dev', failed: true, request: 1 });
+		expect(await screen.findByText('Failed to retry: nope')).toBeInTheDocument();
 	});
 });
 

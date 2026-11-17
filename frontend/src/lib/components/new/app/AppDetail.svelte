@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import RetryConfirmModal from '$lib/components/RetryConfirmModal.svelte';
+	import Toast from '$lib/components/Toast.svelte';
+	import { failureText } from '$lib/view-models/failure-text';
 	import RolloutHeaderFlows from '$lib/components/RolloutHeaderFlows.svelte';
 	import { retryConfirm } from '$lib/view-models/retry-confirm';
 	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
@@ -310,13 +312,29 @@
 	}
 	const rollbackPath = $derived(rollbackHref.split('/').filter(Boolean));
 	let retry = $state<'idle' | 'busy' | 'done' | 'error'>('idle');
-	async function postRetry(r: TRow) {
+	/* the rollout tabs' own toasts: "Retry started · <build> · Check restarted" with View logs, or "Failed to retry: <reason>" */
+	let retryToast = $state<{ tone: 'success' | 'danger'; message: string; description: string; logsHref: string } | null>(null);
+	let retryToastOpen = $state(false);
+	function announceRetry(t: NonNullable<typeof retryToast>) {
+		retryToast = t;
+		retryToastOpen = true;
+		setTimeout(() => (retryToastOpen = false), 3000);
+	}
+	/** Posts the retry. Rejects with the reason (the typed confirm prints it inside itself); the toast follows either way once the dialog is gone. */
+	async function postRetry(r: TRow, rethrow = false) {
 		const p = r.href.split('/').filter(Boolean);
 		retry = 'busy';
 		try {
 			const res = await fetch(apiPath(p[1], `/rollouts/${p[2]}/${p[3]}/retry`), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kruiseRolloutName: '', testAction: '' }) });
-			retry = res.ok ? 'done' : 'error';
-		} catch { retry = 'error'; }
+			if (!res.ok) throw new Error(await failureText('Failed to retry deployment', res));
+			retry = 'done';
+			announceRetry({ tone: 'success', message: 'Retry started', description: `${retryDecision.displayTag ?? r.app} · Check restarted`, logsHref: `${r.href.replace(/\/$/, '')}/logs` });
+		} catch (e) {
+			retry = 'error';
+			const reason = e instanceof Error ? e.message : 'Unknown error';
+			if (rethrow) throw new Error(reason);
+			announceRetry({ tone: 'danger', message: `Failed to retry: ${reason}`, description: '', logsHref: '' });
+		}
 		setTimeout(() => (retry = 'idle'), 3000);
 	}
 	const hrefFor = (n: { card: unknown }) => (n.card as { href?: string }).href ?? '';
@@ -458,7 +476,9 @@
 		</div>
 	</div>
 
-	<RetryConfirmModal bind:open={showRetryConfirm} intent={retryDecision.intent} consequences={retryDecision.consequences} tag={retryDecision.displayTag} onConfirm={() => { if (confirmRetryFor) void postRetry(confirmRetryFor); }} />
+	<RetryConfirmModal bind:open={showRetryConfirm} intent={retryDecision.intent} consequences={retryDecision.consequences} tag={retryDecision.displayTag} onConfirm={async () => { if (confirmRetryFor) await postRetry(confirmRetryFor, true); }} />
+	{#snippet retryLogs()}<a href={retryToast?.logsHref} class="nav-link shrink-0">View logs</a>{/snippet}
+	<Toast bind:open={retryToastOpen} tone={retryToast?.tone ?? 'info'} message={retryToast?.message ?? ''} description={retryToast?.description ?? ''} action={retryToast?.tone === 'success' ? retryLogs : undefined} />
 	{#if rollbackRequest > 0}
 		{#key rollbackHref}
 			<RolloutHeaderFlows cluster={rollbackPath[1] ?? ''} namespace={rollbackPath[2] ?? ''} name={rollbackPath[3] ?? ''} request={0} {rollbackRequest} />

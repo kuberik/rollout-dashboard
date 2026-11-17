@@ -31,6 +31,7 @@
 	import { retryConfirm } from '$lib/view-models/retry-confirm';
 	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { stalledKruiseName, hasFailedStepTests } from '$lib/view-models/retry-context';
+	import { failureText } from '$lib/view-models/failure-text';
 	import { retryActionHref } from '$lib/components/new/rollout-view';
 	import type { ManagedResourceStatus } from '../../types';
 
@@ -90,7 +91,8 @@
 		if (hasFailedStepTests(managed)) {
 			goto(retryActionHref(href(`/rollouts/${cluster}/${namespace}/${name}`)));
 		} else if (confirm.level === 'none') {
-			void retry();
+			/* no confirm is open, so the failure has nowhere to print but the toast */
+			retry().catch((e) => announce({ tone: 'danger', message: e instanceof Error ? e.message : 'Failed to retry', description: '' }));
 		} else {
 			open = true;
 		}
@@ -113,21 +115,16 @@
 		toastOpen = true;
 		setTimeout(() => (toastOpen = false), 3000);
 	}
+	/** Rejects with the reason so the confirm prints it inside the open dialog; resolving closes the dialog and the success toast follows. */
 	async function retry() {
-		try {
-			const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/retry`), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ kruiseRolloutName: stalledKruiseName(managed) || '', testAction: '' })
-			});
-			if (!res.ok) throw new Error('Failed to retry deployment');
-			toast = { tone: 'success', message: 'Retry started', description: `${confirm.displayTag ?? name} · Check restarted`, logs: true };
-			await client.invalidateQueries({ queryKey: rolloutQueryOptions({ namespace, name, cluster }).queryKey });
-		} catch (e) {
-			toast = { tone: 'danger', message: `Failed to retry: ${e instanceof Error ? e.message : 'Unknown error'}`, description: '' };
-		}
-		toastOpen = true;
-		setTimeout(() => (toastOpen = false), 3000);
+		const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/retry`), {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ kruiseRolloutName: stalledKruiseName(managed) || '', testAction: '' })
+		});
+		if (!res.ok) throw new Error(await failureText('Failed to retry', res));
+		announce({ tone: 'success', message: 'Retry started', description: `${confirm.displayTag ?? name} · Check restarted`, logs: true });
+		await client.invalidateQueries({ queryKey: rolloutQueryOptions({ namespace, name, cluster }).queryKey });
 	}
 </script>
 

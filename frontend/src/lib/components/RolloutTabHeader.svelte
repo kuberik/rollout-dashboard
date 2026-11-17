@@ -148,7 +148,9 @@
 	/** another field manager (Flux) owns `spec.wantedVersion`: Roll back is a pin, so it is disabled, with the Overview's own reason */
 	const managesPin = $derived(dashboardManagesWantedVersion(rollout));
 	/** a calm build's Roll back is disabled because another manager owns the wanted version */
-	const ownedQuiet = $derived(quietRollback && !isFailed && !!rollbackNow && !managesPin);
+	const ownedReasonShown = $derived(!!rollbackNow && !managesPin);
+	/** the disabled Roll back points at the reason line, so a keyboard or a screen reader reaches it (a title does not) */
+	const reasonRef = $derived(ownedReasonShown ? 'owned-reason' : undefined);
 	const rollbackTitle = $derived(managesPin ? `Roll back to ${rollbackDisplay}` : WANTED_VERSION_OWNED_REASON);
 	const pressRollback = () => {
 		if (managesPin) rollbackRequest++;
@@ -200,7 +202,7 @@
 			data-desktop-only
 			onclick={pressRollback}
 			title={rollbackTitle}
-			disabled={!managesPin}
+			disabled={!managesPin} aria-describedby={reasonRef}
 		>
 			<UndoOutline class="h-4 w-4" aria-hidden="true" />
 			Roll back
@@ -216,7 +218,7 @@
 			data-phone-end
 			onclick={pressRollback}
 			title={rollbackTitle}
-			disabled={!managesPin}
+			disabled={!managesPin} aria-describedby={reasonRef}
 		>
 			<UndoOutline class="h-4 w-4" aria-hidden="true" />
 			Roll back
@@ -265,7 +267,7 @@
 	     language.css hides the cell from lg up when this is its only child. -->
 	{#if inlineRollback && isFailed && rollbackNow}
 		<div class="flex flex-wrap items-center gap-2 lg:hidden" data-phone-actions>
-			<button type="button" class="btn {recovered ? 'btn-secondary' : 'btn-primary bg-none'} h-11 px-4" data-phone-only data-action="rollback" onclick={pressRollback} title={rollbackTitle} disabled={!managesPin}>
+			<button type="button" class="btn {recovered ? 'btn-secondary' : 'btn-primary bg-none'} h-11 px-4" data-phone-only data-action="rollback" onclick={pressRollback} title={rollbackTitle} disabled={!managesPin} aria-describedby={reasonRef}>
 				<UndoOutline class="h-4 w-4" aria-hidden="true" />
 				Roll back
 			</button>
@@ -273,15 +275,14 @@
 				<PlaySolid class="h-4 w-4" aria-hidden="true" />
 				Retry
 			</button>
-			{#if !managesPin}<p class="t-meta basis-full text-fg-subtle" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>{/if}
 		</div>
 	{/if}
 {/snippet}
 {#snippet belowAll()}
 	{@render phoneActions()}
-	<!-- A calm build's Roll back is disabled when another manager owns the wanted version. A phone has no hover, so the reason is TEXT here (the Overview's own words), as it is under a failed build's pair. -->
-	{#if ownedQuiet}
-		<p class="t-meta text-fg-subtle lg:hidden" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>
+	<!-- A Roll back is disabled when another manager owns the wanted version. The reason is TEXT at every width, once, under the actions (the Overview's own words): a title is hover-only and a disabled button is out of the keyboard's reach. -->
+	{#if ownedReasonShown}
+		<p id="owned-reason" class="t-meta text-fg-subtle" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>
 	{/if}
 	{#if below}{@render below()}{/if}
 {/snippet}
@@ -304,7 +305,7 @@
 	actions={actions || (inlineRollback && isFailed && rollbackNow) || (quietRollback && rollbackNow)
 		? actionsRow
 		: undefined}
-	below={below || (inlineRollback && isFailed && rollbackNow) || ownedQuiet ? belowAll : undefined}
+	below={below || (inlineRollback && isFailed && rollbackNow) || ownedReasonShown ? belowAll : undefined}
 	titleAfter={starThenTitleAfter}
 	identity={chip || identityExtra ? identity : undefined}
 	meta={subtitle || metaRender || chip

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { failureText } from '$lib/view-models/failure-text';
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { HUE_INK, HUE_SOLID } from '$lib/view-models/state-tone';
@@ -17,7 +18,6 @@
 	import { clusterErrorsFor } from '$lib/view-models/cluster-errors';
 	import { sourceTreeUrl } from '$lib/source-url';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
-	import { canHover } from '$lib/can-hover.svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { gitRef } from '$lib/git-ref';
 	import { page } from '$app/state';
@@ -36,7 +36,7 @@
 		EnvironmentStatusEntry,
 		EnvironmentInfo
 	} from '../../../../../types/environment-types';
-	import { Tooltip, Popover } from 'flowbite-svelte';
+	import { Popover } from 'flowbite-svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import {
 		CodePullRequestSolid,
@@ -157,7 +157,7 @@
 		rowShowsFailed
 	} from '$lib/view-models/deploy-risk';
 	import { blockingGateNames, promotionCandidates } from '$lib/view-models/promotion';
-	import { dashboardManagesWantedVersion, newerBuildsShown } from '$lib/view-models/pin-hold';
+	import { dashboardManagesWantedVersion, newerBuildsShown, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
 	import { fleetSettled } from '$lib/view-models/behind';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
 	import type { SnapCheck } from '$lib/view-models/health-failures';
@@ -2472,7 +2472,8 @@
 		}
 	}
 
-	async function retryDeployment(kruiseRolloutName?: string, testAction = '') {
+	/** `rethrow`: the typed confirm is still open, so it prints the failure inside itself (the toast sits under its backdrop). */
+	async function retryDeployment(kruiseRolloutName?: string, testAction = '', rethrow = false) {
 		try {
 			const response = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/retry`), {
 				method: 'POST',
@@ -2481,7 +2482,7 @@
 			});
 
 			if (!response.ok) {
-				throw new Error('Failed to retry deployment');
+				throw new Error(await failureText('Failed to retry deployment', response));
 			}
 
 			showToast = true;
@@ -2518,6 +2519,7 @@
 			setTimeout(() => {
 				showToast = false;
 			}, 3000);
+			if (rethrow) throw new Error(toastMessage.replace(/^Failed to retry: /, ''));
 		}
 	}
 </script>
@@ -3075,6 +3077,7 @@
 								type="button"
 								class="btn btn-secondary max-lg:h-11"
 								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
+								aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
 								onclick={() => {
 									showClearPinModal = true;
 								}}
@@ -3089,7 +3092,7 @@
 							class="btn btn-secondary max-lg:h-11"
 							disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction || !!noReleases}
 							title={noReleases ? `${noReleases.label}, so there are no versions to choose from` : undefined}
-							aria-describedby={noReleases ? "change-version-reason-1" : undefined}
+							aria-describedby={noReleases ? "change-version-reason-1" : isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
 							onclick={() => {
 								if (isDashboardManagingWantedVersion) {
 									isPinVersionMode = false;
@@ -3133,7 +3136,10 @@
 								class="btn btn-secondary max-lg:h-11"
 								data-phone-end
 								disabled={!permissionsKnown || !isDashboardManagingWantedVersion || !!pendingAction}
-								title={rollbackNow.basis === 'ran-here'
+								aria-describedby={isDashboardManagingWantedVersion ? undefined : 'owned-reason'}
+								title={!isDashboardManagingWantedVersion
+									? WANTED_VERSION_OWNED_REASON
+									: rollbackNow.basis === 'ran-here'
 									? `Go back to ${rollbackDisplay}, the last older version this environment ran${
 											rollbackSkipped.length > 0
 												? ` (skipping ${joinClauses(rollbackSkipped)} — newer than what is running now)`
@@ -3160,27 +3166,8 @@
 							</button>
 						{/if}
 						{#if !isDashboardManagingWantedVersion}
-							{#if canHover.current}
-								<Tooltip
-									triggeredBy="#status-change-version-btn"
-									placement="bottom"
-									transition={blur}
-									transitionParams={{ duration: 300 }}
-								>
-									Another controller owns this rollout's wanted version, so the dashboard cannot pin
-									it.
-								</Tooltip>
-							{:else}
-								<!-- ON TOUCH THE REASON IS PRINTED, NOT HIDDEN BEHIND A HOVER.
-												     (2026-10-09.) The tooltip only renders where there is a
-												     hover, so on a phone the disabled Change Version / Rollback
-												     buttons said nothing about why. One quiet line under the
-												     row, the same sentence the tooltip carries. -->
-								<p class="t-meta text-fg-subtle w-full">
-									Another controller owns this rollout's wanted version, so the dashboard cannot pin
-									it.
-								</p>
-							{/if}
+							<!-- THE REASON IS TEXT AT EVERY WIDTH (a tooltip is hover-only and a disabled button is out of the keyboard's reach): one quiet line under the row, the buttons it explains point at it with aria-describedby. -->
+							<p id="owned-reason" class="t-meta text-fg-subtle w-full" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>
 						{/if}
 					{/if}
 				{/snippet}

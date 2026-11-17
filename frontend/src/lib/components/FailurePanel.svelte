@@ -44,7 +44,7 @@
 		environmentName?: string | null;
 		/** the Environment's site (`siteOf`), for the confirm titles */
 		site?: string | null;
-		onRetry: (kruiseRolloutName?: string, testAction?: string) => Promise<void>;
+		onRetry: (kruiseRolloutName?: string, testAction?: string, rethrow?: boolean) => Promise<void>;
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
 		/** arrived by a Retry link (`?action=retry`, the way `?action=rollback` opens Roll back): open the typed confirm once permissions are known; `onRequestHandled` clears the request */
@@ -308,7 +308,7 @@
 	{intent}
 	{consequences}
 	tag={displayTag}
-	onConfirm={() => onRetry(stalledKruiseRollout?.metadata?.name)}
+	onConfirm={() => onRetry(stalledKruiseRollout?.metadata?.name, '', true)}
 />
 
 <RetryTestsModal

@@ -1648,21 +1648,33 @@
 	/** The first action of the highlighted row, so Tab from the search box lands on what the row offers and not on row one's link. */
 	function highlightedAction(): HTMLElement | null {
 		const row = document.getElementById(`cp-opt-${selectedIndex}`);
-		return row?.querySelector<HTMLElement>('[data-meta="action"] a[href], [data-meta="action"] button') ?? row?.querySelector<HTMLElement>('.br')?.querySelector<HTMLElement>('a.tap-link') ?? null;
+		return row?.querySelector<HTMLElement>('[data-meta="action"] a[href], [data-meta="action"] button') ?? row?.querySelector<HTMLElement>('a[href], button:not(:disabled)') ?? (row?.matches('a[href], button:not(:disabled)') ? row : null);
 	}
 	/** The highlighted row is a Jump to tile that scopes (Tab narrows into it); "Your changes" navigates and takes no Tab. */
 	const highlightScopes = $derived(inPicker && jumpToIndex(selectedIndex) >= 0 && jumpToIndex(selectedIndex) < PICKER_KINDS.length);
 	/** The highlighted row is a rollout that needs a person: it carries an action Tab reaches. */
+	/** A row's own action BUTTON exists (Roll back, Retry): an approval row's "Review approval in ..." is plain text and a disabled Roll back is not reachable, so neither earns the footer's "Tab action". */
+	function hasRowButton(c: RolloutCard): boolean {
+		const a = blockedAction(c);
+		if (!a.query) return false;
+		return !(/action=rollback/.test(a.query) && c.rollout && !dashboardManagesWantedVersion(c.rollout));
+	}
 	const highlightHasAction = $derived.by(() => {
 		if (inPicker) {
 			const thisIdx = selectedIndex - thisStart;
-			if (thisIdx >= 0 && thisIdx < thisRolloutCount) return Boolean(incidentCard) && thisIdx === 0;
+			if (thisIdx >= 0 && thisIdx < thisRolloutCount) return thisIdx === 0 && !!incidentCard && hasRowButton(incidentCard);
 			const a = selectedIndex - attnStart;
-			return a >= 0 && a < attentionShown.length;
+			return a >= 0 && a < attentionShown.length && hasRowButton(attentionShown[a]);
 		}
 		const r = filtered[selectedIndex];
-		return !!r && blockedCardFor(r) !== null;
+		const c = r ? blockedCardFor(r) : null;
+		return !!c && hasRowButton(c);
 	});
+
+	/** An arrow key pressed while a row's own control has focus moves the highlight AND hands focus back to the search box, so one row ever looks selected and Enter opens the row the highlight is on. */
+	function returnFocusToInput(e: KeyboardEvent) {
+		if (!(e.target instanceof HTMLInputElement)) searchInput?.focus();
+	}
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (!open) return;
@@ -1703,10 +1715,12 @@
 			e.preventDefault();
 			selectedIndex = Math.min(selectedIndex + 1, maxIdx);
 			scrollSelectedIntoView();
+			returnFocusToInput(e);
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
 			selectedIndex = Math.max(selectedIndex - 1, 0);
 			scrollSelectedIntoView();
+			returnFocusToInput(e);
 		} else if (e.key === 'Tab' && inPicker) {
 			// ⭐ LANE P, §5: "the scope action on Tab (existing scoping)" — the
 			// Jump to row the cursor sits on scopes in, same destination Enter

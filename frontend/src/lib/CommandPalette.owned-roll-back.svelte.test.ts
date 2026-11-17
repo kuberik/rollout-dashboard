@@ -122,4 +122,39 @@ describe('palette Roll back and approval hint', { timeout: 20_000 }, () => {
 		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
 		expect(needsYouRows()[0].querySelector('[data-trailing-up]')).toBeNull();
 	});
+	const tabHint = () => [...document.body.querySelectorAll('kbd')].some((k) => k.textContent === 'Tab' && !k.closest('[role="option"]'));
+	test('the footer offers "Tab action" on a row with an action button, and not on an approval row (its hint is plain text)', async () => {
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
+		const rows = needsYouRows();
+		await fireEvent.mouseEnter(rows[0]);
+		await waitFor(() => expect(tabHint()).toBe(true));
+		await fireEvent.mouseEnter(rows[1]);
+		await waitFor(() => expect(tabHint()).toBe(false));
+	});
+	test('the footer does not offer "Tab action" on a failing row whose Roll back is disabled (another controller owns the pin)', async () => {
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: owned('flux-controller') } });
+		await fireEvent.mouseEnter(needsYouRows()[0]);
+		await waitFor(() => expect(tabHint()).toBe(false));
+	});
+	test('an arrow key pressed on a row action moves the highlight and returns focus to the search box', async () => {
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
+		const act = needsYouRows()[0].querySelector<HTMLElement>('[data-action="rollback"]')!;
+		act.focus();
+		expect(document.activeElement).toBe(act);
+		await fireEvent.keyDown(act, { key: 'ArrowDown' });
+		await waitFor(() => expect(document.activeElement).toBe(document.body.querySelector('input')));
+		expect(needsYouRows()[1].getAttribute('aria-selected')).toBe('true');
+	});
+	test('Tab from the search box lands in the highlighted row, even when it has no action button', async () => {
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
+		const input = document.body.querySelector('input') as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: 'hello' } });
+		await waitFor(() => expect(document.body.querySelectorAll('[role="option"]').length).toBeGreaterThan(1));
+		const opts = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')];
+		const idx = 1;
+		await fireEvent.mouseEnter(opts[idx]);
+		input.focus();
+		await fireEvent.keyDown(input, { key: 'Tab' });
+		expect(opts[idx].contains(document.activeElement)).toBe(true);
+	});
 });

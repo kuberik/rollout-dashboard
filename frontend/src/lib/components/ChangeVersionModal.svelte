@@ -160,6 +160,7 @@
 		environmentName?: string | null;
 		site?: string | null;
 		onSuccess?: (message: string) => void;
+		/** Kept for callers; a failed confirm prints its reason inside the open dialog (`data-deploy-error`) and is not reported here. */
 		onError?: (message: string) => void;
 		/**
 		 * ⭐ THE MUTATION'S PENDING STATUS, FOR THE PAGE BEHIND THIS DIALOG.
@@ -198,7 +199,7 @@
 		site = null,
 		contractHeldVersions,
 		onSuccess = () => {},
-		onError = () => {},
+		onError: _onError = () => {},
 		onDeployStart = () => {},
 		recoveryMode = undefined
 	}: Props = $props();
@@ -595,6 +596,8 @@
 	 * it permanently spinning.
 	 */
 	let deploying = $state(false);
+	/** A failed confirm prints its reason INSIDE the open dialog (a toast hides behind the sheet and its backdrop); cleared when the dialog opens or the request is sent again. */
+	let deployError = $state('');
 
 	let showLocalToast = $state(false);
 	let localToastMessage = $state('');
@@ -608,6 +611,7 @@
 			searchQuery = '';
 			showAllTags = false;
 			deploying = false;
+			deployError = '';
 			activeVersionIndex = 0;
 			// `initialSelectedVersion` is never a picker pick — see
 			// `reachedViaPicker`'s own doc comment.
@@ -2313,6 +2317,7 @@
 	async function handleDeploy() {
 		if (!rollout || !selectedVersion || deploying) return;
 		deploying = true;
+		deployError = '';
 		onDeployStart();
 		try {
 			const response = await fetch(
@@ -2341,7 +2346,8 @@
 						"Another controller owns this rollout's wanted version, so the dashboard cannot pin it."
 					);
 				}
-				throw new Error('Failed to change version');
+				const reason = [errorData.details, errorData.error, errorData.message].find((v) => typeof v === 'string' && v.trim());
+				throw new Error(reason ? `Failed to change version: ${reason}` : 'Failed to change version');
 			}
 			notifySuccess(
 				pinVersionToggle
@@ -2354,7 +2360,7 @@
 			open = false;
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Failed to deploy version';
-			notifyError(message);
+			deployError = message;
 			announce(message, 'assertive');
 		} finally {
 			// On success `open = false` already unmounts this dialog, so this is
@@ -2368,16 +2374,6 @@
 		if (onSuccess) onSuccess(message);
 		else {
 			localToastType = 'success';
-			localToastMessage = message;
-			showLocalToast = true;
-			setTimeout(() => (showLocalToast = false), 3000);
-		}
-	}
-
-	function notifyError(message: string) {
-		if (onError) onError(message);
-		else {
-			localToastType = 'error';
 			localToastMessage = message;
 			showLocalToast = true;
 			setTimeout(() => (showLocalToast = false), 3000);
@@ -3796,6 +3792,9 @@
 		     scrollable content area, above this footer — while this footer
 		     (and the blocker paragraph after it) land flush against the
 		     sheet's actual bottom edge, not a phantom one 170px short of it. -->
+		{#if deployError}
+			<p role="alert" class="t-meta shrink-0 break-words border-t border-line px-4 py-2 text-danger" data-deploy-error>{deployError}</p>
+		{/if}
 		<div
 			class="border-line flex shrink-0 items-center justify-between gap-2 border-t px-4 py-3 max-sm:min-h-11 max-sm:pb-[calc(12px+env(safe-area-inset-bottom))]"
 		>

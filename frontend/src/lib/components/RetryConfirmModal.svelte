@@ -59,7 +59,8 @@
 		consequences: string[];
 		/** The build being resent, for the header and the typed box. */
 		tag: string | null;
-		onConfirm: () => void;
+		/** Runs the retry. The dialog stays open while a returned promise is pending; if it rejects, the reason prints inside the dialog (a toast would sit under the backdrop). */
+		onConfirm: () => void | Promise<void>;
 	}
 
 	let { open = $bindable(), intent, consequences, tag, onConfirm }: Props = $props();
@@ -72,13 +73,30 @@
 	const title = $derived(retryTitle(intent, tag));
 
 	let typed = $state('');
+	let pending = $state(false);
+	let failure = $state('');
+	async function confirm() {
+		pending = true;
+		failure = '';
+		try {
+			await onConfirm();
+			open = false;
+		} catch (e) {
+			failure = e instanceof Error ? e.message : 'Failed to retry';
+		} finally {
+			pending = false;
+		}
+	}
 	// Re-arm on every open. A dialog that remembers the sha you typed last time
 	// is a typed confirm you only have to satisfy once.
 	$effect(() => {
-		if (open) typed = '';
+		if (open) {
+			typed = '';
+			failure = '';
+		}
 	});
 
-	const blocked = $derived(level === 'typed' && typed.trim() !== (tag ?? ''));
+	const blocked = $derived(pending || (level === 'typed' && typed.trim() !== (tag ?? '')));
 </script>
 
 <!-- role="dialog" aria-modal="true": flowbite's `Dialog` sets neither on the
@@ -147,6 +165,9 @@
 		{/if}
 	</div>
 
+	{#if failure}
+		<p role="alert" class="t-meta break-words border-t border-line px-5 py-2 text-danger" data-retry-error>{failure}</p>
+	{/if}
 	<div class="flex justify-end gap-2 border-t border-line px-5 py-3">
 		<button type="button" class="btn btn-secondary btn-sm" onclick={() => (open = false)}
 			>Cancel</button
@@ -155,10 +176,7 @@
 			type="button"
 			class="btn btn-primary btn-sm"
 			disabled={blocked}
-			onclick={() => {
-				open = false;
-				onConfirm();
-			}}
+			onclick={confirm}
 		>
 			<PlaySolid class="h-4 w-4 shrink-0" />
 			<span class="truncate">{label}</span>
