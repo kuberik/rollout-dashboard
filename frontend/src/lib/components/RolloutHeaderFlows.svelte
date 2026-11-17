@@ -105,6 +105,12 @@
 
 	let toast = $state<{ tone: 'success' | 'danger'; message: string; description: string } | null>(null);
 	let toastOpen = $state(false);
+	/** One toast for every result this host reports (the picker's own text for Roll back, the Overview's wording). */
+	function announce(next: NonNullable<typeof toast>) {
+		toast = next;
+		toastOpen = true;
+		setTimeout(() => (toastOpen = false), 3000);
+	}
 	async function retry() {
 		try {
 			const res = await fetch(apiPath(cluster, `/rollouts/${namespace}/${name}/retry`), {
@@ -134,6 +140,11 @@
 		{site}
 		isPinVersionMode={true}
 		initialSelectedVersion={rollbackTarget(rollout)?.tag ?? null}
+		onSuccess={(m) => {
+			announce({ tone: 'success', message: m, description: '' });
+			void client.invalidateQueries({ queryKey: rolloutQueryOptions({ namespace, name, cluster }).queryKey });
+		}}
+		onError={(m) => announce({ tone: 'danger', message: m, description: '' })}
 	/>
 {/if}
 
