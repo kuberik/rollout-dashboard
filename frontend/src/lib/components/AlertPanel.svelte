@@ -1336,8 +1336,24 @@
 		.ap-message-row > :global(.ap-change:not(:first-child)) {
 			margin-top: 0.5rem;
 		}
+		/* the author stays on the change line behind its rule; the title truncates first (a wrap left "you" alone on a row) */
 		.ap-change > span {
 			row-gap: 0.25rem;
+			flex-wrap: nowrap;
+		}
+		.ap-change > span > :global(:first-child) {
+			flex: 0 1 auto;
+			min-width: 0;
+		}
+		/* a wrapped body line never ends on a one-word orphan ("approval" alone at 320) */
+		.ap-message-row {
+			text-wrap: pretty;
+		}
+		/* the multi-fact check line's dot-list keeps no 4px focus slack above it, so figure -> condition row is 8px with or without the scope */
+		.ap-message-row :global(.check-line .dot-list) {
+			margin-bottom: 0;
+			padding-top: 0;
+			padding-bottom: 0;
 		}
 		.ap-message-row :global(.check-glyph),
 		.ap-change [data-ap-author] > :global(:first-child) {
