@@ -26,13 +26,13 @@ const regional = (envLabel: string) => ({
 		]
 	}
 });
-const panel = (envLabel: string) =>
+const panel = (envLabel: string, site: string | null = null) =>
 	render(WithQueryClient, {
 		props: {
 			component: FailurePanel as never,
 			props: {
 				rollout: regional(envLabel), healthChecks: [], failedHCList: [], failedStepTests: [], stalledKruiseRollout: null,
-				canUpdate: true, canModify: true, isDashboardManagingWantedVersion: true, onRetry: () => {}, cluster: 'prod', environmentName: 'prod'
+				canUpdate: true, canModify: true, isDashboardManagingWantedVersion: true, onRetry: () => {}, cluster: 'prod', environmentName: 'prod', site
 			} as never
 		}
 	});
@@ -47,6 +47,12 @@ describe('confirm titles name the place of a regional rollout', () => {
 	test('Retry: "Retry a11c202 in prod · eu-west?"', async () => {
 		const { container } = panel('prod-eu-west');
 		await fireEvent.click(container.querySelector('#failure-retry-btn, [data-action="retry"], #failure-retry') as HTMLElement);
+		await waitFor(() => expect(document.querySelector('#rcm-title')).not.toBeNull());
+		expect(document.querySelector('#rcm-title')!.textContent).toBe('Retry a11c202 in prod · eu-west?');
+	});
+	test('the Environment\'s site names the place even when the rollout is labelled plain prod', async () => {
+		const { container } = panel('prod', 'eu-west');
+		await fireEvent.click(container.querySelector('#failure-retry-btn') as HTMLElement);
 		await waitFor(() => expect(document.querySelector('#rcm-title')).not.toBeNull());
 		expect(document.querySelector('#rcm-title')!.textContent).toBe('Retry a11c202 in prod · eu-west?');
 	});

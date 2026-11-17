@@ -21,6 +21,7 @@
 	import RetryConfirmModal from './RetryConfirmModal.svelte';
 	import ChangeVersionFlow from './ChangeVersionFlow.svelte';
 	import { rollbackTarget } from '$lib/view-models/deploy-risk';
+	import { siteOf } from '$lib/view-models/sites-waves';
 	import Toast from './Toast.svelte';
 	import { rolloutQueryOptions } from '$lib/api/rollouts';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
@@ -45,6 +46,7 @@
 	const rolloutQuery = createQuery(() => rolloutQueryOptions({ namespace, name, cluster }));
 	const rollout = $derived(rolloutQuery.data?.rollout ?? null);
 	const environmentName = $derived(rolloutQuery.data?.environment?.spec?.environment ?? null);
+	const site = $derived(rolloutQuery.data?.environment ? siteOf(rolloutQuery.data.environment) : null);
 	const kustomizations = $derived(rolloutQuery.data?.kustomizations?.items ?? []);
 
 	const checksQuery = createQuery(() => ({
@@ -77,7 +79,7 @@
 	const checks = $derived(rollout ? visibleHealthChecksFor(rollout, checksQuery.data?.healthChecks ?? []) : []);
 	const managed = $derived(managedQuery.data ?? {});
 	const failedHCList = $derived(rollout?.status?.history?.[0]?.failedHealthChecks ?? []);
-	const confirm = $derived(retryConfirm(rollout, environmentName, checks, failedHCList));
+	const confirm = $derived(retryConfirm(rollout, environmentName, checks, failedHCList, site));
 
 	let open = $state(false);
 	let handled = 0;
@@ -129,6 +131,7 @@
 		{rollout}
 		{cluster}
 		{environmentName}
+		{site}
 		isPinVersionMode={true}
 		initialSelectedVersion={rollbackTarget(rollout)?.tag ?? null}
 	/>

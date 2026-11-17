@@ -333,6 +333,8 @@ const DENY: Array<{
 		kinds: ['text', 'code'],
 		why: 'A visible button label is the bare verb; the build, sha or place goes in title/aria-label or the dialog it opens. See CLAUDE.md (e).',
 		allow: [
+			// tooltip (a title attribute, never the visible label) of the tab header's Roll back; built in script so a disabled button can show the pin-owner reason instead
+			'lib/components/RolloutTabHeader.svelte\tcode\tRoll back to …',
 			// dialog title
 			'lib/components/ChangeVersionModal.svelte\tcode\tDeploy … to …',
 			// dialog title/confirm

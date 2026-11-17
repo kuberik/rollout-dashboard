@@ -772,6 +772,13 @@ describe('placeTarget: the tier and the site, one spelling', () => {
 		expect(placeTarget(at('prod-eu-west'))).toBe('prod · eu-west');
 		expect(placeTarget(at('prod-eu-west'), 'prod-eu-west')).toBe('prod · eu-west');
 	});
+	it('the Environment\'s own site names the place even when the rollout is labelled just prod; the label stays the fallback', () => {
+		expect(placeTarget(at('prod'), 'prod', 'eu-west')).toBe('prod · eu-west');
+		expect(placeTarget(at('prod'), 'prod', 'default')).toBe('prod');
+		expect(placeTarget(at('prod-eu-west'), 'prod', null)).toBe('prod · eu-west');
+		expect(targetPhrase(retryIntent(at('prod'), 'prod', 'eu-west'))).toBe('prod · eu-west');
+		expect(targetPhrase(deployIntent(at('prod'), NEWEST, 'prod', 'eu-west'))).toBe('prod · eu-west');
+	});
 	it('without a site the name is the environment, unchanged', () => {
 		expect(placeTarget(at('prod'), 'prod')).toBe('prod');
 		expect(placeTarget(at('staging'), 'staging')).toBe('staging');

@@ -52,16 +52,16 @@ afterEach(() => {
 	gotoSpy.mockClear();
 });
 
-function mount() {
+function mount(r: any = rollout) {
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async (url: any) => {
 			if (/\/rollouts\/[^/]+\/[^/]+(\?|$)/.test(String(url)))
-				return new Response(JSON.stringify({ rollout, environment: { spec: { environment: 'prod' } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+				return new Response(JSON.stringify({ rollout: r, environment: { spec: { environment: 'prod' } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 			return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
 		})
 	);
-	return render(WithQueryClient, { props: { component: RolloutTabHeader as any, props: { name: 'orders-hub', rollout, failingNow: true } as any } });
+	return render(WithQueryClient, { props: { component: RolloutTabHeader as any, props: { name: 'orders-hub', rollout: r, failingNow: true } as any } });
 }
 const press = async (container: HTMLElement, action: 'retry' | 'rollback') =>
 	fireEvent.click(container.querySelector(`button[data-desktop-only]${action === 'retry' ? '[data-action="retry"]' : ':not([data-action])'}`) as HTMLElement);
@@ -84,5 +84,34 @@ describe('the tab header Roll back / Retry act in place', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 		expect(gotoSpy).not.toHaveBeenCalled();
 		expect(state.page.url.pathname).toMatch(/\/logs$/);
+	});
+});
+
+describe('Roll back in the tab header is gated on who owns the pin', () => {
+	const flux = {
+		...rollout,
+		spec: { wantedVersion: '1.4.0' },
+		metadata: { ...rollout.metadata, managedFields: [{ manager: 'flux', fieldsV1: { 'f:spec': { 'f:wantedVersion': {} } } }] }
+	};
+	const REASON = "Another controller owns this rollout's wanted version, so the dashboard cannot pin it.";
+	test('another field manager owns spec.wantedVersion: Roll back is disabled with the Overview reason and opens nothing', async () => {
+		const { container } = mount(flux);
+		const desktop = container.querySelector('button[data-desktop-only]:not([data-action])') as HTMLButtonElement;
+		const phone = container.querySelector('button[data-phone-only][data-action="rollback"]') as HTMLButtonElement;
+		for (const b of [desktop, phone]) {
+			expect(b.disabled).toBe(true);
+			expect(b.getAttribute('title')).toBe(REASON);
+		}
+		expect(container.querySelector('[data-owned-reason]')?.textContent).toBe(REASON);
+		await fireEvent.click(desktop);
+		await new Promise((r) => setTimeout(r, 300));
+		expect(document.querySelector('dialog[open]')).toBeNull();
+	});
+	test('the dashboard owns the pin: enabled, plain title', () => {
+		const { container } = mount();
+		const desktop = container.querySelector('button[data-desktop-only]:not([data-action])') as HTMLButtonElement;
+		expect(desktop.disabled).toBe(false);
+		expect(desktop.getAttribute('title')).toBe('Roll back to 1.3.0');
+		expect(container.querySelector('[data-owned-reason]')).toBeNull();
 	});
 });

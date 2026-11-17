@@ -51,6 +51,7 @@
 		initialSelectedVersion = null,
 		initialExplanation = '',
 		environmentName = null,
+		site = null,
 		contractHeldVersions = undefined,
 		onSuccess = () => {},
 		onError = () => {},
@@ -66,6 +67,7 @@
 		initialSelectedVersion?: string | null;
 		initialExplanation?: string;
 		environmentName?: string | null;
+		site?: string | null;
 		contractHeldVersions?: ReadonlySet<string>;
 		onSuccess?: (message: string) => void;
 		onError?: (message: string) => void;
@@ -176,6 +178,7 @@
 	initialExplanation={initialExplanation}
 	{cluster}
 	{environmentName}
+	{site}
 	{contractHeldVersions}
 	{onDeployStart}
 	{onSuccess}
@@ -191,6 +194,7 @@
 	rollout={rollout ?? null}
 	selectedTag={initialSelectedVersion}
 	{environmentName}
+	{site}
 	onContinue={() => {
 		showPicker = true;
 	}}

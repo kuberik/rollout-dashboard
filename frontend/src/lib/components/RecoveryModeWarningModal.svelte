@@ -57,6 +57,7 @@ import { deployIntent, targetPhrase } from '$lib/view-models/deploy-risk';
 		rollout?: Rollout | null;
 		selectedTag?: string | null;
 		environmentName?: string | null;
+		site?: string | null;
 		onContinue: () => void;
 		onCancel?: () => void;
 	}
@@ -70,6 +71,7 @@ import { deployIntent, targetPhrase } from '$lib/view-models/deploy-risk';
 		rollout = null,
 		selectedTag = null,
 		environmentName = null,
+		site = null,
 		onContinue,
 		onCancel = () => {}
 	}: Props = $props();
@@ -102,7 +104,7 @@ import { deployIntent, targetPhrase } from '$lib/view-models/deploy-risk';
 		};
 	});
 
-	const intent = $derived(selectedTag ? deployIntent(rollout, selectedTag, environmentName) : null);
+	const intent = $derived(selectedTag ? deployIntent(rollout, selectedTag, environmentName, site) : null);
 	const where = $derived(intent ? targetPhrase(intent) : environmentName || 'this environment');
 	const isRollback = $derived(intent?.direction === 'rollback');
 	const act = $derived(isRollback ? 'rollback' : 'deploy');

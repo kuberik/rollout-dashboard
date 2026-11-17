@@ -329,27 +329,28 @@ export function deployDirection(
  * site and is not printed. Everything that titles a Roll back / Retry / Deploy confirm reads this, via `targetPhrase`.
  */
 const TIER_THEN_SITE = /^(dev|development|test|testing|qa|staging|stage|preprod|prod|production)[-_/. ]+(.+)$/i;
-export function placeTarget(rollout: Rollout | null | undefined, explicit?: string | null): string {
+export function placeTarget(rollout: Rollout | null | undefined, explicit?: string | null, site?: string | null): string {
 	const env = rolloutEnvironmentName(rollout, explicit);
 	const own = rolloutEnvironmentName(rollout, null);
-	let tier = env;
-	let site: string | null = null;
 	const named = TIER_THEN_SITE.exec(env);
-	if (named) {
-		tier = named[1];
-		site = named[2];
-	} else if (own !== env) {
+	const tier = named ? named[1] : env;
+	// the Environment's own site wins; the rollout's label is the fallback
+	let found: string | null = site && siteKey(site) !== 'default' ? site : null;
+	if (!found && named) found = named[2];
+	if (!found && own !== env) {
 		// the page named the tier ("prod"), the rollout's own label names the place ("prod-eu-west")
 		const fromOwn = TIER_THEN_SITE.exec(own);
-		if (fromOwn && fromOwn[1].toLowerCase() === env.toLowerCase()) site = fromOwn[2];
+		if (fromOwn && fromOwn[1].toLowerCase() === env.toLowerCase()) found = fromOwn[2];
 	}
-	return site && siteKey(site) !== 'default' ? `${tier} · ${site}` : env;
+	return found && siteKey(found) !== 'default' ? `${tier} · ${found}` : env;
 }
 
 export function deployIntent(
 	rollout: Rollout | null | undefined,
 	tag: string | null,
-	environmentName?: string | null
+	environmentName?: string | null,
+	/** the Environment's site (`siteOf`); the rollout's label is the fallback */
+	site?: string | null
 ): DeployIntent {
 	const environment = rolloutEnvironmentName(rollout, environmentName);
 	const releases = availableReleases(rollout) ?? [];
@@ -359,7 +360,7 @@ export function deployIntent(
 		vouched: gatesAllow(rollout, tag),
 		custom: !!tag && releases.length > 0 && releaseIndex(rollout, tag) === -1,
 		environment,
-		target: placeTarget(rollout, environmentName),
+		target: placeTarget(rollout, environmentName, site),
 		knownFailedHere: failedHereVerdict(rollout, tag).kind === 'failed'
 	};
 }
@@ -385,7 +386,8 @@ export function retryTag(rollout: Rollout | null | undefined): string | null {
  */
 export function retryIntent(
 	rollout: Rollout | null | undefined,
-	environmentName?: string | null
+	environmentName?: string | null,
+	site?: string | null
 ): DeployIntent {
 	const environment = rolloutEnvironmentName(rollout, environmentName);
 	return {
@@ -395,7 +397,7 @@ export function retryIntent(
 		// A retry cannot be a custom tag: it re-sends what is already deployed.
 		custom: false,
 		environment,
-		target: placeTarget(rollout, environmentName),
+		target: placeTarget(rollout, environmentName, site),
 		// ⛔ DELIBERATELY `false`, NEVER DERIVED. (U-4, ledger, 2026-10-08) A
 		// retry's own target (`retryTag`) is `history[0]` — which is
 		// `bakeStatus: 'Failed'` on EVERY ordinary retry (that is the whole

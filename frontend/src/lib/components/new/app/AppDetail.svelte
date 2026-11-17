@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { siteOf } from '$lib/view-models/sites-waves';
 	import RetryConfirmModal from '$lib/components/RetryConfirmModal.svelte';
 	import { retryConfirm } from '$lib/view-models/retry-confirm';
 	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
@@ -329,7 +330,7 @@
 		return live.find((x) => `${x.metadata?.namespace}/${x.metadata?.name}` === k) ?? null;
 	});
 	const retryCluster = $derived(retryRollout ? environments.find((e) => rolloutMatchesEnvironment(retryRollout, e)) : undefined);
-	const retryDecision = $derived(retryConfirm(retryRollout, retryCluster?.spec?.environment ?? null, confirmRetryFor ? liveHealthChecks(confirmRetryFor.href) : [], (retryRollout?.status?.history?.[0]?.failedHealthChecks ?? []) as { name: string; namespace?: string }[]));
+	const retryDecision = $derived(retryConfirm(retryRollout, retryCluster?.spec?.environment ?? null, confirmRetryFor ? liveHealthChecks(confirmRetryFor.href) : [], (retryRollout?.status?.history?.[0]?.failedHealthChecks ?? []) as { name: string; namespace?: string }[], retryCluster ? siteOf(retryCluster) : null));
 	function retryDeploy(r: TRow) {
 		confirmRetryFor = r;
 		if (retryDecision.level === 'none') { void postRetry(r); return; }

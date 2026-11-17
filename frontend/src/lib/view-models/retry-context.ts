@@ -8,16 +8,19 @@ import type { ManagedResourceStatus, KruiseRollout, RolloutTest } from '../../ty
 const KRUISE = 'rollouts.kruise.io/v1beta1/Rollout';
 const TEST = 'rollout.kuberik.com/v1alpha1/RolloutTest';
 
-export function stalledKruiseName(managed: Record<string, ManagedResourceStatus[]>): string | undefined {
+/** The first Kruise Rollout whose `Stalled` condition is true, the one a retry resumes. The Overview's banner and every tab header read this one. */
+export function stalledKruise(managed: Record<string, ManagedResourceStatus[]>): KruiseRollout | null {
 	for (const resources of Object.values(managed)) {
 		for (const r of resources) {
 			if (r.groupVersionKind !== KRUISE) continue;
 			const kr = r.object as KruiseRollout;
-			if (kr?.status?.conditions?.some((c) => c.type === 'Stalled' && c.status === 'True')) return kr.metadata?.name;
+			if (kr?.status?.conditions?.some((c) => c.type === 'Stalled' && c.status === 'True')) return kr;
 		}
 	}
-	return undefined;
+	return null;
 }
+
+export const stalledKruiseName = (managed: Record<string, ManagedResourceStatus[]>): string | undefined => stalledKruise(managed)?.metadata?.name;
 
 export function hasFailedStepTests(managed: Record<string, ManagedResourceStatus[]>): boolean {
 	const all = Object.values(managed).flat();

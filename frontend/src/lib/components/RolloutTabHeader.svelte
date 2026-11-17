@@ -33,6 +33,7 @@
 		hasUnblockFailedAnnotation
 	} from '$lib/utils';
 	import { rollbackTarget } from '$lib/view-models/deploy-risk';
+	import { dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
 	import { page } from '$app/state';
 	import { href } from '$lib/paths';
 	import { UndoOutline, PlaySolid } from 'flowbite-svelte-icons';
@@ -144,7 +145,12 @@
 	let retryRequest = $state(0);
 	let rollbackRequest = $state(0);
 	const pressRetry = () => retryRequest++;
-	const pressRollback = () => rollbackRequest++;
+	/** another field manager (Flux) owns `spec.wantedVersion`: Roll back is a pin, so it is disabled, with the Overview's own reason */
+	const managesPin = $derived(dashboardManagesWantedVersion(rollout));
+	const rollbackTitle = $derived(managesPin ? `Roll back to ${rollbackDisplay}` : WANTED_VERSION_OWNED_REASON);
+	const pressRollback = () => {
+		if (managesPin) rollbackRequest++;
+	};
 	const subtitle = $derived(
 		rollout?.status?.title && rollout.status.title !== name ? rollout.status.title : null
 	);
@@ -191,7 +197,8 @@
 			class="btn {recovered ? 'btn-secondary' : 'btn-primary'} max-lg:hidden"
 			data-desktop-only
 			onclick={pressRollback}
-			title="Roll back to {rollbackDisplay}"
+			title={rollbackTitle}
+			disabled={!managesPin}
 		>
 			<UndoOutline class="h-4 w-4" aria-hidden="true" />
 			Roll back
@@ -206,7 +213,8 @@
 			class="btn btn-secondary max-lg:h-11"
 			data-phone-end
 			onclick={pressRollback}
-			title="Roll back to {rollbackDisplay}"
+			title={rollbackTitle}
+			disabled={!managesPin}
 		>
 			<UndoOutline class="h-4 w-4" aria-hidden="true" />
 			Roll back
@@ -255,7 +263,7 @@
 	     language.css hides the cell from lg up when this is its only child. -->
 	{#if inlineRollback && isFailed && rollbackNow}
 		<div class="flex flex-wrap items-center gap-2 lg:hidden" data-phone-actions>
-			<button type="button" class="btn {recovered ? 'btn-secondary' : 'btn-primary bg-none'} h-11 px-4" data-phone-only data-action="rollback" onclick={pressRollback} title="Roll back to {rollbackDisplay}">
+			<button type="button" class="btn {recovered ? 'btn-secondary' : 'btn-primary bg-none'} h-11 px-4" data-phone-only data-action="rollback" onclick={pressRollback} title={rollbackTitle} disabled={!managesPin}>
 				<UndoOutline class="h-4 w-4" aria-hidden="true" />
 				Roll back
 			</button>
@@ -263,6 +271,7 @@
 				<PlaySolid class="h-4 w-4" aria-hidden="true" />
 				Retry
 			</button>
+			{#if !managesPin}<p class="t-meta basis-full text-fg-subtle" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>{/if}
 		</div>
 	{/if}
 {/snippet}

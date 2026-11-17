@@ -3,28 +3,34 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /**
- * A deploy row's hover actions (Roll back, View diff) sit BESIDE the time column, never over it: the clock and the age are what a reader
- * hovers a row to read, so they stay at full opacity and the overlay is anchored to the column's left edge. jsdom has no layout, so this
- * pins the two class contracts the browser measurement relies on.
+ * A deploy row's Roll back and View diff have a reserved column of their own at hover-capable widths: the summary truncates before it and
+ * nothing slides over the text or the date. jsdom has no layout, so this pins the class contracts the browser measurement relies on.
  */
 const src = readFileSync(resolve(__dirname, '+page.svelte'), 'utf8');
-const start = src.indexOf('<div class="relative hidden shrink-0 text-right sm:block">');
-const column = src.slice(start, src.indexOf('Expand affordance', start));
+const slotAt = src.indexOf('data-row-actions');
+const timeAt = src.indexOf('<div class="hidden shrink-0 text-right sm:block">');
+const slot = src.slice(slotAt, timeAt);
+const time = src.slice(timeAt, src.indexOf('Expand affordance', timeAt));
 
-describe('History deploy row: hover actions never cover the date', () => {
-	test('the time column is found', () => {
-		expect(start).toBeGreaterThan(0);
-		expect(column).toContain('clockTime(entry.timestamp)');
+describe('History deploy row: the actions have their own column, nothing slides over text', () => {
+	test('the action column is a reserved, in-flow lg column before the time', () => {
+		expect(slotAt).toBeGreaterThan(0);
+		expect(timeAt).toBeGreaterThan(slotAt);
+		const open = src.slice(src.lastIndexOf('<div', slotAt), slotAt);
+		expect(open).toMatch(/\bhidden\b/);
+		expect(open).toMatch(/\bw-52\b/);
+		expect(open).toMatch(/\bshrink-0\b/);
+		expect(open).toMatch(/\blg:flex\b/);
+		expect(slot).toContain('Roll back to this build');
 	});
-	test('the clock and the age do not fade on hover or focus', () => {
-		expect(column).not.toMatch(/group-hover:opacity-0|group-focus-within:opacity-0/);
+	test('no absolutely positioned overlay on the row, and the buttons are hidden at rest', () => {
+		expect(slot).not.toMatch(/\babsolute\b/);
+		expect(time).not.toMatch(/\babsolute\b|group-hover:opacity-0|group-focus-within:opacity-0/);
+		expect(slot).toMatch(/\bopacity-0\b/);
+		expect(slot).toMatch(/lg:group-hover:opacity-100/);
 	});
-	test('the overlay is anchored left of the column, desktop only, hidden at rest', () => {
-		const overlay = column.match(/class="(pointer-events-none absolute[^"]*)"/)?.[1] ?? '';
-		expect(overlay).toMatch(/\bright-full\b/);
-		expect(overlay).not.toMatch(/\bright-0\b/);
-		expect(overlay).toMatch(/\bhidden\b/);
-		expect(overlay).toMatch(/\blg:flex\b/);
-		expect(overlay).toMatch(/\bopacity-0\b/);
+	test('the time column holds only the clock and the age', () => {
+		expect(time).toContain('clockTime(entry.timestamp)');
+		expect(time).not.toContain('btn');
 	});
 });

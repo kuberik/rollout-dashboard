@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { siteOf } from '$lib/view-models/sites-waves';
 	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { HUE_INK, HUE_SOLID } from '$lib/view-models/state-tone';
 	import { availableReleases, releaseCandidates, releasesOf, noReleasesOf } from '$lib/releases/registry.svelte';
@@ -193,6 +194,7 @@
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 	import { headFailingNow } from '$lib/view-models/health-failures';
+	import { stalledKruise } from '$lib/view-models/retry-context';
 	import { flowHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { pageTitle } from '$lib/page-title';
 
@@ -1003,24 +1005,6 @@
 		)
 	);
 
-	// Get the first stalled kruise rollout for retry functionality
-	const stalledKruiseRollout = $derived.by(() => {
-		for (const resources of Object.values(managedResources)) {
-			for (const resource of resources) {
-				if (resource.groupVersionKind === 'rollouts.kruise.io/v1beta1/Rollout') {
-					const kruiseRollout = resource.object as KruiseRollout;
-					if (
-						kruiseRollout?.status?.conditions?.some(
-							(c) => c.type === 'Stalled' && c.status === 'True'
-						)
-					) {
-						return kruiseRollout;
-					}
-				}
-			}
-		}
-		return null;
-	});
 
 	// Query for managed resources — one combined fetch across all kustomizations
 	// ⭐ CLUSTER IN THE KEY — `cluster` sits before the kustomization-name list
@@ -1065,6 +1049,9 @@
 	const managedResources = $derived<Record<string, ManagedResourceStatus[]>>(
 		managedResourcesQuery.data ?? {}
 	);
+
+	// the first stalled kruise rollout, for Retry (one reader, view-models/retry-context.ts, shared with the tab headers)
+	const stalledKruiseRollout = $derived(stalledKruise(managedResources));
 
 	/**
 	 * ⭐ HAS MANAGED-RESOURCES SETTLED — SUCCESS, ERROR, OR GENUINELY NEVER
@@ -3494,6 +3481,7 @@
 						{isDashboardManagingWantedVersion}
 						{cluster}
 						environmentName={environment?.spec?.environment ?? null}
+						site={environment ? siteOf(environment) : null}
 						onRetry={retryDeployment}
 						requestRetry={retryPending}
 						onRequestHandled={retryHandled}
@@ -5000,6 +4988,7 @@
 	initialSelectedVersion={selectedVersion}
 	initialExplanation={deployExplanation}
 	environmentName={environment?.spec?.environment ?? null}
+	site={environment ? siteOf(environment) : null}
 	{contractHeldVersions}
 	onDeployStart={beginPendingAction}
 	onSuccess={(m) => {
