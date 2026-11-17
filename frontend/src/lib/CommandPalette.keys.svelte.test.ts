@@ -78,6 +78,23 @@ describe('palette Tab, Enter and Space', { timeout: 60_000 }, () => {
 		expect(document.activeElement).toBe(act);
 		expect(row.contains(document.activeElement)).toBe(true);
 	});
+	test('Tab past the highlighted row\'s action: the highlight follows focus to the next row, and ArrowDown goes on from there', async () => {
+		reactivePage.url = new URL('http://localhost/');
+		draw();
+		const act = await toRowWithAction();
+		const first = selected();
+		act.focus();
+		const other = options().find((o) => o !== first && o.querySelector<HTMLElement>('a[href], button:not(:disabled)'));
+		expect(other, 'a second row with a control').toBeTruthy();
+		other!.querySelector<HTMLElement>('a[href], button:not(:disabled)')!.focus();
+		await tick();
+		expect(selected()).toBe(other);
+		expect(options().filter((o) => o.getAttribute('aria-selected') === 'true')).toHaveLength(1);
+		const before = options().indexOf(other!);
+		await fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+		await tick();
+		expect(options().indexOf(selected())).toBe(before + 1);
+	});
 	test('Enter on a focused action is not taken by the palette: it runs the action', async () => {
 		reactivePage.url = new URL('http://localhost/');
 		draw();

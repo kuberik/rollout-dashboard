@@ -1676,6 +1676,12 @@
 		if (!(e.target instanceof HTMLInputElement)) searchInput?.focus();
 	}
 
+	/** Focus moved onto a control in another row (Tab past the highlighted row's action): the highlight follows it, so one row looks selected and the arrows continue from there. */
+	function highlightFocusedRow(e: FocusEvent) {
+		const idx = Number((e.target as HTMLElement | null)?.closest<HTMLElement>('[role="option"][data-idx]')?.dataset.idx);
+		if (Number.isFinite(idx) && idx !== selectedIndex) selectedIndex = idx;
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (!open) return;
 		const control = rowControl(e.target);
@@ -2408,6 +2414,7 @@
 				id="command-palette-results"
 				role="listbox"
 				aria-label="Results"
+				onfocusin={highlightFocusedRow}
 				use:snapToRows={`${inPicker}|${scope}|${query}|${filtered.length}|${thisRolloutCount}|${attentionShown.length}`}
 				class="@container flex-1 overflow-y-auto p-2 sm:max-h-[min(36rem,calc(100dvh-14vh-88px))] sm:min-h-0 sm:flex-initial"
 			>
