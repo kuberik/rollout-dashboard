@@ -83,9 +83,14 @@ const SPECS: Spec[] = [
 	{ app: 'invoice-worker', env: 'prod', live: W30, next: W31, history: [[6, 'Automatic deployment, with gate bypass']] }
 ];
 
-const release = (b: Build, minAgo: number) => ({ tag: b.tag, version: b.version, revision: expandSha(b.tag), created: hcAgo(minAgo) });
-const histEntry = (b: Build, minAgo: number, message?: string) => ({
-	version: { tag: b.tag, version: b.version, revision: expandSha(b.tag) },
+/**
+ * payout-api and billing-edge run the same tags (m-60..62) but are different repos, so they must not share git shas: payout-api's
+ * revisions are salted (the same rule `REVISION_ALIASES` in github-data.ts applies to its changes), billing-edge keeps the plain one.
+ */
+export const bypassRevision = (app: string, tag: string) => expandSha(app === 'payout-api' ? `ab${tag}` : tag);
+const release = (app: string, b: Build, minAgo: number) => ({ tag: b.tag, version: b.version, revision: bypassRevision(app, b.tag), created: hcAgo(minAgo) });
+const histEntry = (app: string, b: Build, minAgo: number, message?: string) => ({
+	version: { tag: b.tag, version: b.version, revision: bypassRevision(app, b.tag) },
 	timestamp: hcAgo(minAgo),
 	triggeredBy: { kind: 'System', name: 'System' },
 	...(message ? { message } : {}),
@@ -123,8 +128,8 @@ function build(s: Spec): Obj {
 		...(s.extra ?? []).map((g) => ({ ...g }))
 	];
 	const history = [
-		histEntry(s.live, 5 * 60),
-		...(s.history ?? []).map(([days, message], i) => histEntry(s.live.tag === 'm-61' ? M60 : W29, days * 24 * 60 + i, message))
+		histEntry(s.app, s.live, 5 * 60),
+		...(s.history ?? []).map(([days, message], i) => histEntry(s.app, s.live.tag === 'm-61' ? M60 : W29, days * 24 * 60 + i, message))
 	];
 	const r: Obj = {
 		apiVersion: 'kuberik.com/v1alpha1',
@@ -140,7 +145,7 @@ function build(s: Spec): Obj {
 			source: `github.com/exampleco/${s.app}`,
 			wantedVersion: s.live.tag,
 			currentVersion: s.live.tag,
-			availableReleases: [release(s.live.tag === 'm-61' ? M60 : W29, 4 * 24 * 60), release(s.live, 5 * 60), release(s.next, 60)],
+			availableReleases: [release(s.app, s.live.tag === 'm-61' ? M60 : W29, 4 * 24 * 60), release(s.app, s.live, 5 * 60), release(s.app, s.next, 60)],
 			releaseCandidates: [{ tag: s.next.tag, created: hcAgo(60) }],
 			gatedReleaseCandidates: [],
 			history,

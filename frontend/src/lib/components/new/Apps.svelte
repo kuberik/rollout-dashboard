@@ -73,6 +73,8 @@
 	const waitsCell = (a: TApp) => a.placeList.some((p) => p.state === 'awaiting-approval');
 	const worst = (a: TApp) => (a.glyph === 'failed' && a.group === 'needs' ? 'failed' : waitsCell(a) ? 'approval' : approvalOf(a, approvals) || a.group === 'needs' ? 'checking' : 'other');
 	const failing = $derived(needs.filter((a) => worst(a) === 'failed').length);
+	/* of those, the apps whose failure has recovered (their card reads Failed) */
+	const recoveredN = $derived(needs.filter((a) => worst(a) === 'failed' && !!a.row?.failure?.recovered).length);
 	const waiting = $derived(needs.filter((a) => worst(a) === 'approval').length);
 	/** r34 truth-5: the header's approval fact is PLACES, fleetCounts().places.approval, the one number /rollouts, /environments and /envs/prod print (a place that is checking AND gated counts here and is not a second "checking") */
 	const waitingPlaces = $derived(fleetCounts(scenario).places.approval);
@@ -88,7 +90,7 @@
 	/** the lead tile: the first failing app (its banner is the page's one alert); calm pages have none */
 	const lead = $derived(needs.length && worst(needs[0]) === 'failed' ? needs[0] : null);
 	const attn = $derived(lead ? needs.slice(1) : needs);
-	const rollup = $derived(attentionRollup({ failing, approval: waiting, yours }));
+	const rollup = $derived(attentionRollup({ failing, recovered: recoveredN, approval: waiting, yours }));
 	/**
 	 * L1 — the strip IS the tab's: the same fleet list the rollout Overview reads (`rolloutsListQueryOptions`), the same
 	 * `buildRolloutCards` (gate context + contract holds) and `buildLanes`, so a node's state and its "N builds behind"

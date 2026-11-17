@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { installLiveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { fixtureSource } from '$lib/components/home/sketch/home-data';
 import { heldCauses, windowCause, windowOpens } from './data';
@@ -14,11 +14,18 @@ describe('a closed deploy window says the window', () => {
 		expect(orders(heldCauses('incident'))?.cause).toBe('Waiting on Integration tests');
 	});
 	it('with the schedule join the hold names the window like a row does, and its clock is its own clause', () => {
-		installLiveSource({ ...fixtureSource(), schedules: window_('2026-11-16T09:00:00Z') } as never);
-		const c = orders(heldCauses('incident'));
-		expect(c?.cause).toBe('Held by Business hours');
-		expect(c?.window?.opens).toMatch(/^opens \w{3} \d{2}:\d{2}/);
-		expect(c?.cause).not.toMatch(/check|Gate|Integration/);
+		/* frozen clock: two days before the transition, so the opening names its weekday on any run date */
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date('2026-11-14T12:00:00Z'));
+		try {
+			installLiveSource({ ...fixtureSource(), schedules: window_('2026-11-16T09:00:00Z') } as never);
+			const c = orders(heldCauses('incident'));
+			expect(c?.cause).toBe('Held by Business hours');
+			expect(c?.window?.opens).toMatch(/^opens \w{3} \d{2}:\d{2}/);
+			expect(c?.cause).not.toMatch(/check|Gate|Integration/);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 	it('a window with no published transition is still named, with no opening clause', () => {
 		installLiveSource({ ...fixtureSource(), schedules: window_(null) } as never);

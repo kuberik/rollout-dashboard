@@ -8,7 +8,15 @@
  */
 import { TONE } from '$lib/view-models/state-tone';
 
-export type StateKind = 'failed' | 'approval' | 'held' | 'deploying' | 'checking';
+/**
+ * THE ONE FAILURE WORD. "Failing" is reserved for a check that is failing right now; a failure whose checks have since recovered
+ * (the lastErrorTime witness keeps the deploy failed) is "Failed". Every surface that prints the word for a failed place asks here.
+ */
+export const failedWord = (recovered: boolean): 'Failing' | 'Failed' => (recovered ? 'Failed' : 'Failing');
+/** "2 failing" and "1 failed" as separate parts, zero parts left out: the one counting rule for failed places, `recovered` of the `failing` ones having all their checks OK again */
+export const failedParts = (failing: number, recovered: number): string[] => [failing - recovered > 0 ? `${failing - recovered} ${failedWord(false).toLowerCase()}` : '', recovered > 0 ? `${recovered} ${failedWord(true).toLowerCase()}` : ''].filter(Boolean);
+
+export type StateKind = 'failed' | 'approval' | 'held' | 'deploying' | 'checking' | 'paused';
 
 /** accepts the product's other spellings of the same five states */
 const ALIAS: Record<string, StateKind> = {
@@ -16,24 +24,26 @@ const ALIAS: Record<string, StateKind> = {
 	approval: 'approval', waiting: 'approval',
 	held: 'held', hold: 'held',
 	deploying: 'deploying', current: 'deploying',
-	checking: 'checking'
+	checking: 'checking',
+	paused: 'paused'
 };
 export const stateKind = (s: string | null | undefined): StateKind | null => (s ? (ALIAS[s] ?? null) : null);
 
-export function stateWord(s: string | null | undefined, o: { yours?: boolean; compact?: boolean } = {}): string | null {
+export function stateWord(s: string | null | undefined, o: { yours?: boolean; compact?: boolean; recovered?: boolean } = {}): string | null {
 	const k = stateKind(s);
 	if (!k) return null;
 	switch (k) {
-		case 'failed': return 'Failing';
+		case 'failed': return failedWord(!!o.recovered);
 		case 'approval': return o.compact ? 'Waiting' : o.yours ? 'Needs your approval' : 'Waiting for approval';
 		case 'held': return 'Held';
 		case 'deploying': return 'Deploying';
 		case 'checking': return 'Checking';
+		case 'paused': return 'Paused';
 	}
 }
 
 /** the hue of the word: state only (utility classes of the product's own state tokens) */
-export const stateInk = (s: string | null | undefined): string => { const k = stateKind(s); return k ? TONE[k].ink : 'text-fg-muted'; };
+export const stateInk = (s: string | null | undefined): string => { const k = stateKind(s); return k ? TONE[k === 'paused' ? 'held' : k].ink : 'text-fg-muted'; };
 
 /** THE ONE APPROVAL WORD (r39 coordinator decision b, 2026-11-08): "Needs your approval" when the viewer can give it, "Waiting for approval" otherwise. */
 export const approvalWord = (yours: boolean): string => stateWord('approval', { yours })!;

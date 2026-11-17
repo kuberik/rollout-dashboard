@@ -97,7 +97,7 @@
 		 * it). `bakeStatus === 'None'` is a different fact (nothing deployed)
 		 * and draws `EmptyGlyph`, a dashed ring (design language, 2026-10-08).
 		 */
-		state?: 'rolled-back' | 'pinned' | 'held' | null;
+		state?: 'rolled-back' | 'pinned' | 'held' | 'paused' | null;
 		/** The word for `sr-only`, when `state` is set. */
 		stateWord?: string;
 	}
@@ -111,6 +111,8 @@
 		stateWord = ''
 	}: Props = $props();
 
+	/* a held bake window (InProgress, clock stopped) is drawn as the held pause in held ink and reads "paused" */
+	const bakePausedMark = $derived(state === 'paused' && bakeStatus === 'InProgress');
 	const stateApplies = $derived(!!state && bakeStatus === 'Succeeded');
 
 	// All icons (static and spinning) share the same h-_ w-_ footprint
@@ -238,9 +240,11 @@
      The radiating waves keep Flowbite's original geometry and rhythm
      (r 18→46, 1.5s, three waves 0.5s apart) so the motion is unchanged. -->
 {#if !decorative}
-	<span class="sr-only">{bakeWord(bakeStatus)}{stateApplies && stateWord ? `, ${stateWord}` : ''}</span>
+	<span class="sr-only">{bakePausedMark ? 'paused' : bakeWord(bakeStatus)}{stateApplies && stateWord ? `, ${stateWord}` : ''}</span>
 {/if}
-{#if bakeStatus === 'InProgress'}
+{#if bakePausedMark}
+	<HeldGlyph size={size === 'chip' ? 12 : size === 'small' ? 16 : 20} class="{TONE.orange} {className}" />
+{:else if bakeStatus === 'InProgress'}
 	<svg
 		class="{sizeClasses[size]} shrink-0 {TONE.yellow} {className}"
 		viewBox="0 0 100 100"

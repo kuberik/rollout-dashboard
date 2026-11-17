@@ -4,6 +4,7 @@
  * attention elsewhere (with whose it is), what was rolled back, environment health, in motion.
  * `calm` drops failures (and their rolled-back echoes) so the calm state can be shot too.
  */
+import { shortRevision } from '$lib/version-utils';
 import { oldestFirst, newestFirst, earliest } from '$lib/instant';
 import type { AppEnv, AppModel, EnvState, HomeModel } from '$lib/view-models/home-model';
 import fixture from '$lib/view-models/home/fixtures/incident-input.json';
@@ -134,7 +135,7 @@ function index() {
 	for (const c of list) {
 		if (!owners.has(c.repo)) owners.set(c.repo, c.author);
 		const last = c.htmlUrl.split('/').pop() ?? '';
-		if (!newest.has(c.repo)) newest.set(c.repo, { ref: /^\d+$/.test(last) ? `#${last}` : last.slice(0, 7), title: c.title });
+		if (!newest.has(c.repo)) newest.set(c.repo, { ref: /^\d+$/.test(last) ? `#${last}` : shortRevision(last), title: c.title });
 	}
 	lite.set(list, (ix = { owners, newest }));
 	return ix;
@@ -227,7 +228,7 @@ export function buildSketch(m: HomeModel, me: string): SketchHome {
 					prod: e.isProdRegion || e.tier === 'prod',
 					here: at.some((h) => h.e === e),
 					since: mine?.since ?? (mine && (mine.state === 'healthy' || mine.state === 'superseded') ? e.arrivedAt : null),
-					prev: e.myChanges.find((c) => c.ref !== ref && (c.state === 'healthy' || c.state === 'superseded'))?.ref ?? (e.version ? e.version.slice(0, 7) : null)
+					prev: e.myChanges.find((c) => c.ref !== ref && (c.state === 'healthy' || c.state === 'superseded'))?.ref ?? (e.version ? shortRevision(e.version) : null)
 				};
 			});
 			const lead = at[0].e;

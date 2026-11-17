@@ -324,7 +324,7 @@ describe('RolloutNeighbourhood: gate boxes and links share one ordered upstream 
 		const { container } = render(RolloutNeighbourhood, { props: { hood } });
 		const el = container.querySelector('[data-hood-link="upstream"]');
 		expect(el?.tagName).toBe('A');
-		expect(el).toHaveAttribute('href', 'https://docs.kuberik.com/concepts/gates#approvals');
+		expect(el).toHaveAttribute('href', 'https://kuberik.com/docs/gates/approvals/');
 		// Gatehouse: no fake "How to approve" button; the whole tile is the docs link, marked by an external glyph in the one 28px approval row.
 		expect(el?.getAttribute('target')).toBe('_blank');
 		expect(el?.getAttribute('data-gate-type')).toBe('approval');
@@ -456,7 +456,7 @@ describe('RolloutNeighbourhood: the focus node states its own held state in word
  * a control that opens that dialog — only the docs-link fallback (SPEC
  * §7), or nothing. This pins the regression a later "give it an action"
  * pass could reintroduce: no `<button>` inside the gate-box tile, and the
- * one link it may carry leaves the product entirely (docs.kuberik.com),
+ * one link it may carry leaves the product entirely (kuberik.com/docs),
  * never a same-page `ChangeVersionModal`/`ChangeVersionFlow` trigger.
  */
 describe('RolloutNeighbourhood: a held approval gate box never opens the change-version dialog', () => {
@@ -481,7 +481,7 @@ describe('RolloutNeighbourhood: a held approval gate box never opens the change-
 		// The tile itself may be an `<a>`, but only to the docs host — never
 		// a same-page action, and never anything carrying an `onclick`.
 		if (tile!.tagName === 'A') {
-			expect(tile!.getAttribute('href')).toMatch(/^https:\/\/docs\.kuberik\.com\//);
+			expect(tile!.getAttribute('href')).toMatch(/^https:\/\/kuberik\.com\/docs\//);
 			expect(tile!.getAttribute('target')).toBe('_blank');
 		}
 	});

@@ -10,6 +10,7 @@
  * 18:33, rel-66 (cut 18:41) reaches dev 18:46, staging 18:58, prod 19:11 (unchanged), bake fails
  * 19:21 (unchanged).
  */
+import { shortRevision } from '$lib/version-utils';
 import { buildHomeModel, type HomeModel } from '$lib/view-models/home-model';
 import { homeInput, FIXTURE_NOW, FIXTURE_ME } from '$lib/view-models/home/fixture';
 import { calmModel, quietModel } from './sketch-home';
@@ -17,10 +18,10 @@ import { approvalRev } from '$lib/components/new/approval-rev.svelte';
 import type { NetworkSchedules } from '$lib/api/schedules';
 import { liveSource, type FleetSource } from './fleet-source.svelte';
 
-/** the clock the pages count ages from: the live source's `now`, the fixture's capture instant when nothing is installed. A Date, so every `NOW.getTime()` / `NOW.toISOString()` reads the current source. */
+/** the clock the pages count ages from: the live source's `now` (the wall clock for the app's own gate), the fixture's capture instant when nothing is installed. A Date, so every `NOW.getTime()` / `NOW.toISOString()` reads the current source. */
 class SourceClock extends Date {
 	constructor() { super(FIXTURE_NOW.getTime()); }
-	private ms(): number { return (liveSource()?.now ?? FIXTURE_NOW).getTime(); }
+	private ms(): number { const s = liveSource(); return s?.liveClock ? Date.now() : (s?.now ?? FIXTURE_NOW).getTime(); }
 	override getTime(): number { return this.ms(); }
 	override valueOf(): number { return this.ms(); }
 	override toISOString(): string { return new Date(this.ms()).toISOString(); }
@@ -100,13 +101,13 @@ type FxChange = { repo: string; number?: number; title: string; htmlUrl: string;
 export function changeBySha(repoPrefix: string, sha: string | null) {
 	if (!sha) return null;
 	const fx = source().changes as unknown as FxChange[];
-	const hit = (x: FxChange) => x.mergeCommitSha.startsWith(sha) || sha.startsWith(x.mergeCommitSha.slice(0, 7));
+	const hit = (x: FxChange) => x.mergeCommitSha.startsWith(sha) || sha.startsWith(shortRevision(x.mergeCommitSha));
 	/* the first argument is an APP name; an app named after its repo prefix-matches it, but a multi-service repo (platform-telemetry ships telemetry-indexer, -worker, ...) does not: a
 	   merge commit names one commit in one repo, so a full 7-char sha identifies the change on its own */
 	const c = fx.find((x) => repoPrefix.startsWith(x.repo) && hit(x)) ?? (sha.length >= 7 ? fx.find(hit) : null);
 	if (!c) return null;
 	const last = c.htmlUrl.split('/').pop() ?? '';
-	return { ref: /^\d+$/.test(last) ? `#${last}` : last.slice(0, 7), title: c.title, author: c.author, mergedAt: c.mergedAt, href: c.htmlUrl };
+	return { ref: /^\d+$/.test(last) ? `#${last}` : shortRevision(last), title: c.title, author: c.author, mergedAt: c.mergedAt, href: c.htmlUrl };
 }
 
 /** One place's deploy history for an app (newest first), from the raw rollout. */
@@ -117,7 +118,7 @@ type FxRollout = {
 export function historyAt(app: string, env: string) {
 	const r = (source().rollouts as unknown as FxRollout[]).find((x) => x.metadata.name === app && x.metadata.namespace.endsWith(`-${env}`));
 	return (r?.status.history ?? []).map((h) => ({
-		sha: (h.version.revision ?? h.version.tag ?? '').slice(0, 7),
+		sha: shortRevision(h.version.revision ?? h.version.tag ?? ''),
 		at: h.timestamp,
 		bake: h.bakeStatus ?? null,
 		bakeStart: h.bakeStartTime ?? null,

@@ -10,6 +10,7 @@
  * Honest fallbacks: no `observations[]` on the list payload, so a failing card leads with the check NAME + message (attention.ts), never a figure;
  * a prod approval card counts its regions (the region meter, as on Home); other approvals stay title-led.
  */
+import { shortRevision } from '$lib/version-utils';
 import { oldestFirst } from '$lib/instant';
 import { beadRank } from '$lib/view-models/severity';
 import {
@@ -18,17 +19,20 @@ import {
 import { rides, waitsOnMe, rideAction, ownTier, TIERS, type Ride } from './change-view';
 import { dedupeCommitOfPr } from './change-cards';
 import { rideTruth } from './change-truth';
+import { inScope, scoped } from './derivation-scope';
 import { rowAction, actionHref } from './rollout-view';
 import { attentionModel, type AttentionModel } from '$lib/view-models/attention';
 import { repoCardModel, rollupParts, type RepoCardModel, type RepoChange, type RollupPart } from '$lib/view-models/repo-card';
 import type { BeadState } from '$lib/view-models/bead';
-import { bannerMeta, type BannerMeta, type ChangeLine } from './rollouts-page';
+import { failedParts } from './state-words';
+import { failedBannerTitle } from '$lib/view-models/banner';
+import { failingNowOf, bannerMeta, type BannerMeta, type ChangeLine } from './rollouts-page';
 import { servicesOf, spreadOf, type Svc } from './change/service-spread';
 
 const NONTIER = (w: string | null | undefined) => !!w && !/^(production|prod|staging|dev|test)$/.test(w);
 
 /** the change's short ref: #PR, else the 7-char sha */
-export const refOf = (c: Pick<TChange, 'prNumber' | 'ref'>): string => (c.prNumber ? `#${c.prNumber}` : String(c.ref ?? '').slice(0, 7));
+export const refOf = (c: Pick<TChange, 'prNumber' | 'ref'>): string => (c.prNumber ? `#${c.prNumber}` : shortRevision(String(c.ref ?? '')));
 /** the tier whose gate holds the change / where it fails: a prod place is "prod", otherwise the change's own tier */
 export const gateOf = (c: Pick<TChange, 'where' | 'at'>): string => (/prod/.test(c.where ?? '') ? 'prod' : c.at ?? '');
 /** the region / cluster beside the tier when the place is not just the tier ("eu-west") */
@@ -90,7 +94,7 @@ export function groupByRepo(ps: PChange[]): RepoGroup[] {
 		return { repo, changes: fly, landed: xs.filter((x) => x.state === 'landed'), flying: fly.length, worst: Math.min(SEV('none'), ...xs.map((x) => SEV(x.state))), href: xs[xs.length - 1].c.changeHref ?? xs[xs.length - 1].c.href };
 	}).sort((a, b) => a.worst - b.worst || b.flying - a.flying || a.repo.localeCompare(b.repo));
 }
-export const rc = (p: PChange): RepoChange => ({ ref: p.ref, title: p.c.title, state: p.state, col: p.col, href: p.c.changeHref ?? p.c.href, key: p.c.key, noReleases: p.c.apps.length > 0 && p.c.apps.every((a) => !!noReleasesApp(a)) ? noReleasesApp(p.c.apps[0])!.label : undefined });
+export const rc = (p: PChange): RepoChange => ({ ref: p.ref, title: p.c.title, state: p.state, col: p.col, href: p.c.changeHref ?? p.c.href, key: p.c.key, recovered: p.state === 'failed' && !!p.c.failure?.recovered, noReleases: p.c.apps.length > 0 && p.c.apps.every((a) => !!noReleasesApp(a)) ? noReleasesApp(p.c.apps[0])!.label : undefined });
 export function cardOf(g: RepoGroup, tiers: readonly string[], o: { team?: boolean } = {}): RepoCardModel {
 	const apps = [...new Set([...g.changes, ...g.landed].flatMap((p) => p.c.apps))];
 	return { ...repoCardModel({ repo: g.repo, tiers, changes: g.changes.map(rc), landed: g.landed.map((l) => ({ ref: l.ref, title: l.c.title })), team: o.team, compact: true }), apps };
@@ -98,12 +102,15 @@ export function cardOf(g: RepoGroup, tiers: readonly string[], o: { team?: boole
 export const tiersOf = (ps: PChange[]) => TIERS.filter((t) => ps.some((p) => p.c.tiers.includes(t)));
 /** section rollup: failing takes ink, everything else is subtle (rail-d), then the scope word */
 function sectionRollup(ps: PChange[], scope: string): Rollup {
-	return [...rollupParts(ps.map((p) => ({ state: p.state }))).map((x) => (x.ink === 'danger' ? { text: x.text, ink: 'danger' as const } : x.text)), scope];
+	return [...rollupParts(ps.map((p) => ({ state: p.state, recovered: p.state === 'failed' && !!p.c.failure?.recovered }))).map((x) => (x.ink === 'danger' ? { text: x.text, ink: 'danger' as const } : x.text)), scope];
 }
 const plural = (n: number, w: string, many = w + 's') => `${n} ${n === 1 ? w : many}`;
 
 /** every live change classified once, as the Changes page and Home both read it: the viewer's (mine) and the team's, with the lead failing change's key */
 export function classifyChanges(hs: HomeState): { mineP: PChange[]; teamP: PChange[]; leadKey: string | null } {
+	return inScope(() => scoped(`classify|${hs}`, () => classifyChangesRaw(hs)));
+}
+function classifyChangesRaw(hs: HomeState): { mineP: PChange[]; teamP: PChange[]; leadKey: string | null } {
 	const C = changes(hs, { rolledBackLands: true });
 	const R = rollouts(hs);
 	const live = dedupeCommitOfPr(C.items.filter((i) => !i.rolledBack));
@@ -127,7 +134,24 @@ export function classifyChanges(hs: HomeState): { mineP: PChange[]; teamP: PChan
 export function attentionOrder<T extends { state: string }>(ps: T[], askSince: (p: T) => string | null): T[] {
 	return [...ps].sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed') || oldestFirst(askSince(a), askSince(b)));
 }
+/** When an Attention item began asking: an approval from its wait clock, a failure from when its check began failing
+ *  (the instant its card prints), else the ride's or change's own clock. */
+export function attentionSince(
+	p: { state: string; c: { since?: string | null; failure?: { since?: string | null } | null }; ride: { since?: string | null } },
+	approvalClock: () => string | null
+): string | null {
+	if (p.state === 'approval-yours') return approvalClock() ?? p.ride.since ?? p.c.since ?? null;
+	if (p.state === 'failed') return p.c.failure?.since ?? p.ride.since ?? p.c.since ?? null;
+	return p.ride.since ?? p.c.since ?? null;
+}
+/** the Attention rollup: only a check failing now is danger ink, a recovered `failed` and the rest follow (the shared failing/failed split, state-words `failedParts`) */
+export function attentionRollupParts(failing: number, recovered: number, toApprove: number): Rollup {
+	return [...failedParts(failing, recovered).map((text) => (text.endsWith(' failing') ? { text, ink: 'danger' as const } : text)), ...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])];
+}
 export function changesPage(hs: HomeState): ChangesPage {
+	return inScope(() => changesPageRaw(hs));
+}
+function changesPageRaw(hs: HomeState): ChangesPage {
 	const { mineP, teamP, leadKey } = classifyChanges(hs);
 
 	/* the banner: the first failing change (rides() puts the lead first, then the shared urgency order) */
@@ -142,24 +166,24 @@ export function changesPage(hs: HomeState): ChangesPage {
 	};
 	const changeLine = (p: PChange): ChangeLine => { const you = isViewer(p.c.who); const person = personName(p.c.who); return { title: p.c.title, ref: p.ref, person: you ? 'you' : person ?? undefined, you, src: you || !person ? null : avatarSrc(person) ?? null }; };
 	const banner: Banner | null = lead
-		? { p: lead, title: `${lead.ride.app} failed in ${gateOf(lead.c) || lead.c.at}${placeOf(lead.c) ? ` · ${placeOf(lead.c)}` : ''}`, check: lead.c.failure?.check ? { name: lead.c.failure.check, message: lead.c.failure.message ?? '' } : null, line: lead.c.failure?.line ?? null, change: changeLine(lead), meta: bannerMeta(lead.ride.row), openHref: lead.ride.href, rollbackHref: rollbackOf(lead) }
+		? { p: lead, title: failedBannerTitle(lead.ride.app, gateOf(lead.c) || lead.c.at || '', placeOf(lead.c), failingNowOf(lead.ride.row)), check: lead.c.failure?.check ? { name: lead.c.failure.check, message: lead.c.failure.message ?? '' } : null, line: lead.c.failure?.line ?? null, change: changeLine(lead), meta: bannerMeta(lead.ride.row), openHref: lead.ride.href, rollbackHref: rollbackOf(lead) }
 		: null;
 
 	/* Attention: your changes that need you (failing, or an approval you can give), minus the banner's; failing first, then oldest ask first */
-	const askSince = (p: PChange): string | null => {
-		const r = rowOf(p);
-		if (p.state === 'approval-yours') return (r ? waitClock(r, hs) : null) ?? p.ride.since ?? p.c.since;
-		return p.ride.since ?? p.c.since;
-	};
+	const askSince = (p: PChange): string | null => attentionSince(p, () => { const r = rowOf(p); return r ? waitClock(r, hs) : null; });
 	const attP = attentionOrder(mineP.filter((p) => (p.state === 'failed' || p.state === 'approval-yours') && p !== lead), askSince);
 	const attention: AttentionItem[] = attP.map((p) => {
 		const failed = p.state === 'failed';
 		const you = isViewer(p.c.who);
 		const person = personName(p.c.who);
 		const model = attentionModel({
-			state: failed ? 'failed' : 'approval', age: ago(askSince(p)), tier: failed ? p.c.at ?? '' : gateOf(p.c), place: failed ? placeOf(p.c) : '',
+			state: failed ? 'failed' : 'approval', age: ago(failed ? p.c.failure?.since ?? askSince(p) : askSince(p)), ageAt: failed ? (p.c.failure?.since ?? p.ride.since ?? p.c.since ?? null) : null, tier: failed ? p.c.at ?? '' : gateOf(p.c), place: failed ? placeOf(p.c) : '',
 			check: failed ? { name: p.c.failure?.check ?? null, message: p.c.failure?.message ?? p.c.failure?.line ?? '' } : null,
 			observations: failed ? p.c.failure?.observations ?? null : null,
+			cls: failed ? p.c.failure?.cls : undefined,
+			note: failed ? p.c.failure?.note ?? null : null,
+			recovered: failed ? !!p.c.failure?.recovered : false,
+			recoveredAt: failed ? p.c.failure?.recoveredAt ?? null : null,
 			regions: !failed && gateOf(p.c) === 'prod' ? regionStates(p.ride.app, hs) : null,
 			gateSentence: failed || (p.c.scope ?? '').includes(' of ') ? null : (p.c.scope ?? '').replace(/^Wait(?:s|ing) for your approval · /, '').replace(/^prod-/, '') || null,
 			title: p.c.title
@@ -178,11 +202,12 @@ export function changesPage(hs: HomeState): ChangesPage {
 	const people = new Set(teamP.filter((p) => p.state !== 'landed').map((p) => p.c.who)).size;
 	const rest: RestRepo[] = restG.map((g) => { const n = g.landed[g.landed.length - 1]; return { key: g.repo, repo: g.repo, href: n.c.changeHref ?? n.c.href, ref: n.ref, title: n.c.title, age: `landed ${ago(n.ride.since ?? n.c.since ?? n.c.mergedAt)}` }; });
 	const failing = attP.filter((p) => p.state === 'failed').length;
+	const recoveredN = attP.filter((p) => p.state === 'failed' && p.c.failure?.recovered).length;
 	const toApprove = attP.length - failing;
 
 	return {
 		banner, attention,
-		attentionRollup: [...(failing ? [{ text: `${failing} failing`, ink: 'danger' as const }] : []), ...(toApprove ? [{ text: `${toApprove} to approve`, ink: 'held' as const }] : [])],
+		attentionRollup: attentionRollupParts(failing, recoveredN, toApprove),
 		mine: mineFly.map((g) => ({ repo: g.repo, href: g.href, card: cardOf(g, tiersOf([...g.changes, ...g.landed])) })),
 		mineRollup: sectionRollup(mineP, plural(mineG.length, 'repo')),
 		rest,

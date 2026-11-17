@@ -17,6 +17,7 @@
 	 * facts │ build + commit); the actions end on the card's right padding, the same x as a row's Roll back.
 	 */
 	import { stateWord } from './state-words';
+	import { HUE_SOLID } from '$lib/view-models/state-tone';
 	import { UndoOutline, ExclamationCircleSolid, ChevronDownOutline } from 'flowbite-svelte-icons';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
@@ -34,7 +35,7 @@
 
 	const failing = $derived(row.group === 'failed');
 	const fr = $derived(row.failure);
-	const check = $derived(fr ? { name: fr.check ?? fr.line, message: fr.check ? (fr.message ?? undefined) : undefined } : null);
+	const check = $derived(fr ? { name: fr.check ?? fr.line, message: fr.check ? (fr.short ?? fr.message ?? undefined) : undefined } : null);
 	const sel = $derived((row.steps.find((s) => s.state === 'fail') ?? row.steps.find((s) => s.state === 'active' || s.state === 'hold') ?? row.steps[row.steps.length - 1])?.name ?? null);
 	/* gated rows (awaiting approval / held by rule) run their current build; lastHealthy(row) would return it (from=0) and print
 	   "X replaces X". Walk back one entry so the line reads the tab's "Roll back to <previous>". */
@@ -78,7 +79,7 @@
 		{ title: 'Health checks', label: hcFailing || sd.healthChecks === 'Failed' ? 'Failed' : sd.healthChecks === 'Healthy' ? 'Healthy' : (sd.healthChecks === 'Pending' ? healthTally(row) : `${sd.healthChecks} · ${healthTally(row)}`), tone: hcFailing || sd.healthChecks === 'Failed' ? 'bad' : sd.healthChecks === 'Healthy' ? 'ok' : 'wait' },
 		{ title: 'Check timer', label: sd.checkTimer === 'Checking' && clock ? (checkingGate ? clock : `Checking · ${clock}`) : sd.checkTimer, tone: sd.checkTimer === 'Done' ? 'ok' : sd.checkTimer === 'Checking' ? 'wait' : 'pending' }
 	]);
-	const DOT = { ok: 'bg-success-solid', bad: 'bg-danger-solid', wait: 'bg-progress-solid animate-pulse', pending: 'bg-line-strong' } as const;
+	const DOT = { ok: HUE_SOLID.success, bad: HUE_SOLID.danger, wait: `${HUE_SOLID.progress} animate-pulse`, pending: 'bg-line-strong' } as const;
 	/* U9: the dl's rows. prev = the build this one replaces / the last healthy one; reach = the tab's Runs-in rollup (compact: "To deploy", the tab's own Newer builds count and its hold clause; never the catalogue distance the app page prints) split into label + value */
 	const prev = $derived(wb ? { label: 'Replaces', build: buildTitle(row), age: `${ago(row.deployedAt)} ago` } : replaced ? { label: failing ? 'Last healthy' : 'rolledBack' in replaced ? 'Rolled back from' : 'Replaces', build: replaced.build, age: `${failing ? 'deployed ' : ''}${ago(replaced.at)} ago` } : null);
 	const reach = $derived.by(() => {

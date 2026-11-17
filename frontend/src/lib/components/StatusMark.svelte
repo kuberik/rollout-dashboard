@@ -28,6 +28,7 @@
 		label = undefined,
 		resolved = false,
 		tone = undefined,
+		yours = false,
 		progress = null
 	}: {
 		/**
@@ -39,6 +40,8 @@
 		progress?: number | null;
 		/** r34 build-r4 (additive, /changes AD r1 #2): `held` draws the approval glyph in held ink ("waits for YOU"); default = the fg ink. */
 		tone?: 'held' | 'neutral';
+		/** an approval the VIEWER can give: the `approval-yours` mark, the same held orange plus the viewer's ring (state-tone.ts `ring`, as WaveMark draws it on the strips) */
+		yours?: boolean;
 		/**
 		 * `approval`: held on a PERSON (an approval only someone can give), not
 		 * the orange pause of a rule hold that clears by itself. An unfilled
@@ -57,12 +60,17 @@
 	} = $props();
 
 	// the chip colours come from the ONE state-tone table (view-models/state-tone.ts), never a local map
-	const RING: Partial<Record<NodeState, string>> = {
+	/* total over NodeState: a new state fails svelte-check here instead of falling through to the done dot; null = drawn without a ring (the branches below) */
+	const RING: Record<NodeState, string | null> = {
 		failed: TONE.failed.chip,
 		stuck: TONE.stuck.chip,
 		held: TONE.held.chip,
+		paused: TONE.held.chip,
 		deploying: TONE.deploying.chip,
-		checking: TONE.checking.chip
+		checking: TONE.checking.chip,
+		behind: null,
+		newest: null,
+		none: null
 	};
 	const RESOLVED_RING = 'bg-subtle ring-line text-fg-subtle';
 	const pie = $derived(progress != null && (state === 'checking' || state === 'deploying') ? Math.max(0, Math.min(1, progress)) : null);
@@ -74,12 +82,12 @@
 		const x = 8 + r * Math.sin(a), y = 8 - r * Math.cos(a);
 		return `M8 8V3.75A${r} ${r} 0 ${pie > 0.5 ? 1 : 0} 1 ${x.toFixed(3)} ${y.toFixed(3)}Z`;
 	});
-	const ring = $derived(state === 'approval' ? undefined : resolved ? RESOLVED_RING : RING[state]);
+	const ring = $derived(state === 'approval' ? undefined : resolved ? RESOLVED_RING : RING[state] ?? undefined);
 </script>
 
 <span class="relative inline-flex h-4 w-4 shrink-0 items-center justify-center" title={label}>
 	{#if state === 'approval'}
-		<span class="sm-ask inline-flex h-4 w-4 items-center justify-center rounded-full {tone === 'held' ? 'sm-ask-held text-held' : tone === 'neutral' ? 'sm-ask-neutral text-fg-muted' : 'text-fg'}">
+		<span style={yours ? `--sm-ring:${TONE['approval-yours'].ring}` : undefined} class="sm-ask inline-flex h-4 w-4 items-center justify-center rounded-full {yours ? 'sm-ask-held sm-ask-yours text-held' : tone === 'held' ? 'sm-ask-held text-held' : tone === 'neutral' ? 'sm-ask-neutral text-fg-muted' : 'text-fg'}">
 			<UserOutline class="h-3 w-3" aria-hidden="true" />
 		</span>
 	{:else if pie != null}
@@ -90,8 +98,8 @@
 		</svg>
 	{:else if ring}
 		<span class="inline-flex h-4 w-4 items-center justify-center rounded-full ring-1 ring-inset {ring}">
-			{#if state === 'held'}
-				<!-- Held, a thin pause at the "!"'s optical weight (AD held v3): bars
+			{#if state === 'held' || state === 'paused'}
+				<!-- Held and paused, a thin pause at the "!"'s optical weight (AD held v3): bars
 				     ~8px of the 16px circle, 3px apart, 1.5px stroke. -->
 				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true">
 					<path d="M9 5.5v13M15 5.5v13" />
@@ -137,6 +145,7 @@
 	}
 	/* r34 build-r4 (/changes AD r2 F, additive): the approval glyph gets a wash so it reads at 12-15px: held tint + held ring for YOUR approval, a neutral wash for one someone else gives */
 	.sm-ask-held { background-color: var(--k-held-tint); box-shadow: inset 0 0 0 1px var(--k-held-line); }
+	.sm-ask-yours { box-shadow: inset 0 0 0 1.5px var(--sm-ring); }
 	.sm-ask-neutral { background-color: var(--k-subtle); box-shadow: inset 0 0 0 1px var(--k-line-strong); }
 	.sm-pm-progress { --pm-tint: var(--k-progress-tint); --pm-solid: var(--k-progress-solid); }
 	.sm-pm-active { --pm-tint: var(--k-active-tint); --pm-solid: var(--k-active-solid); }

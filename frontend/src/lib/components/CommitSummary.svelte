@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { shortRevision } from '$lib/version-utils';
 	import { availableReleases } from '$lib/releases/registry.svelte';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { CodeBranchSolid, ChevronRightOutline, UndoOutline } from 'flowbite-svelte-icons';
@@ -479,7 +480,7 @@
 							target="_blank"
 							rel="noopener noreferrer"
 							class="t-code-sm shrink-0 text-accent-text hover:underline"
-							>{(c.sha ?? '').slice(0, 7)}</a
+							>{shortRevision(c.sha ?? '')}</a
 						>
 						<span class="min-w-0 flex-1 truncate text-fg-muted"
 							>{formatCommitMessage(c.message)}</span

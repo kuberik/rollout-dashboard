@@ -3,7 +3,7 @@
 // so stuck/behind/failure classification logic lives in exactly one place.
 
 import { availableReleases, releaseCandidates } from '$lib/releases/registry.svelte';
-import { behindOfRollout } from './view-models/behind';
+import { behindInCatalogue, behindOfRollout, catalogueOrdersByRollout } from './view-models/behind';
 import { severityRank } from './view-models/severity';
 import { liveForPlace, newerReleaseCountLive, type Fleet } from './view-models/failed-builds';
 import type { Rollout, Environment } from '../types';
@@ -35,6 +35,7 @@ import {
 } from './source-dashboard';
 import { blockingStory } from './view-models/blocking-story';
 import type { BlockingStory, GateContext, ContractHolds } from './view-models/blocking-story';
+import { bakePaused } from './bake-hold';
 import { heldVerdict, verdictForGates, causeLabelForGates } from './view-models/held';
 import { placeVerdict, pickBuildInQuestion, alsoKindOf, isApprovalLike, type PlaceVerdict } from './view-models/place-verdict';
 import type { HeldCause, AlsoHold } from './view-models/held';
@@ -373,6 +374,12 @@ export function detectRollback(r: Rollout | null | undefined): RollbackMark | nu
 	};
 }
 
+/** a Failed head that recorded failed health checks (`failedHealthChecks[]`) is a health-check failure whatever its message says; else the message decides */
+export function failureCategoryOf(latest: { bakeStatusMessage?: string; failedHealthChecks?: readonly unknown[] } | null | undefined): string | null {
+	if (latest?.failedHealthChecks?.length) return 'healthcheck';
+	return categorizeFailure(latest?.bakeStatusMessage);
+}
+
 export type RolloutCard = {
 	ns: string;
 	name: string;
@@ -394,6 +401,8 @@ export type RolloutCard = {
 	version: string | null;
 	timestamp: string | null;
 	bakeStatus: string;
+	/** the bake clock is stopped by a not-Healthy check (only meaningful while the bake is InProgress) */
+	bakeHeld: boolean;
 	statusKey: StatusKey;
 	isRunning: boolean;
 	bakeStatusMessage: string | null;
@@ -434,7 +443,7 @@ export type RolloutCard = {
 	 * a perfectly ordinary rollout — see the note on `computeBehind`.
 	 */
 	behind: { fromEnv: string; version: string; behindBy: number | null } | null;
-	/** the "N newer builds" count the cards, palette and lanes print: `behindOfRollout` over this build's own fleet lists, so a build that failed upstream in its wave chain is not counted (batch4 #3b) */
+	/** the "N newer builds" count the cards, palette and lanes print: `behindInCatalogue` (behind.ts: the catalogue distance, the one number everywhere; a build outside the catalogue falls back to the own list, which skips builds failed upstream) */
 	behindCount?: number;
 	/**
 	 * ⛔ "1 BEHIND" AND "1 BEHIND, AND STUCK THERE" LOOK IDENTICAL WITHOUT
@@ -610,6 +619,7 @@ export function buildRolloutCards(
 	// `/apps` and `/environments` read. See env-rank.ts for why this and not
 	// each rollout's own `availableReleases`.
 	const ranks = rankVerdictsByRollout(rollouts, environments);
+	const orders = catalogueOrdersByRollout(rollouts, environments);
 	return rollouts.map((r) => {
 		const latest = r.status?.history?.[0];
 		const env = environments.find((e) => rolloutMatchesEnvironment(r, e));
@@ -683,11 +693,12 @@ export function buildRolloutCards(
 			version: latest?.version ? getDisplayVersion(latest.version) : null,
 			timestamp: latest?.timestamp || null,
 			bakeStatus,
+			bakeHeld: bakePaused(latest),
 			statusKey,
 			isRunning,
 			bakeStatusMessage: latest?.bakeStatusMessage || null,
 			failureCategory:
-				bakeStatus === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null,
+				bakeStatus === 'Failed' ? failureCategoryOf(latest) : null,
 			previousSucceededVersion,
 			pinnedVersion: r.spec?.wantedVersion || null,
 			rolledBack: detectRollback(r),
@@ -695,7 +706,7 @@ export function buildRolloutCards(
 			checkFailure: checkFailure(r),
 			rank,
 			behind,
-			behindCount: behindOfRollout(r, rank, { environments, rollouts }),
+			behindCount: behindInCatalogue(r, orders.get(r) ?? [], rank, { environments, rollouts }),
 			held: pv ? pv.held : noAsk ? false : heldCardVerdict.held,
 			heldCause: pv ? pv.cause : noAsk ? null : heldCardVerdict.cause,
 			placeVerdict: pv?.verdict ?? null,

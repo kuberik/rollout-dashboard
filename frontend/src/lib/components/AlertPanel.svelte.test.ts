@@ -384,3 +384,12 @@ describe('the banner and the card are one affordance over one content', () => {
 		expect(bannerRecord?.textContent).not.toContain('Clears');
 	});
 });
+
+describe('AlertPanel title place', () => {
+	test('keeps the tier and region one line (no break at its hyphens, no orphaned separator)', () => {
+		const { container } = render(AlertPanel, { title: 'invoice-api failing in prod · eu-west-1', severity: 'error' } as never);
+		const place = container.querySelector('[data-title-place]');
+		expect(place?.textContent).toBe('prod · eu-west-1');
+		expect(place?.className).toContain('whitespace-nowrap');
+	});
+});

@@ -64,6 +64,8 @@ export type RolloutRow = {
 	needsYou: boolean;
 	/** the place reads its approval or rule hold while its own build is still baking */
 	stillChecking?: boolean;
+	/** the place is baking and the bake clock is stopped by a not-Healthy check: the row says "Paused" in held ink (state stays checking: it is in flight) */
+	paused?: boolean;
 	lead: boolean;
 	action: { label: string; href: string; kind: 'rollback' | 'approve' | 'open' } | null;
 	/** one line of cause, from the model's own words (failing check, hold reason) */
@@ -93,7 +95,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 	const appr = new Map(v.approvals.map((a) => [a.app, a]));
 	const needs = new Map(m.fleet.needsYou.map((n) => [`${n.app}@${n.env}`, n]));
 
-	type P = { prov: string | null; app: string; env: string; label: string; tier: TierKey; state: EnvState; version: string | null; since: string | null; href: string; mine: Change | null; pipeline: EnvPipeline | null; also: { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null; stillChecking: boolean };
+	type P = { prov: string | null; app: string; env: string; label: string; tier: TierKey; state: EnvState; version: string | null; since: string | null; href: string; mine: Change | null; pipeline: EnvPipeline | null; also: { other: string; persistent: boolean; kind: 'window' | 'order' | 'hold' } | null; stillChecking: boolean; paused: boolean };
 	/* craft r7 (N5): a held place waits on a PROVIDER when its tab says so. `needsYou` holds one entry per app and hold
 	   category, so a held place with no entry of its own takes the app's held entries when they all agree (the tab's sentence is the
 	   same gate: "waiting for payments-svc"); an entry of its own with another reason (a check, a pin) is never overridden. */
@@ -124,7 +126,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 				prov: st === 'held-by-rule' ? providerOf(a.app, e.env) : null, app: a.app, env: e.env, label: e.label, tier, state: st, version: shortVersion(e.version),
 				/* craft r7 (nit): a failing place's age is the failure's (the change's failed entry), not the deploy's */
 				since: (e.state === 'awaiting-approval' || e.state === 'held-by-rule' ? e.heldSince : null) ?? (e.state === 'failed' ? e.myChanges.find((ch) => ch.state === 'failed')?.since : null) ?? e.arrivedAt,
-				href: e.href, stillChecking: !!e.stillChecking, also: st === 'held-by-rule' ? (e.alsoApproval ?? null) : null, mine: my ? { ref: my.ref, title: my.title, who: pretty(viewerLogin()), mine: true } : null, pipeline: e.pipeline ?? null
+				href: e.href, stillChecking: !!e.stillChecking, paused: !!e.bakePaused && st === 'checking', also: st === 'held-by-rule' ? (e.alsoApproval ?? null) : null, mine: my ? { ref: my.ref, title: my.title, who: pretty(viewerLogin()), mine: true } : null, pipeline: e.pipeline ?? null
 			});
 		}
 
@@ -132,7 +134,7 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 	const rows: RolloutRow[] = [];
 	for (const p of busy) {
 		const g = groupOf(p.state);
-		const same = rows.find((r) => r.app === p.app && r.tier === 'prod' && p.tier === 'prod' && r.state === p.state && (r.glyph === 'waiting') === !!p.prov && r.stillChecking === p.stillChecking && (p.state === 'awaiting-approval' || p.state === 'held-by-rule' || r.version === p.version));
+		const same = rows.find((r) => r.app === p.app && r.tier === 'prod' && p.tier === 'prod' && r.state === p.state && (r.glyph === 'waiting') === !!p.prov && r.stillChecking === p.stillChecking && !!r.paused === p.paused && (p.state === 'awaiting-approval' || p.state === 'held-by-rule' || r.version === p.version));
 		if (same) {
 			same.regions.push(p.label);
 			(same.hrefs ??= [same.href]).push(p.href);
@@ -158,13 +160,13 @@ export function rollouts(state: HomeState, starred: ReadonlySet<string> = stars.
 			p.state === 'failed' ? 'Failing'
 			: p.state === 'awaiting-approval' ? (ap ? 'Waits for your approval' : 'Waits for approval')
 			: p.state === 'held-by-rule' ? (p.prov ? `Waits on ${p.prov}` : ny?.status?.startsWith('Waits on a dependency') ? 'Waits on a dependency' : 'Held by a rule')
-			: p.state === 'deploying' ? 'Deploying' : 'Checking';
+			: p.state === 'deploying' ? 'Deploying' : p.paused ? 'Paused' : 'Checking';
 		const cause = isLead && L?.check ? `${L.check.name} ${L.check.message}` : nyEntry?.phrase ?? null;
 		rows.push({
 			key: `${p.app}@${p.env}`, app: p.app, tier: p.tier,
 			where: p.tier === 'prod' ? (p.label === 'prod' ? 'production' : p.label) : p.label,
 			regions: [p.label], state: p.state, group: g, glyph: p.prov ? 'waiting' : glyphOf(p.state), word, change, version: p.version, since: p.since, href: p.href,
-			needsYou, lead: isLead, stillChecking: p.stillChecking,
+			needsYou, lead: isLead, stillChecking: p.stillChecking, paused: p.paused,
 			action: isLead && L?.action ? { label: L.action.label.replace(/ to [0-9a-f]{7}$/, ''), href: L.action.href, kind: 'rollback' }
 				: p.state === 'failed' && needsYou ? { label: 'Roll back', href: p.href, kind: 'rollback' }
 				: p.state === 'awaiting-approval' && ap ? { label: 'Approve', href: p.href, kind: 'approve' } : null,
@@ -462,7 +464,7 @@ export function apps(state: HomeState) {
 		const w = rows.find((r) => r.group === 'failed') ?? rows.find((r) => r.needsYou) ?? rows.find((r) => r.group === 'moving') ?? worst;
 		const group: AppItem['group'] = !w ? 'quiet' : w.group === 'failed' || w.needsYou ? 'needs' : w.group === 'moving' ? 'moving' : 'waiting';
 		const envs = model.envs.filter((e) => e.state !== 'not-deployed');
-		const onNew = envs.filter((e) => e.version?.slice(0, 7) === a.newest && !['awaiting-approval', 'held-by-rule'].includes(e.state));
+		const onNew = envs.filter((e) => shortRevisionOrNull(e.version) === a.newest && !['awaiting-approval', 'held-by-rule'].includes(e.state));
 		const reach = onNew.length ? onNew.map((e) => tierOf(e)).reduce((b, t) => (RT[t] > RT[b] ? t : b)) : null;
 		/* craft r4 (R3-4): one outcome grammar for a change and an app: Failing in X / Waits for approval in X / Held in X / Deploying to X */
 		const fact = !w ? `${a.places} ${a.places === 1 ? 'place' : 'places'} at rest` : w.group === 'failed' ? `Failing in ${w.where}` : w.state === 'awaiting-approval' ? `Waits for approval in ${w.where}` : w.group === 'moving' ? `${w.word} ${w.state === 'deploying' ? 'to' : 'in'} ${w.where}` : `${w.word.startsWith('Waits on') ? w.word : 'Held'} in ${w.where}`;

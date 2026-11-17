@@ -12,6 +12,22 @@
  */
 import { tierOf, TIER_ORDER, type Tier } from './promotion-lanes';
 import { regionsPhrase, siteCount } from './regions';
+import { failedParts } from '$lib/components/new/state-words';
+
+/** The unresolved failures as the shared failing / failed split (state-words `failedParts`): only a check failing now is red, a failure whose checks recovered is neutral `failed`. */
+export function failedRollupParts(unresolved: number, recovered: number, checksKnown = true): (string | { text: string; ink?: 'danger' })[] {
+	/* until the fleet's health checks have answered, which of the failures recovered is unknown: say nothing yet rather than "failing" and then change it in place */
+	if (!checksKnown) return [];
+	return failedParts(unresolved, Math.min(recovered, unresolved)).map((text) => (text.endsWith(' failing') ? { text, ink: 'danger' as const } : text));
+}
+
+/** A failed row is red (live) only while one of its members is the rollout's current state AND its checks fail now; a failure whose checks have recovered reads neutral, like the rollup's `failed` and the resolved row. */
+export const rowIsLive = <T extends { isLive: boolean }>(members: readonly T[], recovered: (m: T) => boolean): boolean => members.some((m) => m.isLive && !recovered(m));
+
+/** The Deploys card's rollup parts: the window's count, then the unresolved failures split failing now from failed. */
+export function deploysRollupParts(deploys: number, unresolved: number, recovered: number, checksKnown = true): (string | { text: string; ink?: 'danger' })[] {
+	return [`${deploys} deploy${deploys === 1 ? '' : 's'}`, ...failedRollupParts(unresolved, recovered, checksKnown)];
+}
 
 export type GroupableEntry = {
 	/** Stable per-entry id (this page uses `entryKey`). */
@@ -34,6 +50,10 @@ export type GroupableEntry = {
 	 *  the generic "failed to deploy" — see `activity-kind.ts`'s doc
 	 *  comment and `/activity`'s `activityKindForGroup`. */
 	bakeStatusMessage?: string | null;
+	/** the entry recorded failed health checks (`failedHealthChecks[]`) */
+	failedHealthChecks?: boolean;
+	/** the entry's bake clock is stopped right now (`bakePaused`). Part of the grouping key, so a paused bake and a checking one never share a verb. */
+	bakePaused?: boolean;
 	/** Default `false`. Part of the grouping key alongside `bakeStatus` — see
 	 *  `groupKeyFor`'s own note. */
 	isRollback?: boolean;
@@ -63,6 +83,10 @@ export type ActivityGroup<E extends GroupableEntry> = {
 	 *  the same way a solo row's `categorizeFailure` does. `null` unless the
 	 *  worst status is `Failed` and that member actually carried one. */
 	worstBakeStatusMessage: string | null;
+	/** the worst member recorded failed health checks: a grouped failure reads "failed its health check" like a solo row */
+	worstFailedHealthChecks: boolean;
+	/** the group's in-flight bake has its clock stopped (`bakePaused`): `activityKindOf` reads `paused`, not `checking` */
+	worstBakePaused: boolean;
 	/** Every original entry, newest first — what a row-level "Details" expand shows. */
 	members: E[];
 };
@@ -80,7 +104,7 @@ export type ActivityGroup<E extends GroupableEntry> = {
  */
 function groupKeyFor(e: GroupableEntry): string {
 	const minuteBucket = Math.floor(new Date(e.timestamp).getTime() / 60_000);
-	const kind = `${e.bakeStatus}${e.isRollback ? ':rb' : ''}`;
+	const kind = `${e.bakeStatus}${e.isRollback ? ':rb' : ''}${e.bakeStatus === 'InProgress' && e.bakePaused ? ':hold' : ''}`;
 	return `${e.displayName}::${e.version}::${minuteBucket}::${kind}`;
 }
 
@@ -153,18 +177,21 @@ export function groupActivityEntries<E extends GroupableEntry>(entries: E[]): Ac
 		}
 		let worstBakeStatus = first.bakeStatus;
 		let worstBakeStatusMessage = first.bakeStatusMessage ?? null;
+		let worstFailedHealthChecks = !!first.failedHealthChecks;
 		for (const m of members) {
 			const next = worseBakeStatus(worstBakeStatus, m.bakeStatus);
 			if (next !== worstBakeStatus) {
 				// `m` is strictly worse — it owns the message now.
 				worstBakeStatus = next;
 				worstBakeStatusMessage = m.bakeStatusMessage ?? null;
+				worstFailedHealthChecks = !!m.failedHealthChecks;
 			} else if (next === m.bakeStatus && m.bakeStatus === worstBakeStatus && worstBakeStatusMessage == null) {
 				// Tied with the current worst and we have no message yet —
 				// take this member's, so one missing message on the first
 				// occurrence doesn't blank the whole group.
 				worstBakeStatusMessage = m.bakeStatusMessage ?? null;
 			}
+			if (m.bakeStatus === worstBakeStatus && m.failedHealthChecks) worstFailedHealthChecks = true;
 		}
 		out.push({
 			key,
@@ -177,6 +204,8 @@ export function groupActivityEntries<E extends GroupableEntry>(entries: E[]): Ac
 			envLabels,
 			worstBakeStatus,
 			worstBakeStatusMessage,
+			worstFailedHealthChecks,
+			worstBakePaused: worstBakeStatus === 'InProgress' && members.some((m) => m.bakeStatus === 'InProgress' && !!m.bakePaused),
 			members
 		});
 	}

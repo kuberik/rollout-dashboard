@@ -87,3 +87,63 @@ describe('batch4 #3: regions a wave holds are not plain "healthy"', () => {
 		expect(waveHeldPhrase(1, '3 prod regions', null)).toBe('1 region waiting for 3 prod regions');
 	});
 });
+
+describe('a failure whose checks recovered is `failed`, not `failing`', () => {
+	const t = { places: 8, waiting: 1, yours: 0, moving: 0, rest: 4 };
+	it('some failing now, some recovered: the lead counts the live ones, the recovered ones follow as `failed`', () => {
+		const s = stateLine({ ...t, failing: 3, recovered: 1 }, 'deploying');
+		expect(s.lead).toMatchObject({ text: '2 failing', ink: 'danger' });
+		expect(s.parts[0].text).toBe('1 failed');
+		expect(s.mark).toBe('failed');
+	});
+	it('every failure recovered: the lead says `failed`, never `failing`', () => {
+		const s = stateLine({ ...t, failing: 2, recovered: 2 }, 'deploying');
+		expect(s.lead.text).toBe('2 failed');
+		expect(s.lead.ink).toBe('muted');
+		expect(s.parts.map((p) => p.text).join(' ')).not.toContain('failing');
+	});
+	it('no recovered count (older callers): unchanged', () => {
+		expect(stateLine({ ...t, failing: 2 }, 'deploying').lead.text).toBe('2 failing');
+	});
+});
+
+describe('the tile text, region cells and aria label use the same two failure words', () => {
+	it('failedParts: live first, recovered as `failed`', async () => {
+		const { failedParts } = await import('./state-words');
+		expect(failedParts(6, 2)).toEqual(['4 failing', '2 failed']);
+		expect(failedParts(2, 2)).toEqual(['2 failed']);
+		expect(failedParts(3, 0)).toEqual(['3 failing']);
+	});
+	it('a region cell carries its recovered count from the model', async () => {
+		const { regionCells } = await import('./environments-page');
+		const r = (label: string, mark: string, failing: number, recovered: number) => ({ label, regionless: false, mark, failing, recovered, waiting: 0, moving: 0, envHref: '/envs/x' });
+		const m = { base: null, busy: [r('us-east-1', 'failed', 6, 2), r('eu-west', 'failed', 1, 0)], rest: [] } as never;
+		expect(regionCells(m).cells.map((c) => [c.label, c.failing, c.recovered])).toEqual([['us-east-1', 6, 2], ['eu-west', 1, 0]]);
+	});
+});
+
+describe('region cell parts follow the tier line', () => {
+	it('only the failing-now part is danger ink; failed is neutral', async () => {
+		const { regionCellParts } = await import('./environments-page');
+		expect(regionCellParts({ failing: 6, recovered: 2, waiting: 0, moving: 0, movingWord: 'checking' })).toEqual([{ text: '4 failing', ink: 'danger' }, { text: '2 failed', ink: null }]);
+		expect(regionCellParts({ failing: 2, recovered: 2, waiting: 0, moving: 0, movingWord: 'checking' })).toEqual([{ text: '2 failed', ink: null }]);
+	});
+	it('the moving part carries the count and the tier word', async () => {
+		const { regionCellParts } = await import('./environments-page');
+		expect(regionCellParts({ failing: 0, recovered: 0, waiting: 3, moving: 1, movingWord: 'checking' }).map((p) => p.text)).toEqual(['3 waiting', '1 checking']);
+		expect(regionCellParts({ failing: 0, recovered: 0, waiting: 0, moving: 2, movingWord: 'in progress' })[0].text).toBe('2 in progress');
+	});
+	it('movingWordOf: checking / deploying / in progress when both or none', async () => {
+		const { movingWordOf } = await import('./envs-model');
+		const p = (...s: string[]) => s.map((state) => ({ state }));
+		expect(movingWordOf(p('checking', 'checking'))).toBe('checking');
+		expect(movingWordOf(p('deploying'))).toBe('deploying');
+		expect(movingWordOf(p('deploying', 'checking'))).toBe('in progress');
+		expect(movingWordOf(p('rest'))).toBe('in progress');
+	});
+	it('the aria label pluralises one place and says in progress for a zero count', async () => {
+		const { environmentsPage } = await import('./environments-page');
+		const labels = environmentsPage('calm' as never).tiles.map((t) => t.label);
+		for (const l of labels) { expect(l).not.toMatch(/^1 places/); expect(l).not.toMatch(/ 0 (deploying|checking)/); }
+	});
+});

@@ -9,15 +9,17 @@
  */
 import { newestFirst } from '$lib/instant';
 import { startOfDayMs } from '$lib/display-time';
-import { approvalWord, severity } from '../state-words';
+import { approvalWord, failedWord, severity } from '../state-words';
 import {
 	tabPill,
 	deployedHistory,
 	bakeFailedOn,
 	streamBuilds,
 	newestBuild,
+	behindOfPlace,
 	noReleasesAt,
 	deployedBuild,
+	failureSinceAt,
 	waitClock,
 	type HomeState,
 	ago,
@@ -28,7 +30,7 @@ import {
 	type TRow,
 	type TierKey
 } from '../data';
-import { lastFailureMs } from '$lib/view-models/event-age';
+import { lastFailureMsWithHeads } from '$lib/view-models/event-age';
 import { catalogueOrder } from '$lib/releases/order';
 import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 import { newerBuildsAre } from '$lib/view-models/blocking-story';
@@ -181,8 +183,10 @@ export function placesInPillState(places: PlaceHold[], build: string, pill: stri
 	const want = (p: PlaceHold) =>
 		word === 'FAILED'
 			? p.state === 'failed'
+			: word === 'PAUSED'
+			? p.state === 'checking' && p.bakePaused
 			: word === 'CHECKING'
-				? p.state === 'checking'
+				? p.state === 'checking' && !p.bakePaused
 				: word === 'DEPLOYING'
 					? p.state === 'deploying'
 					: p.state !== 'failed' && p.state !== 'checking' && p.state !== 'deploying';
@@ -214,7 +218,7 @@ export type HoldRow = {
 	key: string;
 	/** a promotion hold's typed label: the card draws `Held by » [SOURCE]` (GateLabel), `name` is only its plain-text form */
 	label?: GateLabel;
-	kind: 'approval' | 'pin' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other';
+	kind: 'approval' | 'pin' | 'paused' | 'rule' | 'health' | 'dependency' | 'check' | 'schedule' | 'other';
 	name: string;
 	holding: boolean;
 	places: string[];
@@ -284,6 +288,9 @@ export function holdRows(
 		for (const p of pinned) for (const b of p.newerShown) if (!held.includes(b)) held.push(b);
 		rows.push({ key: 'pin', kind: 'pin', name: pinVersion ? `Pinned to ${pinVersion}` : 'Pinned', holding: true, places: pinned.map((p) => p.place), held, sentence: 'Releases when the pin is cleared', href: `${pinned[0].href}` });
 	}
+	/* a bake whose clock is stopped by a not-Healthy check holds nothing back but IS a hold the page names: the same word the place row and the strip say */
+	for (const p of places.filter((x) => x.state === 'checking' && x.bakePaused && !pins.has(x.place)))
+		rows.push({ key: `paused:${p.place}`, kind: 'paused', name: `${app ? `${app} ` : ''}${p.place}: bake paused, waiting on a health check`, holding: true, places: [p.place], held: [], sentence: 'The bake clock restarts when the check is Healthy again', href: p.href });
 	return rows.sort((a, b) => Number(b.holding) - Number(a.holding));
 }
 
@@ -386,11 +393,7 @@ export function recentBuilds(places: PlaceHold[], limit = 8): AppBuild[] {
  * Newer builds list: data.ts newestBuild). `behind` = builds newer than the one it runs; the word is "Up to date" or "N builds behind".
  * Never a cross-app version. Health is a different fact (the state word); the two are never merged into one word.
  */
-/** a place's "N behind": the catalogue distance (releases/order.ts catalogueBehind, through newestBuild), 0 when it runs the newest or has no releases. The strip, the ledger, the tiles and the Builds card all read this. */
-export function behindOfPlace(href: string, app = ''): number {
-	if (noReleasesAt(href)) return 0;
-	return newestBuild({ app, href, state: 'healthy', word: '' } as never)?.count ?? 0;
-}
+export { behindOfPlace };
 export function currencyOf(href: string, app = ''): { behind: number; word: string } {
 	/* no release = not affected: a place without releases has no currency to print (its own word is "No releases yet") */
 	if (noReleasesAt(href)) return { behind: 0, word: '' };
@@ -601,13 +604,14 @@ export function waveFactOf(
 /** the separator + clause as drawn: dot and clause joined by a non-breaking space */
 export const waveClause = (fact: string): string => `\u00b7\u00a0${fact}`;
 /** the place's ONE state word, the strip cell's own (never "Live"): at rest "Healthy"; a place the pin holds says the tab's cause, "Held by the pin" */
-export function placeWord(p: Pick<PlaceHold, 'state'>, pinned = false, yours = false): string {
+export function placeWord(p: Pick<PlaceHold, 'state'> & { bakePaused?: boolean }, pinned = false, yours = false, recovered = false): string {
 	if (pinned) return 'Held by the pin';
+	if (p.state === 'checking' && p.bakePaused) return 'Paused';
 	/* detail pass 2026-11-08: one approval word on every page (approvalWord): "Needs your approval" when the viewer can give it */
 	return (
 		(
 			{
-				failed: 'Failing',
+				failed: failedWord(recovered),
 				'awaiting-approval': approvalWord(yours),
 				'held-by-rule': 'Held',
 				deploying: 'Deploying',
@@ -775,7 +779,7 @@ export function weekSummary(
 		failed,
 		rolledBack,
 		medianHealthyMs,
-		lastFailureMs: lastFailureMs(
+		lastFailureMs: lastFailureMsWithHeads(
 			rollouts.map((r) => r.history),
 			from,
 			nowMs
@@ -829,9 +833,9 @@ export const approvalMessage = (
 		.join(' ');
 
 /** the time-in-state a PlaceRow prints. A place that WAITS (approval / rule) prints the one clock of a wait, `waitClock` (the figure the /rollouts row prints);
- *  every other place prints since its deployed build landed. The waiting build's own age is not this row's to say. */
+ *  a failed place (the state word Failing / Failed) dates from when its check began failing, the age the banner and Summary print; every other place prints since its deployed build landed. The waiting build's own age is not this row's to say. */
 export const placeAge = (row: TRow, hs: HomeState = 'incident'): string =>
-	ago((row.group === 'approval' || row.group === 'held') && !row.stillChecking ? waitClock(row, hs) : (deployedBuild(row)?.at ?? row.since));
+	ago((row.group === 'approval' || row.group === 'held') && !row.stillChecking ? waitClock(row, hs) : row.group === 'failed' ? (failureSinceAt(row.href) ?? deployedBuild(row)?.at ?? row.since) : (deployedBuild(row)?.at ?? row.since));
 
 /** The banner message of a single-cause app: the parts after the lead, minus any that repeats the lead (the held cause and the app's own fact can both carry the hold's sentence). Null when nothing is left. */
 /** `causeLine` over typed causes: what the banner's message adds beyond its lead, a promotion label kept as a label */

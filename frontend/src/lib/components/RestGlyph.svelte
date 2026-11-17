@@ -33,7 +33,7 @@
 		class: className = ''
 	}: {
 		bakeStatus?: string;
-		state?: 'rolled-back' | 'pinned' | 'held' | null;
+		state?: 'rolled-back' | 'pinned' | 'held' | 'paused' | null;
 		stateWord?: string;
 		timestamp?: string | null;
 		recentMs?: number;

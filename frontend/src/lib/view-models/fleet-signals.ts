@@ -15,6 +15,7 @@
  * Severity: `failure` (a check failing now, a failed deploy or bake) is the
  * loud kind; everything else is `signal`, quieter but listed.
  */
+import { bakeHeldMs } from '$lib/bake-hold';
 import { availableReleases } from '$lib/releases/registry.svelte';
 import type { RolloutCard } from '$lib/rollout-cards';
 import type { HealthCheck } from '$lib/../types';
@@ -27,6 +28,7 @@ import { waitingSince } from '$lib/view-models/fleet-facts';
 import { eventAge } from '$lib/view-models/event-age';
 import { kApp } from '$lib/view-models/kstairs';
 import { shortenVersion, getDisplayVersion, failureKind, parseGoDuration } from '$lib/utils';
+import { shortRevision } from '$lib/version-utils';
 import * as msg from '$lib/paraglide/messages';
 import { healthCheckKey } from '$lib/health-check-key';
 
@@ -197,7 +199,7 @@ function allDeploys(cards: readonly RolloutCard[]) {
 			const at = h.timestamp ? Date.parse(h.timestamp) : NaN;
 			if (!Number.isFinite(at)) continue;
 			const v = h.version ? getDisplayVersion(h.version) || '' : '';
-			const rev = h.version?.revision ? shortenVersion(h.version.revision).slice(0, 7) : shortenVersion(v).slice(0, 7);
+			const rev = h.version?.revision ? shortRevision(shortenVersion(h.version.revision)) : shortRevision(shortenVersion(v));
 			out.push({ at, card: c, version: shortenVersion(v), rev });
 		}
 	}
@@ -318,7 +320,7 @@ export function fleetSignals(input: FleetSignalsInput): FleetSignal[] {
 		if (head?.bakeStartTime && bakeTimeMs > 0) {
 			const start = Date.parse(head.bakeStartTime);
 			const end = head.bakeEndTime ? Date.parse(head.bakeEndTime) : T;
-			const span = end - start;
+			const span = end - start - bakeHeldMs(head, new Date(end));
 			const recent = T - end < SIGNAL_WINDOWS.retryMs;
 			if (recent && span > bakeTimeMs + SIGNAL_WINDOWS.slowBakeMarginMs)
 				push({ kind: 'slow-bake', severity: 'signal', app: c.name, env: placeOf(c), tier, since: head.bakeStartTime, facts: { kind: 'slow-bake', spanMs: span, bakeTimeMs }, href: href(c) }, c);

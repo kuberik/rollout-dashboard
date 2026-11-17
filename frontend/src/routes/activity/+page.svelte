@@ -31,6 +31,7 @@
 	} from '$lib/environment-theme';
 	import { compareEnvironmentNames, getEnvironmentRank } from '$lib/env-order';
 	import { activityKindOf } from '$lib/view-models/activity-kind';
+	import { bakePaused } from '$lib/bake-hold';
 	import { now } from '$lib/stores/time';
 	import {
 		ClockOutline,
@@ -50,8 +51,15 @@
 	import {
 		groupActivityEntries,
 		type GroupableEntry,
-		type ActivityGroup
+		type ActivityGroup,
+		deploysRollupParts,
+		failedRollupParts,
+	rowIsLive
 	} from '$lib/view-models/activity-groups';
+	import { fleetHealthChecksQuery, rolloutHealthChecks, healthChecksByRollout } from '$lib/api/health-checks';
+	import { healthCheckKey } from '$lib/health-check-key';
+	import { headRecovered } from '$lib/view-models/health-failures';
+	import { failedParts } from '$lib/components/new/state-words';
 	import { bucketize, type DeployBucket, type DeployMarker } from '$lib/view-models/deploy-bars';
 	import { pickDefaultRange } from '$lib/view-models/activity-range';
 	import { deployReason, deployMark } from '$lib/view-models/activity-note';
@@ -92,6 +100,18 @@
 		})
 	);
 
+	/* the fleet's health checks: which unresolved failures have since recovered (their checks are all OK again) */
+	const hcQuery = createQuery(() => fleetHealthChecksQuery());
+	/**
+	 * The fleet's health checks have settled (until then a failure's failing / failed split is unknown, so the rollups show only the count and the
+	 * rows stay neutral rather than turning red and back). A failed query counts as settled: with no live checks the history snapshot answers,
+	 * which reads the failure as failing, the rule the banners' `failingNowList` follows.
+	 */
+	const checksKnown = $derived(!hcQuery.isPending);
+	const checksByRollout = $derived(healthChecksByRollout(rolloutHealthChecks(hcQuery.data)));
+	/** the failed deploy's rollout has recovered its health checks (it reads `failed`, not `failing`) */
+	const isHeadRecovered = (e: ActivityEntry) => headRecovered(checksByRollout.get(healthCheckKey(sourceClusterName(e.rollout), e.rolloutNamespace, e.rolloutName)) ?? [], e.rollout.status?.history?.[0] as never);
+
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
 	const localClusterName = $derived<string>(clusterQuery.data?.name || '');
 
@@ -129,6 +149,10 @@
 		 *  reads, so a grouped row's "failed to deploy" vs "failed its
 		 *  health check" never drifts from the Needs-you row's. */
 		bakeStatusMessage: string | null;
+		/** the entry recorded failed health checks: its row reads "failed its health check" whatever the message says */
+		failedHealthChecks: boolean;
+		/** the bake clock is stopped right now (`bakePaused`): an in-flight row reads `paused`, not `checking` */
+		bakePaused: boolean;
 		timestamp: string;
 		href: string;
 		actor: string;
@@ -265,6 +289,8 @@
 					previousVersion,
 					bakeStatus: h.bakeStatus || 'None',
 					bakeStatusMessage: h.bakeStatusMessage ?? null,
+					failedHealthChecks: !!h.failedHealthChecks?.length,
+					bakePaused: bakePaused(h),
 					// ⭐ shared/age-lag-total: ONE AGE PER EVENT. A Failed row used to
 					// show the deploy's own START (`h.timestamp`) here — this page has
 					// its own entry list (never `ActivityRail.svelte`, which Home's
@@ -552,7 +578,7 @@
 		rolled_back: windowedNoKind.filter(isRolledBack).length
 	});
 	const tierCounts = $derived.by<Record<Tier, number>>(() => {
-		const counts: Record<Tier, number> = { dev: 0, test: 0, staging: 0, other: 0, prod: 0 };
+		const counts: Record<Tier, number> = Object.fromEntries(TIER_ORDER.map((t) => [t, 0])) as Record<Tier, number>;
 		for (const e of windowedNoTier) counts[tierOf(e.envKey || e.envLabel)]++;
 		return counts;
 	});
@@ -877,6 +903,8 @@
 			href: entry.href,
 			bakeStatus: entry.bakeStatus,
 			bakeStatusMessage: entry.bakeStatusMessage,
+			failedHealthChecks: entry.failedHealthChecks,
+			bakePaused: entry.bakePaused,
 			isRollback: !!entry.rollbackAct
 		};
 	}
@@ -1090,7 +1118,9 @@
 		// and the banner — this per-day rollup line was the one place left
 		// still painting a calm scenario's resolved-since failure in alarm
 		// ink: "colour only where something needs a person").
-		const unresolvedFailed = failedEntries.filter((e) => e.isLive).length;
+		const unresolvedEntries = failedEntries.filter((e) => e.isLive);
+		const unresolvedFailed = unresolvedEntries.length;
+		const recoveredFailed = unresolvedEntries.filter(isHeadRecovered).length;
 		const flying = entries.filter(isInFlight).length;
 		const rolledBack = entries.filter(isRolledBack).length;
 		const mayBeIncomplete = entries.some((e) => e.retentionCut);
@@ -1108,7 +1138,7 @@
 		// `neutral` ink; only a fact that needs a person spends a hue.
 		let out: { text: string; tone: 'adverse' | 'active' | 'neutral' };
 		if (unresolvedFailed > 0)
-			out = { text: `${noun} · ${unresolvedFailed} failed`, tone: 'adverse' };
+			out = { text: `${noun} · ${failedParts(unresolvedFailed, recoveredFailed).join(' · ')}`, tone: 'adverse' };
 		else if (failed > 0) out = { text: `${noun} · ${failed} failed, resolved`, tone: 'neutral' };
 		else if (flying > 0) out = { text: `${noun} · ${flying} still going`, tone: 'active' };
 		else if (rolledBack > 0) out = { text: `${noun} · ${rolledBack} rolled back`, tone: 'neutral' };
@@ -1124,7 +1154,8 @@
 		// the SectionHeader's rollup parts: the count, then the one adverse fact in its ink (only a live failure is red)
 		const rest = out.text.slice(noun.length).replace(/^ · /, '');
 		const parts: (string | { text: string; ink?: 'danger' })[] = [noun];
-		if (rest) parts.push(out.tone === 'adverse' ? { text: rest, ink: 'danger' } : rest);
+		if (out.tone === 'adverse') parts.push(...failedRollupParts(unresolvedFailed, recoveredFailed, checksKnown));
+		else if (rest) parts.push(rest);
 		return { ...out, parts, mayBeIncomplete };
 	}
 
@@ -1183,7 +1214,7 @@
 	/** QA #21: in flight is counted in ROLLOUTS (what Home and /rollouts count), not in history rows. */
 	const inFlight = $derived(
 		inFlightRollouts(
-			windowed.filter(isInFlight).map((e) => ({ rolloutKey: `${e.rolloutNamespace}/${e.rolloutName}`, bakeStatus: e.bakeStatus ?? '' }))
+			windowed.filter(isInFlight).map((e) => ({ rolloutKey: `${e.rolloutNamespace}/${e.rolloutName}`, bakeStatus: e.bakeStatus ?? '', bakePaused: e.bakePaused }))
 		)
 	);
 	const flyingCount = $derived(inFlight.total);
@@ -1196,6 +1227,8 @@
 		const deploying = inFlight.deploying;
 		const parts: string[] = [];
 		if (checking > 0) parts.push(`${checking} checking`);
+		/* the app feed words a paused bake as its own state (`paused in prod`), never as checking */
+		if (inFlight.paused > 0) parts.push(`${inFlight.paused} paused`);
 		if (deploying > 0) parts.push(`${deploying} deploying`);
 		return parts.length ? parts.join(' · ') : undefined;
 	});
@@ -1376,10 +1409,7 @@
 		return changeFailureRatePct !== null ? `${changeFailureRatePct}% of deploys` : undefined;
 	});
 	/** The Deploys section's rollup: the window's count, then the one adverse fact in its ink (only an unresolved failure is red). */
-	const deploysRollup = $derived<(string | { text: string; ink?: 'danger' })[]>([
-		`${windowed.length} deploy${windowed.length === 1 ? '' : 's'}`,
-		...(unresolvedFailedCount > 0 ? [{ text: `${unresolvedFailedCount} failing`, ink: 'danger' as const }] : [])
-	]);
+	const deploysRollup = $derived(deploysRollupParts(windowed.length, unresolvedFailedCount, unresolvedFailures.filter(isHeadRecovered).length, checksKnown));
 	/** Deploys tile subline — a rate, not the range (round 8). */
 	/** ⭐ NOT A TAUTOLOGY AT 1D (round 9 review, 2026-10-10): "103 a day" at
 	 *  the 1d range IS the figure above it restated, since the window and
@@ -1583,6 +1613,8 @@
 		return activityKindOf({
 			bakeStatus: group.worstBakeStatus,
 			bakeStatusMessage: group.worstBakeStatusMessage,
+			failedHealthChecks: group.worstFailedHealthChecks,
+			bakePaused: group.worstBakePaused,
 			isRollback: group.members.some((m) => m.rollbackAct),
 			actorKind: actor.kind,
 			envRank,
@@ -1973,7 +2005,8 @@
 													href={group.href}
 													verb={vb.appVerb}
 													tone={vb.tone}
-													live={group.members.some((m) => m.isLive)}
+													live={checksKnown && rowIsLive(group.members, isHeadRecovered)}
+													markLive={group.members.some((m) => m.isLive)}
 													chip={single ? group.envText || null : null}
 													theme={single ? lead.theme : null}
 													envText={single ? null : group.envText || null}

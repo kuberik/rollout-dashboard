@@ -5,6 +5,7 @@
 	import { holdCausePhrase, type BlockingStory } from '$lib/view-models/blocking-story';
 	import { approvalCellText } from '$lib/view-models/held';
 	import { shortenVersion } from '$lib/utils';
+	import { failedWord } from '$lib/components/new/state-words';
 
 	export type BlockedKind = 'failed' | 'stuck' | 'held';
 	/**
@@ -19,8 +20,23 @@
 		return c.statusKey === 'failed' || c.checkFailure != null ? 'failed' : 'stuck';
 	}
 
+	/** Within one kind, a failure whose checks fail now sorts above one that has recovered (Home's `askRank`: failing 0, recovered 1; every other row 0). */
+	export const blockedRecoveredRank = (kind: BlockedKind, recovered: boolean): number => (kind === 'failed' && recovered ? 1 : 0);
+
+	/** The word the row's state glyph speaks (its hidden text): a failed row says "failing" while a check fails now and "failed" once its checks recovered (state-words `failedWord`); other kinds say their kind. */
+	export function blockedStateLabel(kind: BlockedKind, recovered = false): string {
+		return kind === 'failed' ? failedWord(recovered).toLowerCase() : kind;
+	}
+
+	/** The palette option's accessible name: name, place, and (for a failed row) the state in the visible fact's own words, then the action: "checkout-gateway · prod · health check failing — Open logs". */
+	export function blockedOptionLabel(c: RolloutCard, kind: BlockedKind, recovered: boolean, actionLabel: string, holdLabel = ''): string {
+		const state = kind === 'failed' ? ` · ${blockedFact(c, kind, null, recovered).toLowerCase()}` : '';
+		return `${c.name}${c.envDisplay ? ` · ${c.envDisplay}` : ''}${state} — ${actionLabel}${holdLabel ? ` ${holdLabel}` : ''}`;
+	}
+
 	/** The row's fact, in plain words: why a person is needed. */
-	export function blockedFact(c: RolloutCard, kind: BlockedKind, story?: BlockingStory | null): string {
+	/** `recovered`: the failed head's checks are all OK again, so it reads "Failed"; while a check fails now it reads "failing" (state-words `failedWord`) */
+	export function blockedFact(c: RolloutCard, kind: BlockedKind, story?: BlockingStory | null, recovered = false): string {
 		if (kind === 'held') {
 			// The one hold-cause phrase product-wide (holdCausePhrase), from the
 			// classified story the caller holds. Without one, a needs-you held row
@@ -37,7 +53,7 @@
 			// (`activity-kind.ts`) now reads off the identical
 			// `bakeStatusMessage` to pick its own verb — one event, one phrase,
 			// on both the Needs-you row and the activity sentence.
-			if (c.failureCategory === 'healthcheck') return 'Failed its health check';
+			if (c.failureCategory === 'healthcheck') return recovered ? 'Failed its health check' : 'Health check failing';
 			return c.failureCategory && c.failureCategory !== 'failed'
 				? `${c.failureCategory.charAt(0).toUpperCase() + c.failureCategory.slice(1)} failed`
 				: 'Deploy failed';
@@ -119,8 +135,11 @@
 		wrap = false,
 		trailing = undefined,
 		approval = false,
+		recovered = false,
 		class: className = ''
 	}: {
+		/** a failed row whose health checks are all OK again (its fact says Failed, else a check failing now says failing) */
+		recovered?: boolean;
 		/** A held row whose hold waits on a PERSON (an approval): the approval
 		 *  mark (person glyph, strong ink), never the orange pause a rule hold
 		 *  wears. Only meaningful with `kind: 'held'`. */
@@ -149,7 +168,7 @@
 		class?: string;
 	} = $props();
 
-	const factText = $derived(fact ?? blockedFact(card, kind, story));
+	const factText = $derived(fact ?? blockedFact(card, kind, story, recovered));
 	const buildText = $derived(build === undefined ? blockedBuild(card, kind) : build);
 	// ⭐ shared/age-lag-total: ONE AGE PER EVENT. Was `card.timestamp`
 	// unconditionally — the deploy's own start — which is wrong for `held`
@@ -171,7 +190,7 @@
 		: 'flex-wrap gap-y-0.5 px-4 py-3'} {className}"
 	data-blocked-kind={kind}
 >
-	<StatusMark state={approval && kind === 'held' ? 'approval' : kind} label={approval && kind === 'held' ? 'waits for your approval' : kind} />
+	<StatusMark state={approval && kind === 'held' ? 'approval' : kind} label={approval && kind === 'held' ? 'waits for your approval' : blockedStateLabel(kind, recovered)} />
 	{#if glyph && !palette}<AppGlyph name={card.name} size={20} />{/if}
 	<a {href} class="tap-link t-card-title min-w-0 {palette ? 'shrink' : ''} truncate text-fg">{card.name}</a>
 	<!-- Palette squeeze order: the env chip gives way first (its label
@@ -184,8 +203,8 @@
 			<span class="dot-list block min-w-0 flex-1">
 				<span class="dot-list-row flex min-w-0 flex-wrap items-baseline sm:flex-nowrap">
 					<span class="min-w-0 sm:truncate">{factText}</span>
-					{#if buildText}<span class="t-code-sm shrink-0">{buildText}</span>{/if}
-					{#if age}<span class="shrink-0 whitespace-nowrap tabular-nums">{age} ago</span>{/if}
+					<!-- the build and the age are one no-break fact, so "20m ago" never wraps onto a line by itself -->
+					{#if buildText || age}<span class="shrink-0 whitespace-nowrap" data-build-age>{#if buildText}<span class="t-code-sm">{buildText}</span>{/if}{#if buildText && age}{' · '}{/if}{#if age}<span class="tabular-nums">{age} ago</span>{/if}</span>{/if}
 				</span>
 			</span>
 			{#if trailing}<span class="ms-auto shrink-0">{@render trailing()}</span>{/if}

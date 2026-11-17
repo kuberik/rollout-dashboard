@@ -99,9 +99,9 @@
 	const colW = $derived(columnWidth(w, stages.columns.length, stages.columns.reduce((n, _, i) => n + gapBefore(i), 0), multiApp ? LABEL + GAP_TIER : 0, CAP));
 	const stackTail = $derived(!!stages.release && horizontal && w > 0 && colW < TAIL_BESIDE);
 	const laneRow = (li: number) => 2 + (anyMulti ? 1 : 0) + li;
-	const ATTR: Record<StageState, string> = { deployed: 'done', checking: 'checking', deploying: 'deploying', held: 'held', approval: 'waiting', failed: 'failed', notreached: 'not-reached', notaffected: 'not-affected', replaced: 'not-affected' };
+	const ATTR: Record<StageState, string> = { deployed: 'done', checking: 'checking', paused: 'held', deploying: 'deploying', held: 'held', approval: 'waiting', failed: 'failed', notreached: 'not-reached', notaffected: 'not-affected', replaced: 'not-affected' };
 	/* the pie of one wave column: every site of it, every lane */
-	const waveOf = (i: number) => waveMark(stages.lanes.flatMap((l) => l.cells[i]?.places ?? []).map((p) => ({ state: siteMarkOf(p) })), `Wave ${stages.columns[i].wave}`);
+	const waveOf = (i: number) => waveMark(stages.lanes.flatMap((l) => l.cells[i]?.places ?? []).map((p) => ({ state: siteMarkOf(p), recovered: p.recovered })), `Wave ${stages.columns[i].wave}`);
 	const colKey = (i: number) => `${stages.columns[i].tier}:${stages.columns[i].wave ?? 0}`;
 	/* a lane's connector runs from its first tile to its last; an empty cell between two tiles lets it pass through */
 	const passes = (cells: unknown[], i: number) => !cells[i] && cells.slice(0, i).some(Boolean) && cells.slice(i + 1).some(Boolean);
@@ -121,11 +121,11 @@
 
 {#snippet row(p: StagePlace, sep: boolean, withApp: boolean)}
 				<a href={toHref(p.href)} aria-current={p.here ? 'location' : undefined} class="stg-row {stages.release ? 'stg-tail' : ''} {p.here ? 'stg-here' : ''} {sep ? 'border-t border-line-subtle' : ''} flex min-h-11 min-w-0 items-center gap-2 px-2 py-1 hover:bg-hover" data-stage-row="{p.app}|{p.href}" data-stage-state={ATTR[p.state]}>
-					<span class="stg-mark flex h-4 w-4 shrink-0 items-center justify-center"><WaveMark mark={waveMark([{ state: siteMarkOf(p) }])} /></span>
+					<span class="stg-mark flex h-4 w-4 shrink-0 items-center justify-center"><WaveMark mark={waveMark([{ state: siteMarkOf(p), recovered: p.recovered }])} /></span>
 					<span class="stg-txt flex min-w-0 flex-col">
 											<span class="stg-name t-body flex min-w-0 items-center gap-2 {p.state === 'notreached' ? 'text-fg-muted' : 'text-fg'}">{#if withApp}<AppGlyph name={p.app} size={16} class="shrink-0" /><span class="truncate">{p.app}</span>{#if p.name !== p.tier && p.name !== 'production'}<span class="t-meta truncate text-fg-subtle">{p.name}</span>{/if}{:else}<span class="truncate">{p.name}</span>{/if}</span>
 							<!-- line 2: the state word / cause never shrinks (it wraps before it is cut); the tail sheds the build first, then the age or step -->
-							<span class="stg-l2 t-meta flex min-w-0 gap-1 overflow-hidden {toneInk(p.state)}" title={p.ahead ? (p.state === 'checking' ? 'Checking ' : p.state === 'deploying' ? 'Deploying ' : p.state === 'failed' ? 'Failed ' : 'On ') + p.build : p.word}><span class="flex-none max-w-full whitespace-normal">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build && p.ahead}<span class="stg-build t-code-sm flex-none whitespace-nowrap {p.state === 'deployed' ? 'text-fg-muted' : 'text-fg-subtle'}">{p.build}</span>{:else if p.build}<span class="stg-build t-code-sm min-w-0 shrink-[100] truncate whitespace-nowrap text-fg-subtle"><span class="stg-dot">· </span>{p.build}</span>{/if}{#if p.progress}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· {p.age}</span>{/if}</span>
+							<span class="stg-l2 t-meta flex min-w-0 gap-1 overflow-hidden {toneInk(p.state)}" title={p.ahead ? (p.state === 'checking' ? 'Checking ' : p.state === 'paused' ? 'Paused ' : p.state === 'deploying' ? 'Deploying ' : p.state === 'failed' ? 'Failed ' : 'On ') + p.build : p.word}><span class="flex-none max-w-full whitespace-normal">{#if p.cause}<CauseText parts={p.cause} />{:else}{p.word}{/if}</span>{#if p.build && p.ahead}<span class="stg-build t-code-sm flex-none whitespace-nowrap {p.state === 'deployed' ? 'text-fg-muted' : 'text-fg-subtle'}">{p.build}</span>{:else if p.build}<span class="stg-build t-code-sm min-w-0 shrink-[100] truncate whitespace-nowrap text-fg-subtle"><span class="stg-dot">· </span>{p.build}</span>{/if}{#if p.progress}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· step {p.progress}</span>{:else if p.age}<span class="min-w-0 truncate whitespace-nowrap text-fg-subtle">· {p.age}</span>{/if}</span>
 									</span>
 				</a>
 {/snippet}
@@ -170,11 +170,14 @@
 	<div class="canvas-dots stg-canvas min-w-0 px-4 py-4" bind:clientWidth={w} data-stages data-stages-form={horizontal ? 'graph' : 'list'}>
 		{#if release && (release.author || release.built || release.href || !inRail)}
 			<!-- THE RELEASE LINE. A visible rail row already names the selected release (build, title): then the line carries only what it does not (who, how long ago, the way to the change page). With no row showing it (no rail, or a selection outside it) the line names the release itself: build and title first. Decided by the data (rail rows), never by what was measured. -->
-			<div class="mb-4 flex min-h-5 min-w-0 items-center gap-3" data-stages-release>
-				{#if !inRail}<span class="t-code-sm shrink-0 text-fg" data-release-build>{release.build}</span>{#if release.title}<span class="t-meta min-w-0 truncate text-fg-muted" title={release.title} data-release-title>{release.title}</span>{/if}{/if}
-				{#if release.author}<span class="t-meta flex items-center gap-2 text-fg-muted {inRail ? 'min-w-0' : 'shrink-0 max-sm:min-w-0'}"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" /><span class="truncate {inRail ? '' : 'max-sm:hidden'}">{release.author}</span></span>{/if}
-				{#if release.built}<span class="t-meta shrink-0 whitespace-nowrap text-fg-subtle tabular-nums">{release.built}</span>{/if}
-				{#if release.href}<a href={toHref(release.href)} class="nav-link -my-2 ml-auto shrink-0 max-sm:-my-3 max-sm:min-h-11" data-release-change>View change<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a>{/if}
+			<!-- NARROW (the line's own width < 600px, `.stg-rel-cq`): two lines. Line 1 is build · avatar · View change, line 2 is the title (ellipsis) · built ago, so the title is never squeezed to "#" or "#38 S…" and View change never leaves the padding. Decided by width alone. -->
+			<div class="stg-rel-cq mb-4 min-w-0">
+				<div class="stg-rel flex min-h-5 min-w-0 items-center gap-3" data-stages-release>
+					{#if !inRail}<span class="t-code-sm shrink-0 text-fg" data-release-build>{release.build}</span>{#if release.title}<span class="stg-rel-title t-meta min-w-0 truncate text-fg-muted" title={release.title} data-release-title>{release.title}</span>{/if}{/if}
+					{#if release.author}<span class="t-meta flex items-center gap-2 text-fg-muted {inRail ? 'min-w-0' : 'shrink-0'}"><Avatar name={release.author} src={avatarSrc(release.author)} size={16} class="shrink-0" /><span class="truncate {inRail ? '' : 'stg-rel-name'}" data-release-author>{release.author}</span></span>{/if}
+					{#if !inRail && release.title}<span class="stg-rel-br" aria-hidden="true"></span>{/if}{#if release.built}<span class="stg-rel-age t-meta shrink-0 whitespace-nowrap text-fg-subtle tabular-nums">{release.built}</span>{/if}
+					{#if release.href}<a href={toHref(release.href)} class="stg-rel-view nav-link -my-2 ml-auto shrink-0 max-sm:-my-3 max-sm:min-h-11" data-release-change>View change<ChevronRightOutline class="h-3.5 w-3.5" aria-hidden="true" /></a>{/if}
+				</div>
 			</div>
 		{/if}
 		{#if horizontal}
@@ -238,6 +241,22 @@
 	.stg-short { display: none; }
 	.stg-short { gap: 4px; }
 	@container (max-width: 559.98px) { .stg-long { display: none; } .stg-short { display: flex; } }
+	/* THE RELEASE LINE's two forms (container: the line's own width). Wide: one row, the title truncates between the build and the author.
+	   Narrow (< 600px): a zero-height break item splits it in two lines; line 1 is build · avatar (the name is the avatar's tooltip and
+	   label) · View change at the end, line 2 is the title (one line, ellipsis) with the age at its end. The build, View change and the
+	   age never shrink; the title is the only part that gives, and on line 2 it keeps >= 180px down to a 280px line. With no title
+	   (or the rail naming the release) there is no break and the line is one row that wraps only if it must. */
+	.stg-rel-cq { container-type: inline-size; }
+	.stg-rel-br { display: none; }
+	@container (max-width: 599.98px) {
+		.stg-rel { flex-wrap: wrap; row-gap: 0; }
+		.stg-rel-br { display: block; order: 9; flex: 0 0 100%; height: 0; }
+		.stg-rel-title { order: 10; flex: 1 1 0; margin-top: 4px; }
+		.stg-rel-br + .stg-rel-age { order: 11; margin-top: 4px; margin-left: auto; }
+		.stg-rel-name { display: none; }
+		/* the link's tap box overhangs its line (-my-2 / -my-3 on a phone): on the two-line form it overhangs 4px each way (symmetric, so it stays centred on the build) and stops at line 2's top: a tap on the title or the age never opens the change */
+		.stg-rel-br ~ .stg-rel-view { margin-block: -4px; }
+	}
 	/* graph group: start-aligned at the card padding; centred only past 2300 where the 280px column cap leaves space (the Gates canvas rule for very wide) */
 	.stg-graph { justify-content: start; }
 	@media (min-width: 2300px) { .stg-graph { justify-content: center; } }

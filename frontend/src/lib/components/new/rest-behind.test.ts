@@ -14,6 +14,9 @@ const dump = (o?: { settled?: boolean }) => rolloutsPage('incident', o).rest.map
 const stagingOlder = (d: any) => {
 	/* hello-world after 49707a5: staging healthy on e7c1b60 while two newer builds wait behind a schedule gate */
 	const st = d.rollouts.find((r: any) => r.metadata.namespace === 'hello-world-staging');
+	const newer = [{ tag: 'main-1794240000-aaaaaaa1', version: 'aaaaaaa', revision: 'aaaaaaa1' }, { tag: 'main-1794240100-bbbbbbb1', version: 'bbbbbbb', revision: 'bbbbbbb1' }];
+	/* the catalogue (availableReleases) carries the newer builds too: the ONE behind is the catalogue distance */
+	st.status.availableReleases = [...(st.status.availableReleases ?? []), ...newer];
 	st.status.releaseCandidates = [{ tag: 'main-1794240000-aaaaaaa1', version: 'aaaaaaa', revision: 'aaaaaaa1' }, { tag: 'main-1794240100-bbbbbbb1', version: 'bbbbbbb', revision: 'bbbbbbb1' }];
 };
 const byHref = (re: RegExp, o?: { settled?: boolean }) => rolloutsPage('incident', o).rest.find((r) => re.test(r.href));
@@ -23,7 +26,7 @@ it('a healthy place on an older build, newer builds held by a gate, reads "N beh
 	try { expect(byHref(/staging/)?.sentence).toBe('2 behind'); } finally { installLiveSource(null); }
 });
 it('a place actually on the newest still reads the up-to-date wording', () => {
-	load('qa-approval-only-held.json', stagingOlder);
+	load('qa-approval-only-held.json');
 	try { expect(byHref(/hello-world-dev/)?.sentence).toBe('On the newest'); } finally { installLiveSource(null); }
 });
 it('an unsettled fleet prints no count and claims no currency', () => {

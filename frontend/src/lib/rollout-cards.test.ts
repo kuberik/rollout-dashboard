@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	buildRolloutCards,
+	failureCategoryOf,
 	detectRollback,
 	detectRolloutStuck,
 	cardVerdict,
@@ -784,5 +785,13 @@ describe('changeStateRankFor / worstChangeCell — worst-wins change verdict', (
 		const genuinelyHeld = rc('gated', 3, { held: true });
 		expect(isEnvHeld(genuinelyHeld)).toBe(true);
 		expect(changeStateRankFor(genuinelyHeld)).toBe(CHANGE_STATE_RANK.held);
+	});
+});
+
+describe('failureCategoryOf: a recorded failed health check is a health-check failure', () => {
+	it('names healthcheck when failedHealthChecks[] is recorded, whatever the message says', () => {
+		expect(failureCategoryOf({ bakeStatusMessage: 'Deployment failed', failedHealthChecks: [{ name: 'p99-latency' }] })).toBe('healthcheck');
+		expect(failureCategoryOf({ bakeStatusMessage: 'Deployment failed' })).toBe('failed');
+		expect(failureCategoryOf({ bakeStatusMessage: 'Deployment failed', failedHealthChecks: [] })).toBe('failed');
 	});
 });

@@ -43,6 +43,7 @@
 	import { heldCauses, changeTruth, approvalTarget, ago, avatarSrc, type TChange, type HomeState, noReleasesApp } from '../data';
 	import { actionHref, rowAction, holdWord } from '../rollout-view';
 	import { isViewer, plural } from '../change-view';
+	import { failedWord } from '../state-words';
 	import { classified, statementOf, rollbackTo, commitsOf, spineOf, howFacts, countsOf, headFacts, changeProd, notReached, type Place } from './detail-model';
 
 	let { change: c, scenario = 'incident', checks = null }: { change: TChange; scenario?: HomeState; checks?: { text: string; href: string | null } | null } = $props();
@@ -67,7 +68,7 @@
 	const fr = $derived(st.kind === 'failed' ? lead?.row?.failure ?? null : null);
 	const check = $derived(fr ? { name: fr.check ?? fr.line, message: fr.check ? (fr.message?.split(/;\s/)[0] ?? undefined) : undefined } : null);
 	/* changedetail-8 CD3: the banner is the tab's one cause line + age; the ids and the PR live in the pane's dl (Build / Last healthy / Newer builds) */
-	const failTitle = $derived(st.kind === 'failed' && lead?.row ? `Deployment failed in ${st.title.replace(/^Failing in /, '').replace(/-/g, '\u2011')}\u00a0·\u00a0${ago(lead.at ?? lead.row.since)}` : st.title);
+	const failTitle = $derived(st.kind === 'failed' && lead?.row ? `Deployment failed in ${st.title.replace(/^Failing in /, '').replace(/-/g, '\u2011')}\u00a0·\u00a0${ago(lead.at ?? lead.row.failure?.since ?? lead.row.since)}` : st.title);
 	const cn = $derived(countsOf(cl.all, places));
 	const head = $derived(headFacts(c, lead, scenario));
 	/* ONE approval row per build and cause: the places that wait for the same build (five regions of one app) fold into the first, with a chip each (CE12) */
@@ -111,7 +112,7 @@
 	<PageHeader title={c.title}>
 		{#snippet titleAfter()}
 			<!-- r4: the state beside the title, only when adverse (the strip and the banner say the rest); one coloured chip -->
-			{#if st.kind === 'failed'}<Chip role="issue" label="Failing" />{:else if st.kind === 'waiting' || st.kind === 'held'}<Chip role="held" label={st.kind === 'held' ? 'Held' : 'Waiting'} />{/if}
+			{#if st.kind === 'failed'}<Chip role="issue" label={failedWord(!!lead?.row?.failure?.recovered)} />{:else if st.kind === 'waiting' || st.kind === 'held'}<Chip role="held" label={st.kind === 'held' ? 'Held' : 'Waiting'} />{/if}
 		{/snippet}
 		{#snippet meta()}
 			<!-- the lead row's facts (CF8): merged ago · people with roles · the 20 mono build the change is in · diffstat · commits; below 640 the people are the author only and the header-row links follow -->
@@ -174,7 +175,7 @@
 					{#if prodPl.length > 1}<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-prod><dt class="t-meta text-fg-subtle">{multiApp ? 'Production places deployed' : 'Production regions deployed'}</dt><dd class="t-ui tabular-nums text-fg">{prodDone} of {prodPl.length}</dd></div>{/if}
 					<div class="flex items-baseline justify-between gap-3 px-4 py-3" data-summary-builds><dt class="t-meta text-fg-subtle">Builds carrying it</dt><dd class="t-ui tabular-nums text-fg">{#if carrying}{carrying}{:else}<span class="t-meta text-fg-subtle" data-pending>none running yet</span>{/if}</dd></div>
 					{#each [[`${c.prNumber != null ? 'Merge' : 'Commit'} to first deploy`, how.toFirst ?? 'not deployed yet'], [`${c.prNumber != null ? 'Merge' : 'Commit'} to production`, how.toProd ?? (noReleases ? `won't reach production: ${noReleases.label.toLowerCase()}` : 'not in production yet')], ...(how.failed ? [['Failed deploys', String(how.failed)]] : [])] as [k, v] (k)}
-						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{k}</dt><dd class="t-ui tabular-nums {k === 'Failed deploys' && how.failed ? 'text-danger' : 'text-fg'}">{#if /^(not |won't )/.test(v)}<span class="t-meta text-fg-subtle" data-pending>{v}</span>{:else}{v}{/if}</dd></div>
+						<div class="flex items-baseline justify-between gap-3 px-4 py-3"><dt class="t-meta text-fg-subtle">{k}</dt><dd class="t-ui tabular-nums {k === 'Failed deploys' && how.failed ? 'text-danger' : 'text-fg'}">{#if /^(not |won't )/.test(v)}<span class="t-meta text-fg-subtle" data-pending>{v}</span>{:else if v.endsWith(' · failing')}{v.slice(0, -' · failing'.length)}<span class="text-fg-subtle">{" · "}</span><span class={hueInk('danger')} data-failing>failing</span>{:else}{v}{/if}</dd></div>
 					{/each}
 				</dl>
 			</Card>

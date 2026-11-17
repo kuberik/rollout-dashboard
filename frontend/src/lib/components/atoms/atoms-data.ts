@@ -6,11 +6,13 @@
  *  - hopsOf(repo, sha): each place's history entry for the change's merge commit (deploy start -> bake end), the first
  *    production arrival only; the origin is the merge.
  */
+import { bakeHeldMs } from '$lib/bake-hold';
+import { shortRevision } from '$lib/version-utils';
 import { source, NOW, type HomeState } from '$lib/components/home/sketch/home-data';
 import { rollouts, checkClock } from '$lib/components/new/data';
 import type { Hop } from './LeadBar.svelte';
 
-type RawE = { version: { revision?: string; tag?: string }; timestamp: string; bakeStartTime?: string; bakeEndTime?: string; bakeStatus?: string };
+type RawE = { version: { revision?: string; tag?: string }; timestamp: string; bakeStartTime?: string; bakeEndTime?: string; bakeHoldStartTime?: string; bakeHeldDuration?: string; bakeStatus?: string };
 type Raw = { metadata: { name: string; namespace: string }; spec?: { bakeTime?: string }; status?: { history?: RawE[] } };
 const raws = (): Raw[] => source().rollouts as unknown as Raw[];
 const dur = (s: string | undefined): number => {
@@ -32,7 +34,7 @@ export function progressMap(state: HomeState = 'incident'): Map<string, Progress
 		if (!e?.bakeStartTime || !total || e.bakeStatus !== 'InProgress') continue;
 		const key = `${raw.metadata.namespace}/${raw.metadata.name}`;
 		const row = rows.find((r) => hrefKey(r.href) === key);
-		const f = (NOW.getTime() - Date.parse(e.bakeStartTime)) / total;
+		const f = (NOW.getTime() - Date.parse(e.bakeStartTime) - bakeHeldMs(e, NOW)) / total;
 		if (f >= 1) continue;
 		out.set(key, { fraction: Math.max(0.04, f), words: row ? checkClock({ ...row, state: 'checking' }) : null });
 	}
@@ -57,7 +59,7 @@ export function hopsOf(repo: string, ref: string): { hops: Hop[]; merged: number
 	const chs = source().changes as unknown as Chg[];
 	const c = chs.find((x) => x.repo === repo && (ref.startsWith('#') ? `#${x.number ?? (x.htmlUrl ?? '').split('/').pop()}` === ref : x.mergeCommitSha.startsWith(ref)));
 	if (!c) return null;
-	const sha = c.mergeCommitSha.slice(0, 7);
+	const sha = shortRevision(c.mergeCommitSha);
 	const byTier = new Map<string, Hop>();
 	for (const r of raws()) {
 		if (!(r.metadata.name.startsWith(repo) || repo.startsWith(r.metadata.name))) continue;

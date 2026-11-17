@@ -65,17 +65,9 @@ describe('the strand dots (.st-*) read the table', () => {
 
 describe('one table, no local maps', () => {
 	// a map that spells the state inks out again; none is left outside state-tone.ts
-	/* hue- or bakeStatus-keyed maps the table does not own yet (the 2026-11-13 pass 3 moved the state-keyed ones): each is a leftover, not a pattern to copy */
-	const PENDING = new Set<string>([
-		'components/LogsViewer.svelte', // liveMark tone -> dot
-		'components/SectionHeader.svelte', // Tone (hue) -> dot, rollup ink
-		'components/Toast.svelte', // toast tone -> ink
-		'components/atoms/RegionMeter.svelte', // CSS vars per hue
-		'components/new/EnvStateBar.svelte', // CSS vars for the bar
-		'components/new/Slipway.svelte', // sub-row tone -> ink
-		'../routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte',
-		'../routes/rollouts/[cluster]/[namespace]/[name]/diff/[version]/+page.svelte'
-	]);
+	/* files still allowed to keep their own map: none (pass 4 moved the last eight onto HUE_INK / HUE_SOLID / TONE) */
+	const PENDING = new Set<string>(); // empty by design: every leftover moved onto the table; a new exception needs a reason here
+
 	const INKS = ['text-danger', 'text-held', 'text-active', 'text-progress'];
 	it('no file outside state-tone.ts spells out 3 of the 4 state inks inside a 6-line window', () => {
 		const bad: string[] = [];

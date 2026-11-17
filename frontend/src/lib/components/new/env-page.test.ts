@@ -1,6 +1,6 @@
 /** r39 Environment page view-model (env/env-page.ts): agrees with the Environments tile, one headline per app, waves from the sites-waves model, wording helpers. */
 import { describe, it, expect } from 'vitest';
-import { envPage, resolveEnv, suggestEnv } from './env/env-page';
+import { envPage, resolveEnv, suggestEnv, tileAriaLabel } from './env/env-page';
 import { environmentsPage } from './environments-page';
 import { rollouts, type HomeState, type TierKey } from './data';
 import { needApprovalCount, approvalWord, mostSevere, severity, stateWord } from './state-words';
@@ -107,6 +107,19 @@ describe('QA2 #6: one plural phrase for approvals', () => {
 			for (const x of texts) expect(x).not.toMatch(/^1 need approval/);
 			const ap = texts.find((x) => /approval$/.test(x));
 			if (ap) expect(ap).toBe(needApprovalCount(parseInt(ap)));
+		}
+	});
+});
+
+describe('tileAriaLabel', () => {
+	it('one place is "1 place", never "1 places"; the zero words stay', () => {
+		expect(tileAriaLabel(1, { failing: 0, waiting: 0, moving: 0, rest: 1 }, 0, 'deploying')).toBe('1 place: 0 failing, 0 waiting, 0 deploying, 1 healthy');
+		expect(tileAriaLabel(3, { failing: 2, waiting: 0, moving: 1, rest: 0 }, 1, 'checking')).toBe('3 places: 1 failing, 1 failed, 0 waiting, 1 checking, 0 healthy');
+	});
+	it('every region tile label on the page pluralises its count', () => {
+		for (const t of ['dev', 'test', 'staging', 'prod']) {
+			const label = envPage('incident', t)?.tile?.label;
+			if (label) expect(label).toMatch(/^1 place:|^[02-9]\d* places:|^1\d+ places:/);
 		}
 	});
 });

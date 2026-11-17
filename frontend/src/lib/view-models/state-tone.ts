@@ -14,6 +14,8 @@
  *   approval-yours  the SAME orange, plus the viewer's ring (`ring`): "you can approve this", against "someone else must" (approval)
  *   deploying   active    blue, sweeps               notreached dashed subtle ring (WaveMark's ring)   notaffected  dim subtle dot
  */
+import type { NodeState } from './promotion-lanes';
+
 export type ToneState = 'done' | 'checking' | 'deploying' | 'held' | 'approval' | 'approval-yours' | 'failed' | 'stuck' | 'notreached' | 'notaffected';
 export type ToneHue = 'success' | 'progress' | 'active' | 'held' | 'danger' | 'warning' | 'subtle';
 
@@ -54,6 +56,18 @@ export const HUE_INK = {
 } as const;
 export const hueInk = (h: keyof typeof HUE_INK | null | undefined, quiet: string = HUE_INK.muted): string => (h ? (HUE_INK[h] ?? quiet) : quiet);
 
+/** the SOLID of a hue as a Tailwind background (a dot, a bar segment), written out in full so the scanner sees it; `subtle` is the quiet dot */
+export const HUE_SOLID = {
+	danger: 'bg-danger-solid',
+	held: 'bg-held-solid',
+	warning: 'bg-warning-solid',
+	active: 'bg-active-solid',
+	progress: 'bg-progress-solid',
+	success: 'bg-success-solid',
+	subtle: 'bg-fg-subtle'
+} as const;
+export const hueSolid = (h: keyof typeof HUE_SOLID | null | undefined, quiet: string = HUE_SOLID.subtle): string => (h ? (HUE_SOLID[h] ?? quiet) : quiet);
+
 const hue = (h: Exclude<ToneHue, 'subtle'>) => ({ solid: `var(--k-${h}-solid)`, tint: `var(--k-${h}-tint)`, line: `var(--k-${h}-line)` });
 const SUBTLE = { solid: 'var(--k-fg-subtle)', tint: 'var(--k-subtle)', line: 'var(--k-line-strong)' };
 
@@ -72,17 +86,19 @@ export const TONE: Record<ToneState, Tone> = {
 };
 
 /** the product's other spellings of the same states */
-const ALIAS: Record<string, ToneState> = {
+const ALIAS_TABLE = {
 	done: 'done', deployed: 'done', healthy: 'done', live: 'done', newest: 'done', landed: 'done',
 	checking: 'checking', baking: 'checking', retrying: 'checking',
 	deploying: 'deploying', current: 'deploying', promoting: 'deploying',
-	held: 'held', hold: 'held', 'held-by-rule': 'held',
+	held: 'held', hold: 'held', paused: 'held', 'held-by-rule': 'held',
 	approval: 'approval', waiting: 'approval', 'awaiting-approval': 'approval', 'approval-yours': 'approval-yours',
 	failed: 'failed', failing: 'failed',
 	stuck: 'stuck',
 	notreached: 'notreached', 'not-reached': 'notreached', none: 'notreached',
 	notaffected: 'notaffected', 'not-affected': 'notaffected'
-};
+} as const satisfies Record<Exclude<NodeState, 'behind'>, ToneState> & Record<string, ToneState>;
+/** a lane state with no tone of its own (`behind`) is the one deliberate gap; every other NodeState must have a spelling above */
+const ALIAS: Record<string, ToneState> = ALIAS_TABLE;
 
 export const toneOf = (s: string | null | undefined): ToneState | null => (s ? (ALIAS[s] ?? null) : null);
 /** the Tone of a state spelling, or null */

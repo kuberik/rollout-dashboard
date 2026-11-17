@@ -6,10 +6,11 @@
  */
 import { beadsFor, type Bead, type BeadChange } from './bead';
 import { beadRank } from './severity';
+import { failedParts } from '$lib/components/new/state-words';
 import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
 
 export const REPO_TIERS = TIER_LIST;
-export type RepoChange = BeadChange & { /** 'merged' or a tier */ col: string };
+export type RepoChange = BeadChange & { /** 'merged' or a tier */ col: string; /** failed, and every check has recovered */ recovered?: boolean };
 export type RepoCell = { tier: string; label: string; beads: Bead[] };
 export type RollupPart = { text: string; ink: 'danger' | 'held' | 'subtle' };
 export type RepoCardModel = { /** the apps this repo's changes deploy (empty or one = nothing to say); the card names them when there are several */ apps?: string[]; repo: string; cells: RepoCell[]; landed: number; landedTitle: string; rollup: RollupPart[]; worst: number };
@@ -17,12 +18,21 @@ export type RepoCardModel = { /** the apps this repo's changes deploy (empty or 
 /** a bead state's rank: `severity.ts`'s one order */
 const SEV = (s: string): number => beadRank(s);
 
-/** adverse first; landed is excluded (the row's end says it). Only failing takes ink, and "waiting" takes held ink when one is yours. */
-export function rollupParts(changes: readonly { state: string; noReleases?: string }[]): RollupPart[] {
+/**
+ * adverse first; landed is excluded (the row's end says it). Only a check failing now takes ink (a recovered `failed` is neutral, like every other page), and "waiting" takes held ink when one is yours.
+ *
+ * WHAT "N MOVING" COUNTS (dedup pass 4, decided 2026-11-13): a change still going through its environments is moving, whether its build is being
+ * rolled out or checked right now (`deploying`, `checking`) OR it is deployed and healthy at the tier it has reached but is not at rest at its final
+ * tier yet (`healthy`, anything in flight that is not `landed`): the next environment is the next step, so the change is on its way. Pass 3 stopped
+ * mapping such a change to `checking`, which silently dropped it from "moving" and left the row's rollup short of its own beads. A change waiting on a
+ * gate (`approval`, `approval-yours`, `held`) is held, never moving; a change whose app has no releases will not be carried on (`noReleases`), so it
+ * is the state word, not "moving". Pinned by repo-card.test.ts ("moving rollup").
+ */
+export function rollupParts(changes: readonly { state: string; noReleases?: string; /** a failed change whose checks have all recovered reads `failed`, not `failing` */ recovered?: boolean }[]): RollupPart[] {
 	const n = (...ks: string[]) => changes.filter((c) => ks.includes(c.state)).length;
-	const failed = n('failed'), wait = n('approval', 'approval-yours', 'held'), mov = changes.filter((c) => !c.noReleases && ['deploying', 'checking'].includes(c.state)).length, stuck = changes.filter((c) => c.noReleases && ['deploying', 'checking'].includes(c.state)).length;
+	const failedAll = n('failed'), failedRec = changes.filter((c) => c.state === 'failed' && c.recovered).length, wait = n('approval', 'approval-yours', 'held'), mov = changes.filter((c) => !c.noReleases && ['deploying', 'checking', 'healthy'].includes(c.state)).length, stuck = changes.filter((c) => c.noReleases && ['deploying', 'checking', 'healthy'].includes(c.state)).length;
 	return [
-		failed ? { text: `${failed} failing`, ink: 'danger' as const } : null,
+		...failedParts(failedAll, failedRec).map((text) => ({ text, ink: text.endsWith(' failing') ? ('danger' as const) : ('subtle' as const) })),
 		wait ? { text: `${wait} waiting`, ink: n('approval-yours') ? ('held' as const) : ('subtle' as const) } : null,
 		mov ? { text: `${mov} moving`, ink: 'subtle' as const } : null,
 		/* no releases: nothing will carry it on, so it is not "moving" */

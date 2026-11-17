@@ -684,7 +684,7 @@
 	{@const askRaw = held && isApproval ? approveAsk : null}
 	{@const loading = askRaw === ASK_LOADING}
 	{@const ask = askRaw && askRaw !== ASK_LOADING ? askRaw : null}
-	{@const docsHref = held && isApproval && !ask && !loading ? 'https://docs.kuberik.com/concepts/gates#approvals' : null}
+	{@const docsHref = held && isApproval && !ask && !loading ? 'https://kuberik.com/docs/gates/approvals/' : null}
 	{@const bar = type === 'window' || type === 'freeze' ? windowBar(b.window, new Date(minute * 60_000)) : null}
 	{@const fact = isApproval && !held ? approvedFacts.find((f) => f.who) ?? approvedFacts[0] : undefined}
 	<!-- Skip once: schedule / freeze / approval / hand-written gate tiles only (never the pin, never health: not a rule). -->

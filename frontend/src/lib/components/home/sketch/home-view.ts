@@ -8,6 +8,7 @@
  *   2  failures | approvals only you can give      (the rest of what needs you)
  *   3  yours on the way | not yours, stuck | production
  */
+import { shortRevision } from '$lib/version-utils';
 import { newestFirst, latest, isLater } from '$lib/instant';
 import type { AppModel, HomeModel } from '$lib/view-models/home-model';
 import { buildSketch, ownerOf, type Elsewhere, type YourChange } from './sketch-home';
@@ -98,7 +99,7 @@ function approvalOf(m: HomeModel, e: Elsewhere): Approval {
 	const waiting = a.envs.filter((x) => x.state === 'awaiting-approval' || (x.state === 'held-by-rule' && x.alsoApproval));
 	let passed: string | null = null;
 	for (const x of pre) {
-		const hh = historyAt(e.app, x.env).find((q) => build && q.sha === build.slice(0, 7));
+		const hh = historyAt(e.app, x.env).find((q) => build && q.sha === shortRevision(build));
 		if (hh && (!passed || isLater(hh.at, passed))) passed = hh.at;
 	}
 	const since = latest([e.since, passed]);
@@ -106,13 +107,13 @@ function approvalOf(m: HomeModel, e: Elsewhere): Approval {
 		key: e.key,
 		app: e.app,
 		ref: ch?.ref ?? null,
-		title: ch?.title ?? (build ? `build ${build.slice(0, 7)}` : e.app),
+		title: ch?.title ?? (build ? `build ${shortRevision(build)}` : e.app),
 		author: ch?.author ?? e.whose,
 		places: waiting.length,
 		placeWord: waiting.length === 1 ? waiting[0].env : `${waiting.length} prod regions`,
 		since,
 		href: e.href,
-		build: build ? build.slice(0, 7) : null,
+		build: build ? shortRevision(build) : null,
 		note: e.ask ?? null
 	};
 }
@@ -195,8 +196,8 @@ function approvalLead(m: HomeModel, ap: Approval): Lead {
 		next: 'once you approve',
 		preview: {
 			action: 'approval',
-			rows: group(changing.map((e) => ({ place: e.label, before: (e.version ?? '').slice(0, 7), beforeTone: 'neutral' as const, after: ap.build ?? ap.ref ?? '' }))),
-			rest: stays.length ? `${stays.map((e) => e.label).join(', ')} stay${stays.length === 1 ? 's' : ''} on ${(stays[0].version ?? '').slice(0, 7)}${stays.length > 1 ? ' and others' : ''}: no approval rule there` : null,
+			rows: group(changing.map((e) => ({ place: e.label, before: shortRevision(e.version ?? ''), beforeTone: 'neutral' as const, after: ap.build ?? ap.ref ?? '' }))),
+			rest: stays.length ? `${stays.map((e) => e.label).join(', ')} stay${stays.length === 1 ? 's' : ''} on ${shortRevision(stays[0].version ?? '')}${stays.length > 1 ? ' and others' : ''}: no approval rule there` : null,
 			foot: `Changes ${changing.length} of ${prods.length} prod regions. Dev, test and staging are not touched.`
 		}
 	};
@@ -247,7 +248,7 @@ function movingLead(m: HomeModel, y: YourChange): Lead {
 			action: `${y.ref} arrives`,
 			rows: group([
 				{ place: `${here.env} (deploying)`, before: historyAt(y.app, here.env)[1]?.sha ?? '', beforeTone: 'neutral' as const, after: y.ref },
-				...ahead.map((e) => ({ place: e.label, before: (e.version ?? '').slice(0, 7), beforeTone: 'neutral' as const, after: needApprover.includes(e.label) ? `${y.ref} · approver` : y.ref }))
+				...ahead.map((e) => ({ place: e.label, before: shortRevision(e.version ?? ''), beforeTone: 'neutral' as const, after: needApprover.includes(e.label) ? `${y.ref} · approver` : y.ref }))
 			]),
 			rest: null,
 			foot: `Reaches ${a.envs.length} places; ${needApprover.length ? `${needApprover.join(' and ')} wait for an approver, the rest promote on their own` : 'every step promotes on its own'}.`

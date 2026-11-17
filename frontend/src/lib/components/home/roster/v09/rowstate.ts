@@ -1,4 +1,5 @@
 export type RowState = 'failed' | 'stuck' | 'approval' | 'deploying' | 'checking' | 'held' | 'waiting' | 'rest' | 'arrived' | 'rolledback';
+import { shortRevisionOrNull } from '$lib/version-utils';
 import type { EnvPipeline } from '$lib/view-models/home-model';
 import type { TierKey } from '../roster-data';
 /** craft r1: ONE change, ONE mark. A change in the 'waiting' group is the hollow ring unless the data says it is held by a rule or waits for approval (the tab's own state). */
@@ -38,7 +39,7 @@ const tierOf = (e: Env): TierKey => (e.isProdRegion || e.tier === 'prod' ? 'prod
  */
 export function appReach(envs: Env[], version: string | null, at: TierKey | null): TierKey | null {
 	if (!version) return null;
-	const got = envs.filter((e) => e.version?.slice(0, 7) === version && !HELD.has(e.state)).map(tierOf);
+	const got = envs.filter((e) => shortRevisionOrNull(e.version) === version && !HELD.has(e.state)).map(tierOf);
 	if (!got.length) return null;
 	void at;
 	return got.reduce((b, t) => (T.indexOf(t) > T.indexOf(b) ? t : b));

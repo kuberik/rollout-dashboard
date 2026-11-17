@@ -1,3 +1,4 @@
+import { behindInCatalogue, catalogueOrdersByRollout } from './behind';
 import { afterEach, describe, expect, it } from 'vitest';
 import { installLiveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { fixtureSource } from '$lib/components/home/sketch/home-data';
@@ -90,6 +91,7 @@ describe('landing film worlds: the Production tile wave line, exact strings', ()
 		const cards = buildRolloutCards(rollouts, environments, new Date('2026-11-10T12:00:00Z'));
 		const ctx = cardContext({ rollouts, environments: { items: environments } });
 		const graph = buildRolloutGraph({ rollouts, environments, dependencies: [], envOrder: [], gates: ctx.gateContext, focus: { cluster: '', namespace: roOf(w46, WAVE2[0]).metadata.namespace, name: roOf(w46, WAVE2[0]).metadata.name } } as any);
+		const orders = catalogueOrdersByRollout(rollouts, environments);
 		let checked = 0;
 		for (const s of WAVE2) {
 			const ro = roOf(w46, s);
@@ -97,7 +99,8 @@ describe('landing film worlds: the Production tile wave line, exact strings', ()
 			const story = ctx.storyFor(ro).newerCount;
 			const node = (graph.nodes as any[]).find((n) => n.name === ro.metadata.name && n.namespace === ro.metadata.namespace)?.newerCount;
 			expect(story).toBe(behindOfStatus(ro, fleetOf(w46)));
-			expect(card.behindCount ?? 0).toBe(story);
+			/* the card prints the catalogue distance (dedup pass 4: the one behind); the story and the graph still subtract builds failed upstream */
+			expect(card.behindCount ?? 0).toBe(behindInCatalogue(ro, orders.get(ro) ?? [], card.rank, fleetOf(w46)));
 			if (s === WAVE2[0]) expect(node).toBe(story); /* the focused node: the graph tooltip prints the same number */
 			checked++;
 		}

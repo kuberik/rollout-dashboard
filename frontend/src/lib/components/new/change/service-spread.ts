@@ -14,7 +14,7 @@ import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
 const RANK: Record<string, number> = { merged: 0, ...Object.fromEntries(TIER_LIST.map((t, i) => [t, i + 1])) };
 export type SvcState = 'failed' | 'approval-yours' | 'held' | 'deploying' | 'checking' | 'approval' | 'landed';
 /** `tier` = the furthest tier whose current build carries the change; `next` = the tier whose gate holds the change's build; `done` = runs healthily in the app's last tier */
-export type Svc = { app: string; tier: string; state: SvcState; next: string | null; since: number | null; href: string | null; done: boolean };
+export type Svc = { app: string; tier: string; state: SvcState; next: string | null; since: number | null; href: string | null; done: boolean; /** a failed service whose checks have all recovered: it reads `Failed`, not `Failing` */ recovered?: boolean };
 /** a service's state in the product's ONE severity order (state-words.ts SEVERITY): what needs a person outranks checking / deploying */
 const SEV_KEY: Record<SvcState, string> = { failed: 'failed', 'approval-yours': 'awaiting-approval', approval: 'awaiting-approval', held: 'held-by-rule', checking: 'checking', deploying: 'deploying', landed: 'healthy' };
 const ms = (s: string | null | undefined) => Date.parse(s ?? '') || null;
@@ -27,7 +27,7 @@ export function servicesOf(c: TChange, hs: HomeState): Svc[] | null {
 		const runs = places.filter((x) => x.app === app && x.kind === 'running');
 		const reached = runs.reduce((m, u) => (RANK[u.tier] > RANK[m] ? u.tier : m), 'merged');
 		const fail = places.find((x) => x.app === app && x.kind === 'failed');
-		if (fail && RANK[fail.tier] >= RANK[reached]) return { app, tier: fail.tier, state: 'failed' as const, next: null, since: ms(fail.since), href: fail.href, done: false };
+		if (fail && RANK[fail.tier] >= RANK[reached]) return { app, tier: fail.tier, state: 'failed' as const, next: null, since: ms(fail.since), href: fail.href, done: false, recovered: !!(fail.row ?? fail.tabRow)?.failure?.recovered };
 		const gate = places.filter((x) => x.app === app && x.kind === 'waiting' && RANK[x.tier] > RANK[reached]).sort((a, b) => RANK[a.tier] - RANK[b.tier])[0];
 		if (gate) {
 			const st: SvcState = gate.group === 'held' ? 'held' : gate.row?.action?.kind === 'approve' ? 'approval-yours' : 'approval';

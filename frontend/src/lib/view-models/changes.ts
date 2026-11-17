@@ -52,7 +52,7 @@ import { worstChangeCell, isEnvHeld } from '../rollout-cards';
 import { median } from './lead-time';
 import { cellReasonText, frontierUsuallyLabelForCell } from '../pr-cell-copy';
 import { changePath } from '../pr-ref';
-import { changeBuildPath, envFamilyWord } from '../version-utils';
+import { changeBuildPath, envFamilyWord, shortRevision } from '../version-utils';
 import type { Change } from '../api/changes';
 import { startOfDayMs, zonedYMD } from '../display-time';
 import { tierOf, TIER_ORDER } from './promotion-lanes';
@@ -482,7 +482,7 @@ function buildChangeRow(
 		if (!new ShaSet(change.containedIn).has(sha)) return null;
 		return sha;
 	})();
-	const carrierSha = carrierRevision ? carrierRevision.slice(0, 7) : null;
+	const carrierSha = carrierRevision ? shortRevision(carrierRevision) : null;
 	const carrierHref = carrierRevision
 		? changePath(change.owner, change.repo, { sha: carrierRevision })
 		: null;
@@ -495,7 +495,7 @@ function buildChangeRow(
 		number: change.number,
 		title: change.title,
 		sha: change.mergeCommitSha,
-		shortSha: change.mergeCommitSha.slice(0, 7),
+		shortSha: shortRevision(change.mergeCommitSha),
 		href,
 		htmlUrl: change.htmlUrl,
 		author: change.author,

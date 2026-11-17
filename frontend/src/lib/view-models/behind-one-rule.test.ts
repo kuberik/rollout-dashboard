@@ -45,3 +45,23 @@ describe('one behind rule when releaseCandidates is absent', () => {
 		expect(newerReleaseCountLive(mutated as never, f)).toBe(slice.length - 1);
 	});
 });
+
+import { catalogueBehind } from '$lib/releases/order';
+import { runningBuild } from './behind';
+
+describe('one behind: the catalogue distance, everywhere (dedup pass 4)', () => {
+	const order = ['b1', 'b2', 'b3', 'b4'];
+	it('counts catalogue builds newer than the one the place runs, whatever the place\'s own list says', () => {
+		expect(catalogueBehind(order, 'b2', () => 99)).toBe(2);
+		expect(catalogueBehind(order, 'b4', () => 99)).toBe(0);
+	});
+	it('only a build outside the catalogue falls back to the own list', () => {
+		expect(catalogueBehind(order, 'custom', () => 3)).toBe(3);
+	});
+	it('names the running build as the catalogue names builds (release entry first, else the 7-character rule)', () => {
+		const ro = { status: { currentVersion: 'v1.2', availableReleases: [{ tag: 'v1.2', version: '1.2.0', revision: 'abcdef1234567890' }] } } as never;
+		expect(runningBuild(ro)).toBeTypeOf('string');
+		expect(runningBuild({ status: { currentVersion: 'abcdef1234567890' } } as never)).toBe('abcdef1');
+		expect(runningBuild({ status: {} } as never)).toBeNull();
+	});
+});

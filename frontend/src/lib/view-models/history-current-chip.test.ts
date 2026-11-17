@@ -19,3 +19,12 @@ it('a failed or in-flight current row prints the header pill: same role, same wo
 	/* a state is never drawn in the count chip */
 	for (const s of ['Failed', 'InProgress', 'Deploying']) expect(currentRowChip(s, 0)?.role).not.toBe('count');
 });
+
+it('a paused bake prints the header pill: held "paused", through the same call with the same hold inputs', () => {
+	const hold = { bakeHoldStartTime: '2026-11-17T10:00:00Z' };
+	expect(rolloutStateChip('InProgress', hold)).toMatchObject({ role: 'held', label: 'paused' });
+	expect(currentRowChip('InProgress', 0, hold)).toEqual({ role: 'held', label: 'paused' });
+	/* a failed bake is failed on both, whether or not its checks have recovered since (the lastErrorTime witness keeps it failed) */
+	expect(currentRowChip('Failed', 0, hold)).toEqual({ role: 'failing', label: 'failed' });
+	expect(currentRowChip('Failed', 0, { bakeHoldStartTime: null })).toEqual({ role: 'failing', label: 'failed' });
+});

@@ -287,6 +287,10 @@ export function reconcileNeighbourhoodHolds(
 } {
 	const byGate = new Map<string, string[]>();
 	const byProvider = new Map<string, string[]>();
+	// Every build a provider refuses, wherever it is in the pipeline. A contract
+	// refuses a build on its own terms (RolloutDependency `blockedReleases`), not
+	// because of where the build is, so this is the truth for a contract link.
+	const byProviderAll = new Map<string, string[]>();
 	for (const h of breakdown.held) {
 		const counts = options.heldHere ? options.heldHere(h) : true;
 		for (const g of h.gateNames) {
@@ -298,6 +302,7 @@ export function reconcileNeighbourhoodHolds(
 			const arr = byProvider.get(h.contract.provider) ?? [];
 			if (counts) arr.push(h.build);
 			byProvider.set(h.contract.provider, arr);
+			byProviderAll.set(h.contract.provider, [...(byProviderAll.get(h.contract.provider) ?? []), h.build]);
 		}
 	}
 	const reconciled = upstream.map((l) => {
@@ -312,8 +317,21 @@ export function reconcileNeighbourhoodHolds(
 		const override =
 			l.writer === 'promotion' ? byGate.get(l.gate) : l.writer === 'contract' ? byProvider.get(l.node.name) : undefined;
 		if (!override) return l;
+		// ⭐ A CONTRACT LINK IS NEVER `clear` WHILE ITS DEPENDENCY REFUSES A BUILD
+		// (dash-bug, 2026-11-14). The "held here" filter exists so a PROMOTION
+		// link does not claim a hold for a build that has not reached this
+		// environment (that is sequencing). A dependency is different: its
+		// RolloutDependency refuses the build whether or not an earlier stage has
+		// passed it, and the controller's `blockedReleases`/`candidates[].blockedBy`
+		// say so. Reading it `clear` drew a green tile beside a refusal and made it
+		// flip to held, with no change on the dependency's side, the moment
+		// staging passed. It stays blocked and names the builds it refuses.
+		if (override.length === 0 && l.writer === 'contract') {
+			const all = byProviderAll.get(l.node.name) ?? [];
+			return all.length > 0 ? { ...l, state: 'blocked' as const, held: all } : l;
+		}
 		// Named by the breakdown, but only for builds this environment has not
-		// reached: nothing is refused HERE through this link.
+		// reached: nothing is refused HERE through this link (promotion links only).
 		if (override.length === 0) return options.heldHere ? { ...l, state: 'clear' as const, held: [] } : l;
 		return { ...l, state: 'blocked' as const, held: override };
 	});

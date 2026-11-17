@@ -15,3 +15,11 @@ describe('attentionRollup', () => {
 		expect(attentionRollup({ failing: 0, approval: 1, yours: 0 })).toEqual([{ text: '1 needs approval', ink: 'held' }]);
 	});
 });
+
+describe('attentionRollup: a recovered failure is failed, not failing', () => {
+	it('splits the count', () => {
+		expect(attentionRollup({ failing: 6, recovered: 2, approval: 0, yours: 0 })).toEqual([{ text: '4 failing', ink: 'danger' }, { text: '2 failed' }]);
+		expect(attentionRollup({ failing: 2, recovered: 2, approval: 0, yours: 0 })).toEqual([{ text: '2 failed' }]);
+		expect(attentionRollup({ failing: 3, recovered: 1, approval: 0, yours: 0 })[0]).toEqual({ text: '2 failing', ink: 'danger' });
+	});
+});

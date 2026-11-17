@@ -23,6 +23,7 @@
 </script>
 
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	let {
 		/**
 		 * Tailwind width class for the title bar. Required in practice —
@@ -58,8 +59,11 @@
 		 * rows sit flush exactly where the real ones will.
 		 */
 		padded = true,
-		class: className = ''
+		class: className = '',
+		children = undefined
 	}: {
+		/** a body drawn in the shape the loaded card will have (the dependencies matrix); replaces the bars */
+		children?: Snippet;
 		titleWidth?: string;
 		rollupWidth?: string | null;
 		rows?: number;
@@ -90,7 +94,9 @@
 		{/if}
 	</header>
 	<div class="grow {padded ? 'p-4' : ''}">
-		{#if bodyHeight != null}
+		{#if children}
+			{@render children()}
+		{:else if bodyHeight != null}
 			<span
 				class="skel-block block"
 				style="height: {bodyHeight}px"

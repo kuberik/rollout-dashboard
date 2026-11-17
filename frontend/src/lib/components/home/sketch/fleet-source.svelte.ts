@@ -30,6 +30,8 @@ export type FleetSource = {
 	/** lower-cased GitHub login of the signed-in viewer ('' when GitHub is not connected) */
 	me: string;
 	now: Date;
+	/** the source's `now` is the wall clock (the app's own gate): ages count from the instant they are asked, as the banners' live clock does, never from the last 60s tick */
+	liveClock?: boolean;
 	/** the RolloutSchedule / ClusterRolloutSchedule objects per cluster (`GET /api/schedules?namespace=all`, `''` = the hub): the join that lets a closed deploy window read as a window, not as a gate or a check. Optional: absent = not asked. */
 	schedules?: ReadonlyMap<string, NetworkSchedules> | null;
 };

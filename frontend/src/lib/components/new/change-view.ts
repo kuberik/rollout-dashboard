@@ -5,13 +5,14 @@
  *   "where are my changes right now"         -> On the way
  *   "when did they land"                     -> Landed
  */
+import { shortRevision } from '$lib/version-utils';
 import { newestFirst, latest } from '$lib/instant';
 import type { TChange, TierKey, HeldCause, TRow, HomeState, ApprovalTarget } from './data';
 import { approvalTarget, urgency, lastHealthy, buildOf, candidateBuilds, deployedBuild, buildInQuestionFacts, avatarSrc, NOW } from './data';
 import { rangeJson } from './github-read.svelte';
 import { formatTimeAgoCompact } from '$lib/utils';
 import { rowAction, actionLabel } from './rollout-view';
-import { stateWord } from './state-words';
+import { stateWord, failedWord, failedParts } from './state-words';
 import { displayTimeZone } from '$lib/timezone.svelte';
 import { source } from '$lib/components/home/sketch/home-data';
 import { TIERS as TIER_LIST } from '$lib/view-models/sites-waves';
@@ -53,7 +54,7 @@ export function slots(c: Pick<TChange, 'tiers' | 'reach' | 'at'>, appTiers: Tier
 export function stateWords(c: TChange, s: ChangeState, causes: HeldCause[], yours = false): string {
 	const where = c.where;
 	switch (s) {
-		case 'failed': return `Failing in ${where}`;
+		case 'failed': return `${failedWord(!!c.failure?.recovered)} in ${where}`; /* a failure whose checks all recovered is `Failed`; `Failing` is a check failing now */
 		case 'approval': if (yours && c.scope) return c.scope; return `${stateWord('approval', { yours })} in ${where}`;
 		case 'held': return `${holdWord(c, causes)} in ${where}`;
 		case 'deploying': return `Deploying to ${where}`;
@@ -179,10 +180,11 @@ export function primaryKey(stopped: Pick<Ride, 'key' | 'state' | 'href'>[], prim
 /** changes-7 (X15): ONE sentence for a row of coloured squares, in the tab's words, naming every colour ("1 failing · 2 waiting"); grey squares are not coloured and are not named.
  *  `heldByRule`: the orange squares are held by a rule (the tab's "Held"), not waiting for an approval. */
 export type SquareInk = 'failed' | 'waiting' | 'moving' | 'checking' | 'healthy' | 'behind';
-export function squaresSentence(inks: SquareInk[], heldByRule = false): string {
+export function squaresSentence(inks: SquareInk[], heldByRule = false, recovered = 0): string {
 	const n = (k: SquareInk) => inks.filter((x) => x === k).length;
-	const parts: [number, string][] = [[n('failed'), 'failing'], [n('waiting'), heldByRule ? 'held' : 'waiting'], [n('moving'), 'deploying'], [n('checking'), 'checking'], [n('healthy'), 'deployed']];
-	const out = parts.filter(([k]) => k > 0).map(([k, w]) => `${k} ${w}`).join(' · ');
+	const rest: [number, string][] = [[n('waiting'), heldByRule ? 'held' : 'waiting'], [n('moving'), 'deploying'], [n('checking'), 'checking'], [n('healthy'), 'deployed']];
+	/* of the failed squares, `recovered` are places whose checks all recovered: they read `failed`, never `failing` (state-words.ts failedWord) */
+	const out = [...failedParts(n('failed'), Math.min(recovered, n('failed'))), ...rest.filter(([k]) => k > 0).map(([k, w]) => `${k} ${w}`)].join(' · ');
 	return out || (inks.length ? 'not reached' : '');
 }
 
@@ -278,7 +280,7 @@ export function folioFacts(r: Pick<Ride, 'state' | 'row' | 'href'>): FolioFacts 
 		try {
 			/* changes-8 (Y1): the range the TABS read = the home-incident router (it re-headlines a range github-data can only answer with "Release commit for build X" from the fixture's own change: title AND author), github-data's own answer otherwise */
 			const j = rangeJson(p[2], p[3], base, head, p[1]) ?? {};
-			const commits = (j.commits ?? []).map((c) => ({ sha: c.sha.slice(0, 7), title: (c.message ?? '').split('\n')[0], author: c.author ?? null, at: c.commitDate ?? null, url: c.url ?? null })).reverse();
+			const commits = (j.commits ?? []).map((c) => ({ sha: shortRevision(c.sha), title: (c.message ?? '').split('\n')[0], author: c.author ?? null, at: c.commitDate ?? null, url: c.url ?? null })).reverse();
 			return { ...none, lastGood: lg, commits, stat: j.changedFiles ? { add: j.additions ?? 0, del: j.deletions ?? 0, files: j.changedFiles } : null };
 		} catch { /* no mock for this app */ }
 	}

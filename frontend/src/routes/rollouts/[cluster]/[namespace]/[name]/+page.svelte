@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { HUE_INK, HUE_SOLID } from '$lib/view-models/state-tone';
 	import { availableReleases, releaseCandidates, releasesOf, noReleasesOf } from '$lib/releases/registry.svelte';
 	import { isDeployInFlight, showNewerBuildsCard } from '$lib/view-models/pipeline-card';
 	import { heldChipLead, heldChipPhrase } from '$lib/view-models/held-chip';
@@ -74,6 +75,8 @@
 	import { repoKeyFor, repoSlug } from '$lib/version-utils';
 	import { href } from '$lib/paths';
 	import RolloutAsk from '$lib/components/new/RolloutAsk.svelte';
+	import FleetGate from '$lib/components/new/FleetGate.svelte';
+	import { canApproveAt, failureRecovered, failureSinceAt } from '$lib/components/new/data';
 	import BlockedActions from '$lib/components/new/BlockedActions.svelte';
 	import { askView } from '$lib/components/new/state-words';
 	import { autoDeployState, rollbackWent, rollbackNext } from '$lib/view-models/auto-deploy';
@@ -106,6 +109,7 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StillTryingNotice from '$lib/components/StillTryingNotice.svelte';
 	import DeploymentPipelineCard from '$lib/components/DeploymentPipelineCard.svelte';
+	import Card from '$lib/components/Card.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
 	import StatusSpinner from '$lib/components/StatusSpinner.svelte';
 	import ScheduleStatus from '$lib/components/ScheduleStatus.svelte';
@@ -154,6 +158,7 @@
 	import { dashboardManagesWantedVersion, newerBuildsShown } from '$lib/view-models/pin-hold';
 	import { fleetSettled } from '$lib/view-models/behind';
 	import DatadogLogo from '$lib/components/DatadogLogo.svelte';
+	import type { SnapCheck } from '$lib/view-models/health-failures';
 	import HealthChecksCard from '$lib/components/HealthChecksCard.svelte';
 	import ResourcesCard from '$lib/components/ResourcesCard.svelte';
 	import EventsCard from '$lib/components/EventsCard.svelte';
@@ -175,7 +180,7 @@
 	import { rolloutPath, rolloutMatchesEnvironment, SOURCE_CLUSTER_ANNOTATION } from '$lib/source-dashboard';
 	import { DEPLOY_PARAM, deployKey } from '$lib/history-deeplink';
 	import { formatTimeUntil } from '$lib/api/schedules';
-	import { createQuery } from '@tanstack/svelte-query';
+	import { createQuery, createQueries } from '@tanstack/svelte-query';
 	import {
 		rolloutQueryOptions,
 		rolloutsListQueryOptions,
@@ -185,6 +190,7 @@
 	import { createLoadFailedLatch } from '$lib/view-models/load-failed-latch.svelte';
 	import { apiPath } from '$lib/api/urls';
 	import { healthChecksQueryOptions } from '$lib/api/health-checks';
+	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 	import { flowHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { pageTitle } from '$lib/page-title';
 
@@ -371,6 +377,68 @@
 				)
 			: undefined
 	);
+	// ⛔ DECLARED ABOVE `appLane`, NOT BESIDE `blockStory`: `appLane` reads
+	// `gateContext` and `providerNetwork`, and `laneNodePerms`' `createQueries`
+	// evaluates its options EAGERLY at setup. When the fleet list and this
+	// rollout are already cached (back to Overview from Gates or History),
+	// that first read reaches them, and a `const` declared further down is
+	// still in its temporal dead zone: "Cannot access 'gateContext' before
+	// initialization". `warm-list-mount.svelte.test.ts` pins it. The long
+	// note on `gateContext` stays where `blockStory` is built, below.
+	let scheduleObjects = $state<any[] | null>(null);
+	const gateContext = $derived.by(() => {
+		const listData = listQuery.data;
+		const envItems = [...(listData?.environments?.items ?? [])];
+		if (environment) envItems.push(environment);
+		const base = buildGateContext({
+			// `null` when we genuinely have nothing — `buildGateContext` records
+			// that as "source not consulted", which downgrades an unattributable
+			// gate to `unknown` instead of promoting it to an approval.
+			environments: listData?.environments || environment ? { items: envItems } : null,
+			rolloutDependencies: listData?.rolloutDependencies ?? null,
+			rollouts: rollout ? [rollout] : null,
+			rolloutGates: rolloutQuery.data?.rolloutGates ?? null
+		});
+		return scheduleObjects !== null
+			? withSchedules(base, rollout?.metadata?.namespace, scheduleObjects)
+			: base;
+	});
+	/**
+	 * ⭐ THE SAME GRAPH THE DEPENDENCIES TAB BUILDS (`buildRolloutGraph`),
+	 * MOVED UP HERE SO `blockStory` CAN READ IT. (2026-10-09, coordinator
+	 * ruling: "held" = refused by a gate OR held by a contract.) This block
+	 * used to sit below, beside `heldByThis`/`holdEdgesIn` — it is relocated,
+	 * not duplicated: `$effect.pre` below reads `blockStory` EAGERLY, as
+	 * part of registering its own dependencies, which runs synchronously
+	 * while this `<script>` block is still executing top to bottom. A
+	 * `const` declared textually AFTER that point is in its own temporal
+	 * dead zone at that moment — "forward reference is safe, `$derived` is
+	 * lazy" is true of an ordinary read but NOT of the first run of an
+	 * `$effect`/`$effect.pre`, which is exactly the live crash this fixes
+	 * (`ReferenceError: Cannot access 'contractHoldsIn' before
+	 * initialization`, `subject-detail.svelte.test.ts`). `providerEnvOrder`/
+	 * `providerNetwork`/`providerFocusId` keep their own doc comments where
+	 * `heldByThis` still reads them, below.
+	 */
+	const providerEnvOrder = $derived(
+		[
+			...new Set(
+				(listQuery.data?.environments?.items ?? [])
+					.map((e: Environment) => e.spec?.environment)
+					.filter(Boolean) as string[]
+			)
+		].sort(compareEnvironmentNames)
+	);
+	const providerNetwork = $derived(
+		buildRolloutGraph({
+			rollouts: (listQuery.data?.rollouts?.items ?? []) as Rollout[],
+			environments: (listQuery.data?.environments?.items ?? []) as Environment[],
+			dependencies: (listQuery.data?.rolloutDependencies?.items ?? []) as RolloutDependency[],
+			envOrder: providerEnvOrder,
+			gates: gateContext
+		})
+	);
+	const providerFocusId = $derived(nodeId(cluster, namespace, name));
 	// ⭐ THIS APP'S LANE (design language): the same view-model Home draws,
 	// built from the fleet list for this rollout's name only.
 	const appLane = $derived.by(() => {
@@ -380,8 +448,8 @@
 		const mine = ((data.rollouts?.items ?? []) as Rollout[]).filter((r) => r.metadata?.name === me);
 		// The gate context goes in (QA 5): every stuck caller passes it, so the
 		// shared `detectRolloutStuck` excuses a correctly-held stage here the
-		// same way it does on Home. (`gateContext` is declared below; this
-		// closure only runs after component setup.)
+		// same way it does on Home. (`gateContext` is declared above, because
+		// this closure can run during component setup.)
 		// ⭐ THE HOLD-ONE-RULE, FOR THIS LANE TOO. (shared/held-predicate,
 		// 2026-10-11) Without `contractHoldsFor` a card held ONLY by a
 		// `RolloutDependency` contract (never published on `rollout.status.
@@ -399,6 +467,17 @@
 		);
 		return buildLanes(cards)[0] ?? null;
 	});
+	/* the viewer's ring on the strip is only drawn where the viewer may approve: the per-rollout permission the Approve button uses (`permissions.approve === false` = no ring); unknown while loading keeps the ring (the fleet predicate already says an approval waits) */
+	const laneNodes = $derived(appLane ? [...appLane.stages, ...appLane.prod] : []);
+	const laneNodePerms = createQueries(() => ({
+		queries: laneNodes.map((n) => rolloutPermissionsQueryOptions({ namespace: n.card.ns, name: n.card.name, cluster: n.card.sourceCluster || cluster })),
+		// See ChangeVersionModal `pickerTitleQueries`: svelte-query 6.0.12 throws when a top-level result array shrinks by 2+ (the lane empties while the next rollout loads).
+		combine: (results) => ({ items: results.map((r) => ({ data: r.data })) })
+	}));
+	const laneCannotApprove = (n: { card: { ns: string; name: string } }): boolean => {
+		const i = laneNodes.findIndex((x) => x.card.ns === n.card.ns && x.card.name === n.card.name && x.env === (n as { env?: string }).env);
+		return i >= 0 && laneNodePerms.items[i]?.data?.permissions?.approve === false;
+	};
 	/**
 	 * ⭐ THE "NOT REACHED YET" FACT FOR THIS BANNER. (shared/held-predicate,
 	 * 2026-10-11) `heldVerdict`/`waitsFor` — see `view-models/held.ts`'s own
@@ -584,63 +663,11 @@
 	 * `withSchedules` → `buildRolloutGraph` → `contractHoldsForRollout` below
 	 * are the SAME four functions `cardContext` composes, called the same
 	 * way, so this and every other surface still classify one gate
-	 * identically — see `appLane`, below, which already hands
+	 * identically — see `appLane`, above, which already hands
 	 * `buildRolloutCards` both `gateContext` and `contractHoldsForRollout`.
 	 */
-	let scheduleObjects = $state<any[] | null>(null);
-	const gateContext = $derived.by(() => {
-		const listData = listQuery.data;
-		const envItems = [...(listData?.environments?.items ?? [])];
-		if (environment) envItems.push(environment);
-		const base = buildGateContext({
-			// `null` when we genuinely have nothing — `buildGateContext` records
-			// that as "source not consulted", which downgrades an unattributable
-			// gate to `unknown` instead of promoting it to an approval.
-			environments: listData?.environments || environment ? { items: envItems } : null,
-			rolloutDependencies: listData?.rolloutDependencies ?? null,
-			rollouts: rollout ? [rollout] : null,
-			rolloutGates: rolloutQuery.data?.rolloutGates ?? null
-		});
-		return scheduleObjects !== null
-			? withSchedules(base, rollout?.metadata?.namespace, scheduleObjects)
-			: base;
-	});
-	/**
-	 * ⭐ THE SAME GRAPH THE DEPENDENCIES TAB BUILDS (`buildRolloutGraph`),
-	 * MOVED UP HERE SO `blockStory` CAN READ IT. (2026-10-09, coordinator
-	 * ruling: "held" = refused by a gate OR held by a contract.) This block
-	 * used to sit below, beside `heldByThis`/`holdEdgesIn` — it is relocated,
-	 * not duplicated: `$effect.pre` below reads `blockStory` EAGERLY, as
-	 * part of registering its own dependencies, which runs synchronously
-	 * while this `<script>` block is still executing top to bottom. A
-	 * `const` declared textually AFTER that point is in its own temporal
-	 * dead zone at that moment — "forward reference is safe, `$derived` is
-	 * lazy" is true of an ordinary read but NOT of the first run of an
-	 * `$effect`/`$effect.pre`, which is exactly the live crash this fixes
-	 * (`ReferenceError: Cannot access 'contractHoldsIn' before
-	 * initialization`, `subject-detail.svelte.test.ts`). `providerEnvOrder`/
-	 * `providerNetwork`/`providerFocusId` keep their own doc comments where
-	 * `heldByThis` still reads them, below.
-	 */
-	const providerEnvOrder = $derived(
-		[
-			...new Set(
-				(listQuery.data?.environments?.items ?? [])
-					.map((e: Environment) => e.spec?.environment)
-					.filter(Boolean) as string[]
-			)
-		].sort(compareEnvironmentNames)
-	);
-	const providerNetwork = $derived(
-		buildRolloutGraph({
-			rollouts: (listQuery.data?.rollouts?.items ?? []) as Rollout[],
-			environments: (listQuery.data?.environments?.items ?? []) as Environment[],
-			dependencies: (listQuery.data?.rolloutDependencies?.items ?? []) as RolloutDependency[],
-			envOrder: providerEnvOrder,
-			gates: gateContext
-		})
-	);
-	const providerFocusId = $derived(nodeId(cluster, namespace, name));
+	// `scheduleObjects`, `gateContext` and `providerNetwork`/`providerEnvOrder`/
+	// `providerFocusId` are declared above `appLane` (see the note there).
 	/**
 	 * ⭐ THE HOLD-ONE-RULE'S CONTRACT HALF, FOR `blockStory` ITSELF. Built off
 	 * the SAME `providerNetwork` this page already builds for
@@ -2114,12 +2141,12 @@
 		if (!status) return { icon: ExclamationCircleSolid, color: 'text-fg-subtle' };
 		switch (status.toLowerCase()) {
 			case 'success':
-				return { icon: CheckCircleSolid, color: 'text-success' };
+				return { icon: CheckCircleSolid, color: HUE_INK.success };
 			case 'failure':
-				return { icon: ExclamationCircleSolid, color: 'text-danger' };
+				return { icon: ExclamationCircleSolid, color: HUE_INK.danger };
 			case 'in_progress':
 			case 'pending':
-				return { icon: ClockSolid, color: 'text-progress' };
+				return { icon: ClockSolid, color: HUE_INK.progress };
 			default:
 				return { icon: ExclamationCircleSolid, color: 'text-fg-subtle' };
 		}
@@ -2806,12 +2833,12 @@
 				{@const failedHCList = latestEntry?.failedHealthChecks || []}
 				{@const statusStripClass =
 					latestEntry.bakeStatus === 'Succeeded'
-						? 'bg-success-solid'
+						? HUE_SOLID.success
 						: latestEntry.bakeStatus === 'Failed'
-							? 'bg-danger-solid'
+							? HUE_SOLID.danger
 							: latestEntry.bakeStatus === 'InProgress'
-								? 'bg-progress-solid'
-								: 'bg-active-solid'}
+								? HUE_SOLID.progress
+								: HUE_SOLID.active}
 				{@const statusBadgeColor =
 					latestEntry.bakeStatus === 'Succeeded'
 						? 'green'
@@ -2863,23 +2890,8 @@
 					</span>
 				{/snippet}
 				{#snippet heroIdentity()}
-					<Chip
-						role={latestEntry.bakeStatus === 'Succeeded'
-							? 'ready'
-							: latestEntry.bakeStatus === 'Failed'
-								? 'failing'
-								: latestEntry.bakeStatus === 'InProgress'
-									? 'checking'
-									: latestEntry.bakeStatus === 'Deploying'
-										? 'deploying'
-										: 'unranked'}
-						label={latestEntry.bakeStatus === 'Succeeded'
-							? 'deployed'
-							: latestEntry.bakeStatus === 'Failed'
-								? 'failed'
-								: bakeWord(latestEntry.bakeStatus)}
-						title={bakeTitle(latestEntry.bakeStatus)}
-					/>
+					{@const stateChip = rolloutStateChip(latestEntry.bakeStatus, latestEntry)}
+					<Chip role={stateChip.role} label={stateChip.label} title={stateChip.title} />
 					{#if stuckReason}
 						<StuckBadge reason={stuckReason} />
 					{/if}
@@ -2937,7 +2949,7 @@
 														-->
 								<span
 									class="hdr-newer flex min-w-0 items-center gap-1 max-sm:max-w-[calc(100%-7rem)] {justOpenedHealthGate && !blockStory.pinnedTo
-										? 'text-active'
+										? HUE_INK.active
 										: 'text-fg-muted'}"
 								>
 									<ArrowUpOutline class="h-3 w-3" />
@@ -3172,6 +3184,7 @@
 				{/snippet}
 				<PageHeader
 					title={rollout.metadata?.name ?? ''}
+					app={rollout.metadata?.name ?? null}
 					titleAfter={heroTitleAfter}
 					metaSeparated
 					class="mb-6"
@@ -3254,16 +3267,23 @@
 							     nothing to say it scrolls. -->
 							<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 pb-1">
 								<div class="min-w-0 basis-full sm:flex-1 sm:basis-0">
-									<PromotionLane
-										lane={appLane}
-										hrefFor={(n) =>
-											rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name)}
-										current={{ ns: namespace, name }}
-										youAreHere
-										quietNoReleases
-										sites
-										reserve
-									/>
+									<!-- the viewer's ring on a place whose approval they can give: the ONE predicate (data.ts canApproveAt), the fleet source installed by the bare gate -->
+									<FleetGate bare>
+										{#snippet children(ready)}
+											<PromotionLane
+												lane={appLane}
+												hrefFor={(n) =>
+													rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name)}
+												youCan={(n) => ready && !laneCannotApprove(n) && canApproveAt(rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name))}
+												current={{ ns: namespace, name }}
+												youAreHere
+												quietNoReleases
+												sites
+												reserve
+												recovered={(n) => failureRecovered(rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name))} failedSince={(n) => failureSinceAt(rolloutPath(n.card.sourceCluster || cluster, n.card.ns, n.card.name))}
+											/>
+										{/snippet}
+									</FleetGate>
 								</div>
 								<a href={href(`/apps/${rollout.metadata?.name}`)} class="nav-link t-ui-sm !py-0 max-sm:mt-1"
 									>All environments<ChevronRightOutline class="h-3 w-3" /></a
@@ -3857,42 +3877,9 @@
 							<!-- film l33 (owner 2026-11-12): while a deploy is in flight and nothing newer waits, this card only said "No newer build" and rode the pipeline card's
 							     height changes down the page step after step. It stays out of the way until the deploy settles or a newer build arrives. -->
 							{#if showNewerBuildsCard({ deployInFlight, newerCount: newerBuilds.length, pinned: !!rollout?.spec?.wantedVersion && !isPinnedVersionCustom, held: !!heldByThis, releasesLoading })}
-							<div
-								class="border-line bg-surface overflow-hidden rounded-md border {noSource ? 'hidden' : ''}"
-								use:smoothHeight
-								data-newer-builds-card
-							>
-								<div>
-									<!-- Header -->
-									<!--
-								⭐ THE HEADER SLOT TAKES THE ROLLUP, NEVER A BUTTON BESIDE IT.
-								(2026-09-03, F12) This was 57px — the chip/text answer PLUS a
-								32px icon button — against every other card header on this page
-								at the standard 47px. `COMPOSITION-GRAMMAR.md`'s slot is a
-								rolled-up ANSWER (`3/3 healthy`, a chip, a `.nav-link` at rollup
-								scale); a mutating control is not a rollup and does not belong
-								beside one. The refresh action moves to its own thin row in the
-								body, where `Chip`'s `Held`/pin banners already sit — a control
-								row, not a header.
-							-->
-									<!-- ⛔ ITEM 2 (integrator re-check, round 3): `min-h-[47px]` +
-							     `py-3` (every other card header's own combo, `Card.svelte`'s
-							     included) assumes its tallest child is ~20-24px of text/chip —
-							     true everywhere else, but THIS header also holds the Refresh
-							     button, which item 10 now puts at a fixed 36px. `py-3`
-							     (12+12=24px) on top of a 36px child is 60px of natural content
-							     height, so `min-height` stopped being the binding constraint and
-							     the row grew to 61px regardless of viewport width (measured at
-							     360 through 1440 — this was never a wrap, just a floor that
-							     could not hold its own tallest child). A fixed `h-[47px]` with no
-							     vertical padding makes 47px the ACTUAL height, not a floor, so
-							     the 36px button (and everything shorter) centres inside it via
-							     `items-center` with room to spare. -->
-									<div
-										class="border-line-subtle flex min-h-[47px] items-center gap-3 border-b px-4 py-3"
-									>
-										<CodeOutline class="text-fg-subtle h-4 w-4 shrink-0" />
-										<span class="t-card-title text-fg whitespace-nowrap">Newer builds</span>
+							<!-- the page's ONE card (Card.svelte): 47px header, icon, title, and the rollup on the card's own wrapping slot; `hidden` while the page has no release source -->
+							<Card icon={CodeOutline} title="Newer builds" padded={false} class={noSource ? 'hidden' : ''}>
+								{#snippet rollup()}
 										<!--
 									⭐ THE ROLLUP IS NOT CONDITIONAL ON HAVING SOMETHING TO SAY.
 									(2026-09-02, `COMPOSITION-GRAMMAR.md` §1) It used to render the
@@ -3939,7 +3926,7 @@
 											>
 											<!-- TB18 (r4): no Refresh — the build list streams; one rollup + the link. -->
 										</div>
-									</div>
+								{/snippet}
 
 									<!-- ⭐ THE REFRESH CONTROL, NOW A BODY ROW. It is a MUTATING
 							     control (re-runs the Flux reconcile), so it earns button
@@ -4725,8 +4712,7 @@
 								restatement does not. `heldByThis` and the pin banner above
 								are untouched — those are facts the header does not carry.
 							-->
-								</div>
-							</div>
+							</Card>
 							{/if}
 						</div>
 						<!--
@@ -4759,18 +4745,7 @@
 							{#if !managedResourcesKnown}
 								<CardSkeleton titleWidth="w-28" rows={1} rowHeight={36} />
 							{:else if datadogServiceInfo}
-								<div class="border-line bg-surface overflow-hidden rounded-md border">
-									<!-- ⭐ `min-h-[47px]`, LIKE EVERY OTHER CARD HEADER. (NIT,
-								     2026-09-03 re-check) This was a hand-rolled header with
-								     no height floor — 45px, against the 47px `Card.svelte`
-								     enforces everywhere else, because a header with no
-								     rollup measures a line box 2px shorter than one with a
-								     chip on it. Same fix `Card.svelte`'s own doc comment
-								     already made the rule for. -->
-									<div class="border-line flex min-h-[47px] items-center gap-2 border-b px-4 py-3">
-										<ArrowUpRightFromSquareOutline class="text-fg-subtle h-4 w-4" />
-										<h2 class="t-card-title text-fg">External links</h2>
-									</div>
+								<Card icon={ArrowUpRightFromSquareOutline} title="External links" padded={false}>
 									<div class="divide-line-subtle divide-y">
 										{#if datadogServiceInfo}
 											<a
@@ -4792,7 +4767,7 @@
 											</a>
 										{/if}
 									</div>
-								</div>
+								</Card>
 							{/if}
 							<!--
 							⭐ `windowStart` IS `errorCutoff`, THE SAME OBJECT THAT ALREADY
@@ -4810,6 +4785,8 @@
 								<HealthChecksCard
 									healthChecks={visibleHealthChecks}
 									windowStart={errorCutoff}
+									failedChecks={(rollout?.status?.history?.[0]?.failedHealthChecks ?? []) as SnapCheck[]}
+									bakeStart={rollout?.status?.history?.[0]?.bakeStartTime ?? null}
 									emptyState
 									loadError={healthChecksFailed}
 									onRetry={() => healthChecksQuery.refetch()}
@@ -4888,11 +4865,7 @@
 				</PageHeader>
 				<div class="ov-split-cq">
 					<div class="ov-split flex flex-col gap-4">
-						<section class="border-line bg-surface overflow-hidden rounded-md border">
-							<div class="border-line flex min-h-[47px] items-center gap-2 border-b px-4 py-3">
-								<ClockOutline class="text-fg-subtle h-4 w-4" aria-hidden="true" />
-								<h2 class="t-card-title text-fg">Deployment pipeline</h2>
-							</div>
+						<Card icon={ClockOutline} title="Deployment pipeline" padded={false}>
 							<div class="flex flex-col items-start gap-1 px-4 py-6">
 								<ClockOutline class="text-fg-disabled mb-1 h-5 w-5" aria-hidden="true" />
 								<p class="t-ui text-fg">No deploys yet</p>
@@ -4902,18 +4875,13 @@
 									the deployment pipeline, health checks, and history.
 								</p>
 							</div>
-						</section>
-						<section class="border-line bg-surface overflow-hidden rounded-md border">
-							<div class="border-line flex min-h-[47px] items-center gap-2 border-b px-4 py-3">
-								<CodeOutline class="text-fg-subtle h-4 w-4" aria-hidden="true" />
-								<h2 class="t-card-title text-fg">Newer builds</h2>
-								{#if (releaseCandidates(rollout)?.length ?? 0) > 0}<span
-										class="t-ui-sm text-fg-subtle ml-auto tabular-nums"
-										>{releaseCandidates(rollout)?.length} build{releaseCandidates(rollout)?.length === 1
-											? ''
-											: 's'}</span
+						</Card>
+						<Card icon={CodeOutline} title="Newer builds" padded={false}>
+							{#snippet rollup()}
+								{#if (releaseCandidates(rollout)?.length ?? 0) > 0}<span class="t-ui-sm text-fg-subtle tabular-nums"
+										>{releaseCandidates(rollout)?.length} build{releaseCandidates(rollout)?.length === 1 ? '' : 's'}</span
 									>{/if}
-							</div>
+							{/snippet}
 							{#if (releaseCandidates(rollout)?.length ?? 0) > 0}
 								<ul class="divide-line-subtle divide-y">
 									{#each releaseCandidates(rollout)?.slice(0, 5) ?? [] as rc}
@@ -4936,7 +4904,7 @@
 									</p>
 								</div>
 							{/if}
-						</section>
+						</Card>
 					</div>
 				</div>
 			{/if}

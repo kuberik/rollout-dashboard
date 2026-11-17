@@ -55,9 +55,11 @@
 	const cols = $derived(W < 640 ? 1 : W < 1100 ? 2 : W < 1700 ? 3 : 4);
 	/* round 2 B5: the held tiles' rollout details (the Gates tab's query key) give the builds each hold refuses HERE */
 	const heldQueries = createQueries(() => ({
-		queries: P.gangway.held.filter((t) => t.rolloutHref).map((t) => { const [, , cluster, ns, nm] = (t.rolloutHref as string).split('/'); return rolloutQueryOptions({ namespace: ns, name: nm, cluster, options: { staleTime: 15000, retry: false } }); })
+		queries: P.gangway.held.filter((t) => t.rolloutHref).map((t) => { const [, , cluster, ns, nm] = (t.rolloutHref as string).split('/'); return rolloutQueryOptions({ namespace: ns, name: nm, cluster, options: { staleTime: 15000, retry: false } }); }),
+		// See ChangeVersionModal `pickerTitleQueries`: svelte-query 6.0.12 throws when a top-level result array shrinks by 2+.
+		combine: (results) => ({ items: results.map((r) => ({ data: r.data })) })
 	}));
-	$effect(() => { heldQueries.forEach((q, i) => { const h = P.gangway.held.filter((t) => t.rolloutHref)[i]?.rolloutHref ?? null; const key = h ? heldKeyOfHref(h) : null; if (!q.data || !key) return; const [, , cluster, ns] = (h as string).split('/'); publishGatePretty(cluster, ns, prettyMapOf(q.data.rolloutGates)); publishHeldHere(key, heldHereOfDetail(q.data as never)); }); });
+	$effect(() => { heldQueries.items.forEach((q, i) => { const h = P.gangway.held.filter((t) => t.rolloutHref)[i]?.rolloutHref ?? null; const key = h ? heldKeyOfHref(h) : null; if (!q.data || !key) return; const [, , cluster, ns] = (h as string).split('/'); publishGatePretty(cluster, ns, prettyMapOf(q.data.rolloutGates)); publishHeldHere(key, heldHereOfDetail(q.data as never)); }); });
 </script>
 
 <div class="w-full px-4 py-6 sm:px-6" style="container-type:inline-size" bind:clientWidth={W} data-page="env" data-truth-page="env" data-truth-env={P.name}>

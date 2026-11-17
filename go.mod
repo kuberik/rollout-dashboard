@@ -15,7 +15,7 @@ require (
 	github.com/google/go-github/v88 v88.0.0
 	github.com/kuberik/environment-controller v0.2.0-rc.0.0.20261109131018-e596aabd24bd
 	github.com/kuberik/openkruise-controller v0.3.1-0.20260427061036-696fddeeb5bd
-	github.com/kuberik/rollout-controller v0.11.1-0.20261112074420-04f3e0bd2cb0
+	github.com/kuberik/rollout-controller v0.11.1-0.20261115161626-1e445713587c
 	github.com/openkruise/kruise-rollout-api v0.6.0
 	github.com/stretchr/testify v1.11.1
 	k8s.io/api v0.35.0
@@ -124,6 +124,7 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-// rollout-controller is pinned to a pseudo-version of the release reader
-// (spec.releaseSourceRef, status.releaseSource, status.candidates). The
-// requirement moves to the reader's release tag once that is tagged.
+// rollout-controller is pinned to a pseudo-version of main: the release reader
+// (spec.releaseSourceRef, status.releaseSource, status.candidates), HealthCheck
+// observations[].message and the bake hold history fields. The requirement
+// moves to a release tag once one carries them.
