@@ -27,3 +27,12 @@ describe('ChangeDot bead', () => {
 		expect(c.textContent).toContain('#1');
 	});
 });
+
+describe('ChangeDot recovered', () => {
+	test('a failed bead whose checks recovered passes recovered to the mark: it reads failed, not failing', () => {
+		const label = (recovered: boolean) =>
+			render(ChangeDot, { props: { bead: beadOf([{ ref: '#1', state: 'failed', recovered }]) } }).container.querySelector('[data-wave-mark]')?.getAttribute('aria-label') ?? '';
+		expect(label(false)).toMatch(/failing$/);
+		expect(label(true)).toMatch(/failed$/);
+	});
+});

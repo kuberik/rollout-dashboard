@@ -24,7 +24,14 @@ describe('inFlightRollouts', () => {
 			{ rolloutKey: 'b', bakeStatus: 'InProgress' },
 			{ rolloutKey: 'c', bakeStatus: 'Succeeded' }
 		]);
-		expect(r).toEqual({ total: 2, checking: 1, deploying: 1 });
+		expect(r).toEqual({ total: 2, checking: 1, paused: 0, deploying: 1 });
+	});
+	it('words a paused bake as paused, not checking, and still counts it in flight', () => {
+		const r = inFlightRollouts([
+			{ rolloutKey: 'a', bakeStatus: 'InProgress', bakePaused: true },
+			{ rolloutKey: 'b', bakeStatus: 'InProgress' }
+		]);
+		expect(r).toEqual({ total: 2, checking: 1, paused: 1, deploying: 0 });
 	});
 });
 describe('median to prod excludes rollbacks (QA #21)', () => {

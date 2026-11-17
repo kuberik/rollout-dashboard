@@ -4,24 +4,21 @@
 	import { HeartOutline } from 'flowbite-svelte-icons';
 	import { untrack } from 'svelte';
 	import type { HealthCheck } from '../../types';
-	import StatusSpinner from './StatusSpinner.svelte';
+	import CheckStateMark from './CheckStateMark.svelte';
 	import Card from './Card.svelte';
 	import UnavailableCard from './UnavailableCard.svelte';
-	import {
-		CheckCircleSolid,
-		ExclamationCircleSolid,
-		ClockSolid,
-		ClockArrowOutline
-	} from 'flowbite-svelte-icons';
-	import { formatAgoCompact } from '$lib/utils';
+	import { CheckCircleSolid, ExclamationCircleSolid, ClockSolid, ClockArrowOutline } from 'flowbite-svelte-icons';
+	import FailureSourceRow from './FailureSourceRow.svelte';
+	import RecoveredStrip from './RecoveredStrip.svelte';
+	import { checkView, clock, type CheckVerdict, type SnapCheck } from '$lib/view-models/health-failures';
+	import { formatAgoCompact, formatTimeAgoCompact } from '$lib/utils';
 	import { now } from '$lib/stores/time';
 	import {
-		classifyCheck,
 		recoveredLabel,
+		readsHealthy,
 		recoveredTitle,
 		pendingRowText,
-		HEALTH_CHECKS_UNAVAILABLE,
-		type CheckState
+		HEALTH_CHECKS_UNAVAILABLE
 	} from '$lib/view-models/health-witness';
 
 	/**
@@ -51,7 +48,9 @@
 		emptyState = false,
 		loadError = false,
 		onRetry = null,
-		isRetrying = false
+		isRetrying = false,
+		failedChecks: snapshot = [],
+		bakeStart = null
 	}: {
 		healthChecks: HealthCheck[];
 		windowStart?: Date | null;
@@ -61,7 +60,16 @@
 		loadError?: boolean;
 		onRetry?: (() => void) | null;
 		isRetrying?: boolean;
+		/** history[0].failedHealthChecks: the snapshot whose observations a recovered check draws (the figure that failed, never the live healthy value) */
+		failedChecks?: SnapCheck[];
+		/** history[0].bakeStartTime: the recovered strip's axis starts here (falls back to `windowStart`) */
+		bakeStart?: string | null;
 	} = $props();
+	const classifyCheck = (hc: HealthCheck, w: Date | null): CheckVerdict => checkView(hc, w, snapshot).verdict;
+	type CheckState = CheckVerdict;
+	let showAll = $state<Set<string>>(new Set());
+	const SOURCE_FOLD = 3;
+	const axisStart = $derived(bakeStart ? new Date(bakeStart) : windowStart);
 
 	let expandedMessages = $state<Set<string>>(new Set());
 
@@ -90,6 +98,21 @@
 	);
 	const healthyChecks = $derived(
 		healthChecks.filter((hc) => classifyCheck(hc, windowStart) === 'passing')
+	);
+	/* state-only colour: only the failing part is in danger ink; pending, recovered and passing read in the neutral meta ink (the all-healthy sentence stays success). Same parts, same order as before. */
+	const rollupParts = $derived(
+		(
+			[
+				failedChecks.length > 0 ? { text: `${failedChecks.length} failing`, ink: 'text-danger' } : null,
+				pendingChecks.length > 0 ? { text: `${pendingChecks.length} pending`, ink: 'text-fg-muted' } : null,
+				recovered.length > 0 ? { text: `${recovered.length} recovered`, ink: 'text-fg-muted' } : null,
+				healthyChecks.length > 0
+					? failedChecks.length + pendingChecks.length + recovered.length === 0
+						? { text: `${healthChecks.length}/${healthChecks.length} healthy`, ink: 'text-success' }
+						: { text: `${healthyChecks.length} passing`, ink: 'text-fg-muted' }
+					: null
+			] as ({ text: string; ink: string } | null)[]
+		).filter((x): x is { text: string; ink: string } => x !== null)
 	);
 	function errorAgo(hc: HealthCheck): string {
 		return hc.status?.lastErrorTime ? formatAgoCompact(hc.status.lastErrorTime, $now) : 'earlier';
@@ -183,49 +206,10 @@
 	const headerIconClass = $derived(
 		failedChecks.length > 0
 			? 'text-danger'
-			: pendingChecks.length > 0 || recovered.length > 0
+			: pendingChecks.length > 0
 				? 'text-progress'
 				: 'text-success'
 	);
-
-	/**
-	 * ⛔ TWO STATUS GRAMMARS IN ONE CARD. (2026-09-13, demo capture, lane 4.)
-	 * Measured on `/rollouts/dev/default/hello-world` at 1920: the pending row
-	 * carried a FILLED `rounded-full bg-yellow-100` pill reading `Pending`
-	 * while the two rows directly under it carried BARE GREEN TEXT reading
-	 * `passing` — a filled capsule and an unboxed word, 40px apart, in one
-	 * rail card, for the same axis. A reader cannot tell whether the shape
-	 * difference means something (it did not) and the failing row had a THIRD
-	 * spelling again (a filled red capsule printing the raw CRD enum,
-	 * `Failed`/`Unknown`, not the card's own word).
-	 *
-	 * REFERENCE REGION, 600px to the LEFT IN THE SAME VIEWPORT:
-	 * `DeploymentPipelineCard`'s step rows. Every one of them is the chip atom
-	 * — `.chip t-chip chip-wide`, a neutral `gray-200`/`gray-700` hairline,
-	 * nothing filled, and ONLY the ink changing per state (that component's
-	 * own `pillClasses`, whose note records why: *"a state word in a box is
-	 * what `.chip` is for … only ink changes per state; the border stays
-	 * neutral and nothing fills — the alarm chip is the only fill in the
-	 * product"*). These four values are that map's `failed` / `paused` /
-	 * `done` rows, unchanged.
-	 *
-	 * ⚠️ NOT `<Chip role="failing">`. `Chip`'s status roles all carry a WASH
-	 * (`ADVERSE` is `bg-red-50`, `CHECKING` is `bg-yellow-50`) and these rows
-	 * already sit on a full-width `bg-red-50` / `bg-yellow-50` band — a wash
-	 * chip on its own wash disappears. The pipeline card hit the same wall and
-	 * answered it the same way, with the atom rather than the role.
-	 *
-	 * ⚠️ AND THE WORD IS THE CARD'S OWN, NOT THE CRD's. The rollup above says
-	 * `1 pending · 2 passing`; the rows now say `PENDING` and `PASSING`. The
-	 * raw `status.status` moves to the row's `title`, where a reader who wants
-	 * the controller's own enum can still get it.
-	 */
-	const CHECK_TONE = {
-		failing: 'border-danger-line text-danger',
-		pending: 'border-progress-line text-progress',
-		recovered: 'border-progress-line text-progress',
-		passing: 'border-success-line text-success'
-	} as const;
 
 	function displayName(hc: HealthCheck): string {
 		return (
@@ -233,15 +217,6 @@
 		);
 	}
 </script>
-
-<!--
-	THE ONE STATUS MARK, rendered identically on all four kinds of row. It is a
-	snippet and not four hand-spelled spans so the geometry cannot drift back
-	apart the way the capsule and the bare word already did once.
--->
-{#snippet stateChip(word: keyof typeof CHECK_TONE, title: string | undefined)}
-	<span class="chip t-label chip-wide shrink-0 {CHECK_TONE[word]}" {title}>{word}</span>
-{/snippet}
 
 {#if loadError}
 	<!-- UNKNOWN is not NONE: the same fact the change-version dialog states when
@@ -262,33 +237,8 @@
 		dataTour="health-checks"
 	>
 		{#snippet rollup()}
-			{#if failedChecks.length > 0}
-				<span class="t-ui-sm text-danger"
-					>{failedChecks.length} failing{pendingChecks.length > 0
-						? ` · ${pendingChecks.length} pending`
-						: ''}{recovered.length > 0 ? ` · ${recovered.length} recovered` : ''} · {healthyChecks.length}
-					passing</span
-				>
-			{:else if pendingChecks.length > 0}
-				<span class="t-ui-sm text-progress"
-					>{pendingChecks.length} pending{recovered.length > 0
-						? ` · ${recovered.length} recovered`
-						: ''} · {healthyChecks.length} passing</span
-				>
-			{:else if recovered.length > 0}
-				<!-- ⛔ THE ROLLUP THAT READ `4/4 healthy` DURING AN INCIDENT.
-				     COMPOSITION-GRAMMAR §1: this line is the card's whole answer for a
-				     reader who does not open it, and it answered wrong. The counts are
-				     DISJOINT and sum to the total, so `3 passing · 1 recovered` over
-				     four checks still adds up; `4/4 · 1 recovered` would have been the
-				     same all-clear with a footnote. -->
-				<span class="t-ui-sm text-progress"
-					>{healthyChecks.length} passing · {recovered.length} recovered</span
-				>
-			{:else}
-				<span class="t-ui-sm text-success">{healthChecks.length}/{healthChecks.length} healthy</span
-				>
-			{/if}
+			<!-- never print a zero count; each part in its own ink (Group.svelte's rollup draws its counts the same way) -->
+			<span class="t-ui-sm">{#each rollupParts as part, i (part.text)}{#if i > 0}<span class="text-fg-muted">{' \u00b7 '}</span>{/if}<span class={part.ink}>{part.text}</span>{/each}</span>
 		{/snippet}
 		<!--
 			⭐ ONE ROW, ONE POSITION, FOUR LOOKS. (2026-09-21, film critic finding
@@ -316,120 +266,99 @@
 		{#each order as key (key)}
 			{@const hc = byKey.get(key)}
 			{#if hc}
-				{@const state = classifyCheck(hc, windowStart)}
+				{@const v = checkView(hc, windowStart, snapshot)}
+				{@const state = v.verdict}
 				{@const failing = state === 'failing'}
 				{@const pending = state === 'pending'}
 				{@const recoveredRow = state === 'recovered'}
 				{@const passingRow = state === 'passing'}
-				<div
-					data-testid="hc-row"
-					class="border-line-subtle flex items-start gap-3 border-b px-4 py-3 last:border-b-0 {failing
-						? ''
-						: pending || recoveredRow
-							? ''
-							: ''}"
-				>
-					{#if failing}
-						<ExclamationCircleSolid class="text-danger mt-0.5 h-4 w-4 flex-shrink-0" />
-					{:else if pending}
-						<StatusSpinner size="4" color="yellow" class="mt-0.5" />
-					{:else if recoveredRow}
-						<ClockArrowOutline class="text-progress mt-0.5 h-4 w-4 flex-shrink-0" />
-					{:else}
-						<CheckCircleSolid class="text-success mt-0.5 h-4 w-4 flex-shrink-0" />
-					{/if}
+				{@const hasRows = v.rows.length > 0}
+				{@const expanded = expandedMessages.has(key)}
+				{@const pendingMessage = pending && !!v.since && !!v.message && !readsHealthy(v.message)}
+				<div data-testid="hc-row" class="border-line-subtle border-b px-4 py-3 last:border-b-0">
+				<div class="flex items-start gap-3">
+					<CheckStateMark verdict={state} class="mt-0.5" />
 					<div class="min-w-0 flex-1">
-						<span title={displayName(hc)} class="t-body block min-w-0 truncate {failing ? 'text-fg' : 'text-fg-muted'}">
-							{displayName(hc)}
-						</span>
+						<!-- one row grammar for every state: glyph + name, then the fact line ("state · age"); the provider's raw status is the pending fact line's title -->
+						<div class="flex min-w-0 items-center gap-2">
+							<span title={displayName(hc)} class="t-body block min-w-0 truncate {failing ? 'text-fg' : 'text-fg-muted'}">
+								{displayName(hc)}
+							</span>
+						</div>
 						<!--
-							⭐ EVERY STATE DRAWS EXACTLY TWO LINES: the name and ONE fact line.
-							(2026-11-12, owner rule: nothing moves as state changes.) A pending
-							row used to carry a sub-line and a passing row none, so each check
-							that passed shrank its row by a line and everything below it moved
-							up; a failing row stacked a state line, a 3-line message and a
-							button. The fact line is a single truncated line in every state
-							(`truncate`, full text in `title`), so the row height is the same
-							whatever the check is doing. A failing row's message is the one
-							thing that wants more room: the fact line is then a button that
-							opens the full text, a reader's own action, never a state change.
+							EVERY STATE DRAWS THE NAME AND ONE FACT LINE (2026-11-12, owner rule: nothing moves as state changes).
+							The fact line is a single truncated line in every state; evidence (observation rows, the provider's
+							message) hangs under it, spanning the row. A failing row with observations states its time once
+							(`failing · 6m`); without observations it keeps `— {message}`.
 						-->
 						{#if failing}
-							{@const expanded = expandedMessages.has(key)}
-							{@const msg = hc.status?.message}
-							{#if msg}
+							{#if hasRows || !v.message}
+								<span data-testid="hc-sub" class="t-meta text-fg-muted block truncate"><span class="text-danger">failing</span>{#if v.since}{' · '}<span class="whitespace-nowrap tabular-nums">{formatTimeAgoCompact(v.since, $now)}</span>{/if}</span>
+							{:else}
 								<button
 									type="button"
 									data-testid="hc-sub"
 									aria-expanded={expanded}
-									title={expanded ? undefined : msg}
+									title={expanded ? undefined : v.message}
 									onclick={() => toggleMessage(key)}
-									class="t-meta text-fg-muted hover:text-fg block w-full min-w-0 text-left {expanded
-										? 'whitespace-normal'
-										: 'truncate'}"
-									><span class="text-danger"
-										>failing{#if hc.status?.lastChangeTime}{' · '}{formatAgoCompact(
-												hc.status.lastChangeTime,
-												$now
-											)}{/if}</span
-									>
-									— {msg}</button
-								>
-							{:else}
-								<span data-testid="hc-sub" class="t-meta text-danger block truncate"
-									>failing{#if hc.status?.lastChangeTime}{' · '}{formatAgoCompact(
-											hc.status.lastChangeTime,
-											$now
-										)}{/if}</span
+									class="t-meta text-fg-muted hover:text-fg block w-full min-w-0 text-left {expanded ? 'whitespace-normal' : 'truncate'}"
+									><span class="text-danger">failing</span>{#if v.since}{' · '}<span class="whitespace-nowrap tabular-nums">{formatTimeAgoCompact(v.since, $now)}</span>{/if} — {v.message}</button
 								>
 							{/if}
 						{:else if pending}
-							<!-- A real countdown from `nextProbeAt` against `$now`, else the
-							     check's own message, else "Not evaluated yet". -->
-							{@const text = pendingRowText(hc, $now)}
-							<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate" title={text}>
-								{text}
-							</p>
+							{#if v.since}
+								<!-- a pending check says how long it has waited; with no start time it says what the check is waiting on (the provider's message or the probe countdown) -->
+								<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate" title={hc.status?.status || undefined}><span class="text-progress">pending</span>{' · '}<span class="whitespace-nowrap tabular-nums">{formatTimeAgoCompact(v.since, $now)}</span></p>
+							{:else}
+								{@const text = pendingRowText(hc, $now)}
+								<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate" title={text}>{text}</p>
+							{/if}
 						{:else if recoveredRow}
-							<!-- The state comes first: "passing, last errored 2m ago", then the
-							     message. The separator is inside the expression so Svelte does
-							     not trim it. -->
-							{@const text = `${recoveredLabel(errorAgo(hc))}${hc.status?.message ? ` — ${hc.status.message}` : ''}`}
-							<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate" title={text}>
-								{text}
-							</p>
+							{#if v.recovery?.okSince}
+								<!-- the strip under it owns the OK moment; the fact says only that it recovered -->
+								<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate">recovered</p>
+							{:else}
+								{@const text = `${recoveredLabel(errorAgo(hc))}${hc.status?.message ? ` — ${hc.status.message}` : ''}`}
+								<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate" title={text}>{text}</p>
+							{/if}
 						{:else}
-							<p data-testid="hc-sub" class="t-meta text-fg-subtle block truncate">
-								passing{#if hc.status?.lastChangeTime}{' · '}<span class="tabular-nums"
-										>{formatAgoCompact(hc.status.lastChangeTime, $now)}</span
-									>{/if}
+							<p data-testid="hc-sub" class="t-meta text-fg-muted block truncate">
+								<span class="text-fg-subtle">passing</span>{#if hc.status?.lastChangeTime}{' · '}<span class="tabular-nums">{formatTimeAgoCompact(hc.status.lastChangeTime, $now)}</span>{/if}
 							</p>
 						{/if}
 					</div>
-					<!-- THE RIGHT GROUP, IN THE SAME PLACE ON EVERY KIND OF ROW.
-					     ⭐ THE CHIP BUDGET, ROUND 2 (2026-10-08, coordinator
-					     review): "one fact, once" — a row spends at most two
-					     emphases, the NAME and ONE status mark. The glyph on
-					     the left already IS that mark for passing (green) AND
-					     now for failing (red) rows, so both draw no chip: a
-					     passing row shows only the quiet time, a failing row
-					     shows the word plus the time in the SAME red ink as
-					     the glyph and the banner above it (red glyph + red
-					     "failing · 2m" IS the one mark, not two). Pending and
-					     recovered keep their chip — their glyph alone does not
-					     carry PENDING vs RECOVERED (no single glyph does). -->
-					<div class="flex shrink-0 items-center gap-2">
-						{#if failing}
-							<!-- stated under the name -->
-						{:else if passingRow}
-							<!-- the age lives in the fact line -->
-						{:else}
-							{@render stateChip(
-								state,
-								recoveredRow ? recoveredTitle(hc, errorAgo(hc)) : hc.status?.status || undefined
-							)}
+				</div>
+				<!-- the evidence spans the whole row (under the glyph + name, not squeezed beside the state chip); a row with none draws no wrapper -->
+				{#if hasRows || pendingMessage || (recoveredRow && v.recovery)}
+				<div class="flex flex-col pl-7">
+					{#if hasRows}
+						{@const folded = !showAll.has(key) && v.rows.length > SOURCE_FOLD}
+						<ul class="mt-2 flex flex-col gap-3">
+							{#each folded ? v.rows.slice(0, SOURCE_FOLD) : v.rows as r (r.key)}<FailureSourceRow row={r} />{/each}
+						</ul>
+						{#if folded}
+							<button type="button" class="btn btn-secondary btn-xs mt-2 self-start" onclick={() => (showAll = new Set(showAll).add(key))}>Show {v.rows.length - SOURCE_FOLD} more</button>
 						{/if}
-					</div>
+					{:else if pendingMessage}
+						<!-- a pending check with no observations: the provider's own error, in full on demand -->
+						<button
+							type="button"
+							title={v.message}
+							aria-expanded={expanded}
+							onclick={() => toggleMessage(key)}
+							class="t-meta text-fg-muted hover:text-fg mt-1 w-full break-words whitespace-normal text-left {expanded ? '' : 'line-clamp-3'}">{v.message}</button
+						>
+					{/if}
+					{#if recoveredRow && v.recovery}
+						<RecoveredStrip recovery={v.recovery} {axisStart} />
+						{#if v.recovery.rows.length > 0}
+							<ul class="mt-2 flex flex-col gap-3">
+								{#each v.recovery.rows as r (r.key)}<FailureSourceRow row={r} />{/each}
+							</ul>
+						{/if}
+					{/if}
+				</div>
+				{/if}
 				</div>
 			{/if}
 		{/each}

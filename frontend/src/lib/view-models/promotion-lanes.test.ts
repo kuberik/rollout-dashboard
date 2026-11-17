@@ -128,3 +128,30 @@ describe('buildLanes: a place with no releases is a none node from the catalogue
 		expect(nodes.find((n) => n.card.ns === 'rel')!.noReleases).toBeUndefined();
 	});
 });
+
+import { nodeState } from './promotion-lanes';
+import { nodeStateFromCell, frontierStateWord } from './journey';
+import { tone } from './state-tone';
+import { stateWord, stateInk } from '$lib/components/new/state-words';
+
+describe('a held bake reads Paused, a running bake reads Checking', () => {
+	const card = (over: Record<string, unknown>) =>
+		({ statusKey: 'active', checkFailure: null, stuck: null, bakeStatus: 'InProgress', bakeHeld: false, ...over }) as never;
+	it('InProgress and held is paused; InProgress and not held is checking', () => {
+		expect(nodeState(card({ bakeHeld: true }))).toBe('paused');
+		expect(nodeState(card({ bakeHeld: false }))).toBe('checking');
+	});
+	it('a held bake that is not in progress does not read paused', () => {
+		expect(nodeState(card({ bakeStatus: 'Deploying', bakeHeld: true }))).toBe('deploying');
+	});
+	it('the pipeline cell maps the same way', () => {
+		expect(nodeStateFromCell({ state: 'baking', stuck: null, held: undefined, superseded: false, bakePaused: true } as never)).toBe('paused');
+		expect(nodeStateFromCell({ state: 'baking', stuck: null, held: undefined, superseded: false } as never)).toBe('checking');
+		expect(frontierStateWord('paused')).toBe('Paused');
+	});
+	it('the word is Paused in the held ink, in the checking severity slot', () => {
+		expect(stateWord('paused')).toBe('Paused');
+		expect(stateInk('paused')).toBe(tone('held')!.ink);
+		expect(severityRank('paused')).toBe(severityRank('checking'));
+	});
+});

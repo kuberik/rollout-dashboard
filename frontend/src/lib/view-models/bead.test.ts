@@ -24,3 +24,13 @@ describe('beads', () => {
 		expect(bs[0].emphasis).toBe('');
 	});
 });
+
+describe('a recovered failure', () => {
+	it('is a recovered bead only when every change in it has recovered', () => {
+		expect(beadOf([{ ref: '#1', state: 'failed', recovered: true }]).recovered).toBe(true);
+		expect(beadOf([{ ref: '#1', state: 'failed', recovered: true }, { ref: '#2', state: 'failed' }], { team: true }).recovered).toBe(false);
+		expect(beadOf([{ ref: '#1', state: 'failed' }]).recovered).toBe(false);
+		expect(beadOf([{ ref: '#1', state: 'deploying', recovered: true }]).recovered).toBe(false);
+	});
+});
+

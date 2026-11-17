@@ -53,7 +53,7 @@ export type KApp = {
 };
 
 const rank = (s: NodeState) => severityRank(s);
-const OFF: NodeState[] = ['failed', 'stuck', 'held', 'deploying', 'checking'];
+const OFF: NodeState[] = ['failed', 'stuck', 'held', 'deploying', 'checking', 'paused'];
 
 function word(s: NodeState, approval: boolean): string {
 	if (s === 'held') return approval ? 'waits for approval' : 'held';

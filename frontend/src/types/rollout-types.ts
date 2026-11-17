@@ -419,6 +419,10 @@ export interface components {
                      *     This is when the bake process completed (either successfully or with failure).
                      */
                     bakeEndTime?: string;
+                    /** RFC3339. Set while the bake clock is stopped because a selected health check is not Healthy. */
+                    bakeHoldStartTime?: string;
+                    /** Go duration (e.g. "1m30s"): total stopped time, excluding the current hold. */
+                    bakeHeldDuration?: string;
                     /**
                      * Format: date-time
                      * @description BakeStartTime is the time when the bake period started for this deployment
@@ -948,6 +952,10 @@ export interface components {
                          *     This is when the bake process completed (either successfully or with failure).
                          */
                         bakeEndTime?: string;
+                        /** RFC3339. Set while the bake clock is stopped because a selected health check is not Healthy. */
+                        bakeHoldStartTime?: string;
+                        /** Go duration (e.g. "1m30s"): total stopped time, excluding the current hold. */
+                        bakeHeldDuration?: string;
                         /**
                          * Format: date-time
                          * @description BakeStartTime is the time when the bake period started for this deployment

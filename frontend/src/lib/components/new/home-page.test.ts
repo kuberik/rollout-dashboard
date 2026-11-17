@@ -1,6 +1,6 @@
 import { it, expect } from 'vitest';
-import { homePage } from './home-page';
-import { needsYouRedirect } from '../../../routes/needs-you/+page';
+import { homePage, asksRollupOf } from './home-page';
+import { needsYouRedirect } from '$lib/view-models/needs-you-redirect';
 
 /* r39 build: the Home composition. Each ask once; Your changes never repeats an ask's change; the viewer is 'you'; no figure without data. */
 it('incident: asks are failures first, then approvals; counts agree with the rollup', () => {
@@ -70,4 +70,9 @@ it('Fleet deploys: one row per app, carrying the furthest tier its latest build 
 			if (m) { expect(Number(m[1])).toBeGreaterThan(1); expect(d.href).toBe(`/apps/${encodeURIComponent(d.app)}`); }
 		}
 	}
+});
+
+it('the Needs-you rollup says `failed` for a recovered failure, like every other page', () => {
+	expect(asksRollupOf(3, 1, 2)).toEqual([{ text: '2 failing', ink: 'danger' }, '1 failed', { text: '2 to approve', ink: 'held' }]);
+	expect(asksRollupOf(1, 1, 0)).toEqual(['1 failed']);
 });

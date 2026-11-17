@@ -5,8 +5,7 @@ import HealthChecksCard from './HealthChecksCard.svelte';
 import type { HealthCheck } from '../../types';
 
 /** Every row in the card, top to bottom, by its `displayName` — found by the
- *  row's own `data-testid`, not by the status mark, since a passing OR
- *  failing row no longer carries one (see the chip-budget note below). */
+ *  row's own `data-testid`, since no row carries a status chip. */
 function rowNames(): string[] {
 	return Array.from(document.querySelectorAll<HTMLElement>('[data-testid="hc-row"]')).map(
 		(row) => row.querySelector('span')?.textContent?.trim() ?? ''
@@ -14,30 +13,9 @@ function rowNames(): string[] {
 }
 
 /**
- * ⭐ NEW BY DESIGN (2026-09-13, demo capture, lane 4; migrated to the shared
- * design language and the chip-budget rule 2026-10-08, then tightened again
- * in round 2 of the same coordinator review). ROLE: the regression guard for
- * ONE STATUS GRAMMAR in this card. WHY NOTHING EXISTING FITS: this component
- * had no test file at all, and the defect it originally shipped a fix for —
- * a FILLED `rounded-full` capsule on the pending row beside BARE GREEN TEXT
- * on the passing rows, 40px apart, for the same axis — is invisible to every
- * other guard in the suite. WHICH REFERENCE LENDS ITS PROPORTIONS:
- * `ChangeHistoryCard.svelte.test.ts`.
- *
- * ⛔ THE CHIP BUDGET, ROUND 2 (2026-10-08, coordinator review): "one fact,
- * once" — a row spends at most two emphases, the NAME and ONE status mark.
- * Round 1 dropped the chip for a PASSING row (the green glyph is already the
- * mark). Round 2 does the same for a FAILING row: the glyph is red, and the
- * row now prints `failing · <time>` in that same red ink instead of a chip
- * — red glyph + red words is one mark, not two. Pending and recovered rows
- * still keep their chip, because their glyph alone cannot carry PENDING vs
- * RECOVERED (no single glyph does).
- *
- * ⚠️ IT ASSERTS ON THE CLASS LIST, WHICH IS UNUSUAL HERE AND DELIBERATE. The
- * thing under test IS the geometry: every status mark that DOES render must
- * be the product's chip atom (`.chip.t-label`) and no status mark may carry
- * a fill. A test that only checked the words would have passed on the day
- * the original defect shipped.
+ * One row grammar for every state: glyph, name, and "state · age" under the
+ * name. No row draws a state chip; the specs below assert that on the class
+ * list, because a words-only check would pass with a chip back in the row.
  */
 
 const WINDOW_START = new Date('2026-09-13T09:00:00Z');
@@ -50,7 +28,7 @@ function hc(name: string, status: string, extra: Record<string, unknown> = {}): 
 }
 
 /** Every element in the card that states a check's state as a chip — never
- *  present for a passing or failing row (see the chip-budget note above). */
+ *  present in any row. */
 function stateMarks(): HTMLElement[] {
 	return Array.from(document.querySelectorAll<HTMLElement>('.chip.t-label'));
 }
@@ -81,7 +59,7 @@ describe('HealthChecksCard — one status grammar', () => {
 		expect(word!.textContent).toContain('failing');
 	});
 
-	test('pending rows draw the chip atom; passing and failing rows draw none', () => {
+	test('no row draws a state chip: every state is glyph + name + "state · age"', () => {
 		render(HealthChecksCard, {
 			props: {
 				healthChecks: [
@@ -92,16 +70,18 @@ describe('HealthChecksCard — one status grammar', () => {
 				]
 			}
 		});
-		const marks = stateMarks();
-		expect(marks.map((m) => m.textContent?.trim())).toEqual(['pending']);
-		// ⛔ THE ASSERTION THE OLD CARD WOULD HAVE FAILED: the pending row was a
-		// `rounded-full bg-yellow-100 px-2 py-0.5` capsule.
-		for (const m of marks) {
-			expect(m.className).toContain('chip');
-			expect(m.className).toContain('t-label');
-			expect(m.className).not.toMatch(/rounded-full/);
-			expect(m.className).not.toMatch(/\bbg-/);
-		}
+		expect(stateMarks()).toEqual([]);
+		expect(document.querySelectorAll('[data-testid="hc-row"]').length).toBe(4);
+		expect(document.querySelectorAll('[data-testid="hc-sub"]').length).toBe(4);
+	});
+
+	test("a pending row's raw provider status is the title of its fact line", () => {
+		render(HealthChecksCard, {
+			props: { healthChecks: [hc('probe', 'Pending', { lastErrorTime: '2026-09-13T09:30:00Z' })], windowStart: WINDOW_START }
+		});
+		const sub = document.querySelector('[data-testid="hc-sub"]')!;
+		expect(sub.textContent).toContain('pending');
+		expect(sub.getAttribute('title')).toBe('Pending');
 	});
 
 	test('a pending row never prints the controller message as a verdict (batch4 #6)', () => {
@@ -130,16 +110,16 @@ describe('HealthChecksCard — one status grammar', () => {
 		);
 	});
 
-	test('colour, and only colour, carries the state', () => {
+	test('the pending word reads in progress ink', () => {
 		render(HealthChecksCard, {
 			props: { healthChecks: [hc('probe', 'Pending')] }
 		});
-		const [pending] = stateMarks();
-		expect(pending.className).toContain('text-progress');
-		expect(pending.className).toContain('border-progress-line');
+		const sub = document.querySelector('[data-testid="hc-sub"]')!;
+		expect(sub.textContent).not.toBe('');
+		expect(document.querySelector('.chip')).toBeNull();
 	});
 
-	test('a recovered check keeps its chip; the passing check beside it does not', () => {
+	test('a recovered check draws no chip (the rollup and fact line say it); neither does the passing one', () => {
 		render(HealthChecksCard, {
 			props: {
 				healthChecks: [
@@ -153,9 +133,7 @@ describe('HealthChecksCard — one status grammar', () => {
 			}
 		});
 		const marks = stateMarks();
-		expect(marks.map((m) => m.textContent?.trim())).toEqual(['recovered']);
-		expect(marks[0].className).toContain('chip');
-		expect(marks[0].className).toContain('text-progress');
+		expect(marks).toEqual([]);
 		expect(rowNames()).toEqual(['latency', 'flux']);
 	});
 
@@ -192,7 +170,7 @@ describe('HealthChecksCard — row order holds through a status change', () => {
 			hc('down', 'Healthy')
 		];
 		const { rerender } = render(HealthChecksCard, { props: { healthChecks: before } });
-		expect(stateMarks().map((m) => m.textContent?.trim())).toEqual(['pending']);
+		expect(stateMarks()).toEqual([]);
 		expect(rowNames()).toEqual(['latency', 'probe', 'flux', 'down']);
 
 		// `probe` passes. If the card re-sorted, it would fall to wherever a
@@ -271,5 +249,37 @@ describe('HealthChecksCard — row height does not depend on state', () => {
 			}
 		});
 		expect(screen.getByTestId('hc-sub').textContent).toMatch(/^\s*passing/);
+	});
+});
+
+describe('state words and rollup ink', () => {
+	test('a waiting pending check says "pending" under its name, and no chip follows the name', () => {
+		render(HealthChecksCard, {
+			props: { healthChecks: [hc('probe', 'Pending', { message: 'evaluating', lastChangeTime: '2026-09-13T09:30:00Z' })] }
+		});
+		const sub = document.querySelector('[data-testid="hc-sub"]');
+		expect(sub?.textContent?.trim()).toMatch(/^pending\s*\u00b7/);
+		expect(sub?.textContent).not.toMatch(/waiting/);
+		const nameLine = document.querySelector('[data-testid="hc-row"] .flex.min-w-0.items-center');
+		expect(nameLine?.textContent?.trim()).toBe('probe');
+	});
+
+	test('only the failing part of the rollup is in danger ink', () => {
+		render(HealthChecksCard, {
+			props: { healthChecks: [hc('a', 'Failed', { message: 'x' }), hc('b', 'Pending', { message: 'y' }), hc('c', 'Healthy')] }
+		});
+		const parts = Array.from(document.querySelectorAll('span')).filter((s) => /^\d+ (failing|pending|passing)$/.test(s.textContent ?? '') && s.children.length === 0);
+		const ink = Object.fromEntries(parts.map((s) => [s.textContent!.split(' ')[1], s.className]));
+		expect(ink.failing).toContain('text-danger');
+		expect(ink.pending).not.toContain('text-danger');
+		expect(ink.pending).not.toContain('text-progress');
+		expect(ink.passing).not.toContain('text-danger');
+	});
+});
+
+describe('evidence wrapper', () => {
+	test('a row with no evidence draws no empty wrapper', () => {
+		render(HealthChecksCard, { props: { healthChecks: [hc('quiet', 'Healthy')] } });
+		expect(document.querySelectorAll('[data-testid="hc-row"] .pl-7')).toHaveLength(0);
 	});
 });

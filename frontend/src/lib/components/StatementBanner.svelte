@@ -84,7 +84,7 @@
 		severity: Severity;
 		title: string | Cause;
 		/** the failing check: printed as the tab prints it (red mark · name · message) */
-		check?: { name: string; message?: string };
+		check?: { name?: string; message?: string; cls?: string };
 		/** the failing check's HealthCheck observations: a failed banner leads with the first drawable one as a figure (as the failure cards do) and the check line keeps its name + the budget */
 		observations?: HealthObservation[] | null;
 		checkInk?: boolean;
@@ -150,14 +150,19 @@
 	const hasActions = $derived(!!primary || acts.length > 0);
 	/* the failure cards' rule (attention.ts): a measured figure leads, and the check line then says the name + the budget instead of repeating the figure in its message */
 	const figure = $derived(severity === 'failed' && (check || observations?.length) ? (() => { const l = failingLead(check ?? null, observations); return l.kind === 'check' ? null : l; })() : null);
-	const shownCheck = $derived(check && figure?.budget ? { name: check.name, message: figure.budget } : check);
+	/* the name appears once: with a figure it is the caption, and this line carries only the limit phrase and the observation's message */
+	const shownCheck = $derived.by(() => {
+		if (!figure) return check;
+		const message = [figure.budget ?? figure.phrase, figure.detail].filter(Boolean).join(' \u00b7 ');
+		return message ? { cls: check?.cls, message } : undefined;
+	});
 	const hasBody = $derived(!!(figure || check || place || since || build || cause || fact || message || body));
 </script>
 
 {#snippet bodySnip()}
 			<div class="flex min-w-0 flex-col gap-2" data-statement-body>
 				{#if figure}<ObservationFigure fig={figure} />{/if}
-				{#if shownCheck && !checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} />{/if}
+				{#if shownCheck && !checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} body />{/if}
 				{#if place || since || build || cause || fact}
 					<!-- one .dot-list row at every width and in every banner (no fixed tracks: a track left a 50px hole between the sha and the badge) -->
 					<div class="dot-list min-w-0" data-statement-meta>
@@ -176,7 +181,7 @@
 						</div>
 					</div>
 				{/if}
-				{#if shownCheck && checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} />{/if}
+				{#if shownCheck && checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} body />{/if}
 				{#if message}<p class="min-w-0 {messageDesktopOnly ? 'max-sm:hidden' : ''}">{#if typeof message !== 'string'}<CauseText parts={message} />{:else}{#each splitOpensClause(message) as part}{#if part.unit}<span class="whitespace-nowrap" data-opens-clause>{part.text}</span>{:else}{part.text}{/if}{/each}{/if}</p>{/if}
 				{#if body}{@render body()}{/if}
 			</div>

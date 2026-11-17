@@ -86,6 +86,7 @@ import {
 	type DepsStep
 } from './deps-story';
 import { mkHwEnvironment } from './mock-promote';
+import { extraHealthChecks, extraFleetHealthChecks } from './extra-fixtures';
 import { WAVES_STEPS, wavesStoryStep, type WavesStep } from './waves-story';
 
 /** the detail response, in the served shape and stamped with its source cluster like the list items */
@@ -916,10 +917,18 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 		}
 	}
 
+	// GET /api/health-checks — only under an opt-in fixture set that installs it (MOCK_SCENARIO=health-failures); otherwise a 404, as before
+	if (reqPath === '/api/health-checks') {
+		const fleet = extraFleetHealthChecks();
+		if (fleet) return json(fleet);
+	}
+
 	// GET /api/rollouts/:namespace/:name/health-checks — any live fixture.
 	{
 		const m = reqPath.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)\/health-checks$/);
 		if (m) {
+			const hf = extraHealthChecks(m[1], m[2]); // opt-in MOCK_SCENARIO=health-failures
+			if (hf) return json(hf);
 			if (hasFixture(m[1], m[2])) return json(getHealthChecks(m[1], m[2]));
 			const listRollout = findListRollout(m[1], m[2]);
 			if (listRollout) return json(deriveGenericHealthChecks(listRollout));

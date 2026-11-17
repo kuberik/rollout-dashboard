@@ -41,6 +41,8 @@
 		/** null / 0 = the tier has no waves */
 		wave: number | null;
 		state: SiteState;
+		/** a failed site whose checks are all OK again (it reads Failed, the mark's label says failed) */
+		recovered?: boolean;
 		/** the state word (picker row, title) */
 		word: string;
 		wordInk?: string;
@@ -66,7 +68,7 @@
 		title?: string;
 		/** `getEnvironmentThemeStyle(theme)` for the tab's current fill */
 		style?: string;
-		mark?: { state: 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' | 'approval' | 'approval-yours' };
+		mark?: { state: 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' | 'approval' | 'approval-yours'; recovered?: boolean };
 		word?: string;
 		/**
 		 * NOTHING MOVES AS STATE CHANGES (owner 2026-11-12, "the boxes change width when 'Deploying' appears"): every word this box can ever
@@ -196,7 +198,7 @@
 			data-env-box
 			data-current={c.current ? '' : undefined}
 		>
-			{#if c.mark}<span class="env-mk"><WaveMark mark={waveMark([{ state: c.mark.state }], c.label)} /></span>{:else if c.wordSlot?.length}<span class="env-mk" aria-hidden="true"></span>{/if}
+			{#if c.mark}<span class="env-mk"><WaveMark mark={waveMark([{ state: c.mark.state, recovered: c.mark.recovered }], c.label)} /></span>{:else if c.wordSlot?.length}<span class="env-mk" aria-hidden="true"></span>{/if}
 			<span class="env-name t-ui-sm {c.hot ? 'text-fg' : 'text-fg-muted'}">{c.label}</span>
 			{@render wordOf(c)}
 			{#if c.region}<span class="env-region t-meta text-fg-subtle">{c.region}</span>{/if}

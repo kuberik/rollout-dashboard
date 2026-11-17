@@ -42,7 +42,7 @@
 	import { TIERS_WITH_OTHER } from '$lib/view-models/sites-waves';
 	import { holdLeadCause, ago, isViewer, approvalScope, truthAttrs, heldCauses, avatarSrc, deployedBuild, deployedHistory, buildIdentity, newestBuild, buildInQuestionFacts, waitClock, approvalTarget, appHolds, tabPill, regionStates, checkClock } from './data';
 	import type { HomeState, TApp, TRow } from './data';
-	import { canApproveAt } from './data';
+	import { canApproveAt, failureRecovered } from './data';
 	import { plural, rowAction, actionLabel, actionHref, markOf, VIEWER } from './rollout-view';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -360,7 +360,7 @@
 {#snippet envRow(cls: string)}
 	<!-- r39 (owner 2026-11-08: "Apps tiles use the boxed env row"): the SAME PromotionLane every page draws, neutral boxes (no current), bare = no app name column.
 	     The tile is one link, so nothing inside the row is a target. -->
-	<div class="pointer-events-none min-w-0 {cls}"><PromotionLane {lane} hrefFor={() => tileHref} fill={lead ? 'L' : 'M'} {calm} youCan={(n) => canApproveAt((n.card as { href?: string }).href ?? '', scenario)} /></div>
+	<div class="pointer-events-none min-w-0 {cls}"><PromotionLane {lane} hrefFor={() => tileHref} fill={lead ? 'L' : 'M'} {calm} youCan={(n) => canApproveAt((n.card as { href?: string }).href ?? '', scenario)} recovered={(n) => failureRecovered(hrefFor(n))}/></div>
 {/snippet}
 
 {#snippet facts(t: string | Cause)}{#each typeof t === 'string' ? [t] : t as run}{#if typeof run !== 'string'}<GateLabel label={run} />{:else}{#each chunks(run) as c}{#if c.nw}<span class="whitespace-nowrap">{c.x}</span>{:else}{c.x}{/if}{/each}{/if}{/each}{/snippet}
@@ -449,7 +449,8 @@
 		{@render envRow('')}
 		{#if failCheck}
 			<StatementBanner severity="failed" title="Deployment failed" check={failCheck}
-				secondary={[...(place ? [{ label: 'Open rollout', href: place, key: 'open-rollout' }] : []), ...(act && act.kind !== 'approve' ? [actAsAct()!] : [])]} primary={act?.kind === 'approve' ? actAsAct() : undefined} />
+				primary={actAsAct()}
+				secondary={place ? [{ label: 'Open rollout', href: place, after: true, key: 'open-rollout' }] : []} />
 		{:else if waitRow}
 			<!-- apps-7 Q2: the tab's own held banner (the shared StatementBanner: tint, 40px pause disc, the tab's sentence) -->
 			<StatementBanner severity={checkingNow ? 'checking' : 'held'} title={checkingNow ? 'Checking' : waitRow.state === 'awaiting-approval' ? approvalIn(rowAction(waitRow)?.kind === 'approve', placeName) : joinCause(`${placeName} is held: waiting on `, gateC)} message={checkingNow ? `${checkLeft ? checkLeft.replace(/\.$/, '') + '. ' : 'The health checks are running. '}${waitRow.state === 'awaiting-approval' ? `Then it waits for ${act?.kind === 'approve' ? 'your ' : ''}approval${placeName ? ' in ' + placeName : ''}.` : ''}`.trim() : waitRow.state === 'awaiting-approval' && wait?.build ? `${act?.kind === 'approve' ? 'Your approval' : 'An approval'} releases ${wait.build} ${waitScope ? 'in ' + waitScope : placeName ? 'to ' + placeName : ''}.`.replace(/ \.$/, '.') : nb ? (waitRow.state === 'awaiting-approval' ? `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting.` : `${nb.count} newer build${nb.count === 1 ? ' is' : 's are'} waiting. Nothing promotes itself until someone clears the hold.`) : undefined}

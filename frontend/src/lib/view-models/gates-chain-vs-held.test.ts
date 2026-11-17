@@ -125,6 +125,28 @@ describe('checkout-api/prod-us-east-2 Gates tab: the chain predecessor is never 
 	});
 });
 
+describe('the dependency tile agrees with the dependency\'s own refusal (dash-bug, 2026-11-14)', () => {
+	const { hood, breakdown } = fetchCheckoutApiProdUsEast2();
+	const refused = breakdown.held.filter((h) => h.contract?.provider === 'payments-svc').map((h) => h.build);
+
+	it('the fixture: payments-svc refuses at least one build, and it is a contract link', () => {
+		expect(refused.length).toBeGreaterThan(0);
+		expect(hood.upstream.some((l) => l.writer === 'contract' && l.node.name === 'payments-svc')).toBe(true);
+	});
+
+	it('is `blocked` and counted whether or not the refused build has reached this environment', () => {
+		const states = [true, false].map((here) => {
+			const r = reconcileNeighbourhoodHolds(hood.upstream, breakdown, { heldHere: () => here });
+			const link = r.upstream.find((l) => l.writer === 'contract' && l.node.name === 'payments-svc')!;
+			return { state: link.state, held: link.held, holding: r.holding };
+		});
+		// Same tile, same count: nothing flips when staging passes the build.
+		expect(states[1]).toEqual({ state: 'blocked', held: expect.arrayContaining(refused), holding: states[0].holding });
+		expect(states[0].state).toBe('blocked');
+		expect(states[1].holding).toBeGreaterThanOrEqual(1);
+	});
+});
+
 /**
  * ⭐ THE GATES TAB'S FOUR WORDING CONTRADICTIONS, FIXED. (squad-rollout
  * gates-2 follow-up, 2026-10-11, second coordinator correction.) The chain

@@ -3,6 +3,7 @@
 <script lang="ts">
 	import HeldGlyph from './HeldGlyph.svelte';
 	import CauseText from './CauseText.svelte';
+	import { titleParts } from '$lib/view-models/banner';
 	import type { Cause } from '$lib/view-models/gate-label';
 	import Avatar from './Avatar.svelte';
 	import BangGlyph from './BangGlyph.svelte';
@@ -222,7 +223,7 @@
 		 * r39 (kit `banner()`): the CHANGE LINE, the third line of a failure banner — the change that failed: title (truncates) ·
 		 * ref (mono) · who (16px avatar + name, or `you`). One quiet 12px line under the check line; omitted when unknown.
 		 */
-		change?: { title: string; ref?: string; person?: string; src?: string | null; you?: boolean };
+		change?: { /** the build the change shipped as: leads the line in t-code */ build?: string; title: string; ref?: string; person?: string; src?: string | null; you?: boolean };
 		/**
 		 * r39 ACTIONS ORDER: secondary on the LEFT, the one primary on the RIGHT (kit `banner()` `.acts`). Bare verbs ("Open rollout",
 		 * "Roll back", "Approve"), 36px `.btn` (44px on a phone, full-width wrap). Roll back is `btn-secondary` (outline); Approve is the
@@ -764,7 +765,7 @@
 								</div>
 							</div>
 						</div>
-						<p class="t-heading {palette.title} {compact ? 'ap-title-clamp' : ''}">{#if typeof title === 'string'}{title}{:else}<CauseText parts={title} />{/if}</p>
+						<p class="t-heading {palette.title} {compact ? 'ap-title-clamp' : ''}">{#if typeof title === 'string'}{@const tp = titleParts(title)}{tp.lead}{#if tp.place}<span class="whitespace-nowrap" data-title-place>{tp.place}</span>{/if}{:else}<CauseText parts={title} />{/if}</p>
 					</div>
 					{#if extra}{@render extra()}{/if}
 				</div>
@@ -821,15 +822,25 @@
 							<p class="t-body mt-0.5 break-words {palette.message}">{#if typeof message === 'string'}{message}{:else}<CauseText parts={message} />{/if}</p>
 						{/if}
 						{#if change}
-							<p class="ap-change t-meta mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-fg-subtle" data-ap-change>
-								<span class="max-w-full min-w-0 truncate">{change.title}</span>
-								{#if change.ref}<span class="t-code-sm shrink-0">{change.ref}</span>{/if}
-								{#if change.person}
-									<span class="h-3 w-px shrink-0 bg-line-strong" aria-hidden="true"></span>
-									<span class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-										{#if !change.you}<Avatar name={change.person} src={change.src ?? null} size={16} />{/if}{change.you ? 'you' : change.person}
+							<!--
+								THE CHANGE LINE: "<build> · title #ref | author". The build the change shipped as LEADS the line (t-code, the role versions use everywhere), so it
+								never stands alone on a row of its own. The "|" and the author are one unit. On a wrap the "|" must not sit at a line edge: the line is clipped
+								(overflow-hidden) and shifted left by the unit's own lead (8px margin + 1px rule + 8px padding), so a unit that starts a line has its rule
+								pushed outside the clip and its name starts clean; mid-line the same unit draws 8px · rule · 8px. The first unit carries the same 17px lead as padding.
+							-->
+							<p class="ap-change t-meta mt-1 min-w-0 overflow-hidden text-fg-subtle" data-ap-change>
+								<span class="-ml-[17px] flex w-[calc(100%+17px)] min-w-0 flex-wrap items-center gap-y-0.5">
+									<span class="flex min-w-0 max-w-full items-center gap-2 pl-[17px]">
+										{#if change.build}<span class="t-code shrink-0 whitespace-nowrap text-fg-muted" data-ap-build>{change.build}</span><span class="shrink-0" aria-hidden="true">{'\u00b7'}</span>{/if}
+										<span class="min-w-0 truncate">{change.title}</span>
+										{#if change.ref}<span class="t-code-sm shrink-0">{change.ref}</span>{/if}
 									</span>
-								{/if}
+									{#if change.person}
+										<span class="ml-2 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-l border-line-strong pl-2" data-ap-author>
+											{#if !change.you}<Avatar name={change.person} src={change.src ?? null} size={16} />{/if}{change.you ? 'you' : change.person}
+										</span>
+									{/if}
+								</span>
 							</p>
 						{/if}
 					</div>
@@ -1228,6 +1239,13 @@
 		grid-column-start: 1;
 		margin-top: 0.75rem;
 		align-self: stretch;
+	}
+	/* below the two-column shape the rows under the headline span under the icon column too: the 3rem column is empty below the disc's own row, so the text gets the full inner width */
+	@container (max-width: 639.98px) {
+		.ap-bar .ap-message-row,
+		.ap-bar .ap-disclosure-cell {
+			grid-column-start: 1;
+		}
 	}
 	@container (min-width: 640px) {
 		.ap-bar .ap-grid {

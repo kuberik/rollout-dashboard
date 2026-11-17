@@ -21,7 +21,7 @@
 	import { lagLabel } from '$lib/view-models/env-rank';
 	import EnvRow, { type EnvCell, type EnvSite } from '$lib/components/EnvRow.svelte';
 	import type { SiteState } from '$lib/components/SiteMark.svelte';
-	import { approvalWord, stateWord } from '$lib/components/new/state-words';
+	import { approvalWord, failedWord, stateWord } from '$lib/components/new/state-words';
 	import { toneInk } from '$lib/view-models/state-tone';
 	import type { Bead } from '$lib/view-models/bead';
 
@@ -38,7 +38,9 @@
 		youCan = undefined,
 		quietNoReleases = false,
 		sites = false,
-		reserve = false
+		reserve = false,
+		recovered,
+		failedSince
 	}: {
 		lane: Lane;
 		/** Restrict / order the boxes; defaults to this lane's own tiers. */
@@ -67,6 +69,10 @@
 		sites?: boolean;
 		/** NOTHING MOVES AS STATE CHANGES (App view, Rollout overview): every box reserves the width of the widest state word and says "Deployed" quietly when healthy, so a word appearing moves no box */
 		reserve?: boolean;
+		/** a failed place whose checks are all OK again: the box says "Failed", not "Failing" (state-words `failedWord`). Unknown reads as Failing. */
+		recovered?: (n: LaneNode) => boolean;
+		/** when a failed place's failure began (ISO), the age its box prints instead of the deploy's; null/unknown falls back to the deploy's */
+		failedSince?: (n: LaneNode) => string | null;
 	} = $props();
 	const size = $derived<'L' | 'M'>(fill ?? 'L');
 	const linked = $derived(!fill);
@@ -78,24 +84,24 @@
 
 	const isCurrent = (n: LaneNode) => !!current && n.card.ns === current.ns && n.card.name === current.name;
 
-	const WORD: Record<NodeState, string> = { failed: 'Failing', stuck: 'Stuck', deploying: 'Deploying', checking: 'Checking', held: 'Held', behind: '', newest: '', none: '' };
+	const WORD: Record<NodeState, string> = { failed: 'Failing', stuck: 'Stuck', deploying: 'Deploying', checking: 'Checking', paused: 'Paused', held: 'Held', behind: '', newest: '', none: '' };
 	/** a healthy box (behind / newest) says no word: its name and its lag are the whole statement */
 	const mine = (n: LaneNode) => (youCan ? youCan(n) : yours);
-	const wordOf = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? (words ? approvalWord(mine(n)) : 'Waiting') : WORD[n.state]);
+	const wordOf = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? (words ? approvalWord(mine(n)) : 'Waiting') : n.state === 'failed' ? failedWord(recovered?.(n) ?? false) : WORD[n.state]);
 	/** nothing moves as state changes: every strip box reserves the width of the widest word IT can say (EnvRow `wordSlot`). The strip's approval
 	 *  word is always the short one ("Waiting"); "Needs your approval" stays in the title, the picker and the ask banner. */
-	const WORD_SLOT = [...new Set([...Object.values(WORD), 'Waiting', 'Deployed'].filter(Boolean))];
+	const WORD_SLOT = [...new Set([...Object.values(WORD), 'Failed', 'Waiting', 'Deployed'].filter(Boolean))];
 	/** the title says the full approval word the box shortens */
 	const longWord = (n: LaneNode) => (wordOf(n) === stripWord(n) ? '' : ' · ' + wordOf(n));
-	const stripWord = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? 'Waiting' : WORD[n.state] || (n.state === 'none' ? '' : 'Deployed'));
+	const stripWord = (n: LaneNode) => (n.state === 'held' && n.card.heldCause === 'person' ? 'Waiting' : n.state === 'failed' ? wordOf(n) : WORD[n.state] || (n.state === 'none' ? '' : 'Deployed'));
 	/** a healthy box says "Deployed" quietly (the picker's word) so the reserved slot is not an empty tail */
 	const stripInk = (n: LaneNode) => (WORD[n.state] ? toneInk(n.state) : 'text-fg-subtle');
-	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
+	const MARKED = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking', 'paused']);
 	const markOf = (n: LaneNode): EnvCell['mark'] =>
-		n.state === 'held' && n.card.heldCause === 'person' && mine(n) ? { state: 'approval-yours' } : MARKED.has(n.state) ? { state: n.state as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking' } : undefined;
+		n.state === 'held' && n.card.heldCause === 'person' && mine(n) ? { state: 'approval-yours' } : MARKED.has(n.state) ? { state: (n.state === 'paused' ? 'held' : n.state) as 'failed' | 'stuck' | 'held' | 'deploying' | 'checking', recovered: n.state === 'failed' && !!recovered?.(n) } : undefined;
 	const prodWorst = $derived(lane.prod.reduce<LaneNode | null>((b, n) => (!b || severityRank(n.state) < severityRank(b.state) ? n : b), null));
 
-	const STATE_NOUN: Record<NodeState, string> = { failed: 'failing', stuck: 'stuck', deploying: 'deploying', checking: 'checking', held: 'held', behind: '', newest: '', none: '' };
+	const STATE_NOUN: Record<NodeState, string> = { failed: 'failing', stuck: 'stuck', deploying: 'deploying', checking: 'checking', paused: 'paused', held: 'held', behind: '', newest: '', none: '' };
 	/** The prod cell's tooltip: every site with its state word and build, under its wave (leader marked) once the tier has more than one wave. */
 	const prodTitle = (ns: LaneNode[]) => {
 		const waves = [...new Set(ns.map((r) => r.card.wave ?? 1))];
@@ -158,11 +164,16 @@
 	}
 
 	/* change-strip r1: the tier's sites for EnvRow, in topology order (wave, leader, name), never by state */
-	const SITE_STATE: Record<NodeState, SiteState> = { failed: 'failed', stuck: 'stuck', deploying: 'deploying', checking: 'checking', held: 'held', behind: 'done', newest: 'done', none: 'notaffected' };
+	const SITE_STATE: Record<NodeState, SiteState> = { failed: 'failed', stuck: 'stuck', deploying: 'deploying', checking: 'checking', paused: 'held', held: 'held', behind: 'done', newest: 'done', none: 'notaffected' };
 	const siteName = (n: LaneNode) => (n.card.site && n.card.site !== 'default' ? n.card.site : n.tier === 'prod' ? (splitEnvName(n.env).place ?? n.env) : n.env);
 	/* the picker row speaks as the Change page's does: the state word, then the currency ("Deployed · 2 builds behind") */
 	const siteWord = (n: LaneNode) => wordOf(n) || (noRel(n) ? 'No releases' : 'Deployed');
-	const siteDetail = (n: LaneNode) => (noRel(n) || n.state === 'deploying' || n.state === 'checking' ? undefined : n.behind > 0 ? lagLabel({ builds: n.behind }) : 'Up to date');
+	const siteDetail = (n: LaneNode) => (noRel(n) || n.state === 'deploying' || n.state === 'checking' || n.state === 'paused' ? undefined : n.behind > 0 ? lagLabel({ builds: n.behind }) : 'Up to date');
+	/** the age a box prints: a failed place's is when its failure began, every other state's the deploy's */
+	const asideOf = (n: LaneNode): string | undefined => {
+		const at = (n.state === 'failed' ? failedSince?.(n) : null) ?? n.card.timestamp;
+		return at ? formatTimeAgoCompact(at) : undefined;
+	};
 	function sitesOf(ns: LaneNode[]): EnvSite[] {
 		const multiWave = new Set(ns.map((n) => n.card.wave ?? 1)).size > 1;
 		return [...ns]
@@ -172,11 +183,12 @@
 				name: siteName(n),
 				wave: multiWave ? (n.card.wave ?? 1) : null,
 				state: n.state === 'held' && n.card.heldCause === 'person' ? (mine(n) ? 'approval-yours' : 'approval') : SITE_STATE[n.state],
+				recovered: n.state === 'failed' && !!recovered?.(n),
 				word: siteWord(n),
 				detail: siteDetail(n),
 				wordInk: toneInk(n.state),
 				build: n.card.version ? shortenVersion(n.card.version) : undefined,
-				aside: n.card.timestamp ? formatTimeAgoCompact(n.card.timestamp) : undefined,
+				aside: asideOf(n),
 				href: hrefFor(n),
 				here: youAreHere && isCurrent(n)
 			}));

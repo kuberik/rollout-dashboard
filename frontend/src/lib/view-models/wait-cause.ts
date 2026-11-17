@@ -86,10 +86,10 @@ export function waitCause(m: KApp, ctx: WaitCauseCtx): WaitCause | null {
 		if (!behind && !held.length) continue;
 		const up = i > 0 ? m.plates[i - 1] : null;
 		if (up) {
-			const baking = up.nodes.find((n) => n.state === 'checking');
+			const baking = up.nodes.find((n) => n.state === 'checking' || n.state === 'paused');
 			if (baking) {
 				const h = head(baking.card);
-				const prog = computeBakeProgress(h?.bakeStartTime, baking.card.rollout.spec?.bakeTime, ctx.now);
+				const prog = computeBakeProgress(h?.bakeStartTime, baking.card.rollout.spec?.bakeTime, ctx.now, h);
 				return { kind: 'bake', place, upstream: placeOf(up), id: ctx.idOf(baking.card.version), leftMs: prog ? Math.max(0, prog.totalMs - prog.elapsedMs) : null };
 			}
 			// An upstream deploy in flight is the app's own headline; no wait to explain yet.

@@ -20,6 +20,7 @@ export type ActivityKind =
 	| 'failedHealthCheck'
 	| 'deploying'
 	| 'checking'
+	| 'paused'
 	| 'held'
 	| 'approved'
 	| 'pinned';
@@ -49,6 +50,8 @@ const VERBS: Record<ActivityKind, { verb: string; appVerb: string; tone: NodeSta
 	},
 	deploying: { verb: 'is deploying', appVerb: 'is deploying', tone: 'deploying' },
 	checking: { verb: 'is checking', appVerb: 'is checking', tone: 'checking' },
+	// the bake clock is stopped while a health check is not Healthy: one state, the held ink, the same word every other surface uses
+	paused: { verb: 'is paused', appVerb: 'is paused', tone: 'paused' },
 	held: { verb: 'held', appVerb: 'is held', tone: 'held' },
 	approved: { verb: 'approved', appVerb: 'was approved', tone: null },
 	pinned: { verb: 'pinned', appVerb: 'was pinned', tone: null }

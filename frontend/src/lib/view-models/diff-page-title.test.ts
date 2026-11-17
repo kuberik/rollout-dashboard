@@ -91,7 +91,7 @@ describe('diffSubject', () => {
 	});
 });
 
-import { deployOutcome, spanLabel } from './diff-page-title';
+import { deployOutcome, spanLabel, failedAfterRest } from './diff-page-title';
 
 describe('deployOutcome', () => {
 	const t = '2026-10-10T10:00:00Z';
@@ -125,5 +125,15 @@ describe('deployOutcome', () => {
 	it('spanLabel', () => {
 		expect(spanLabel(90 * 60_000)).toBe('1h 30m');
 		expect(spanLabel(26 * 3_600_000)).toBe('1d 2h');
+	});
+});
+
+describe('failedAfterRest: a duration that says what it measured', () => {
+	const m = (n: number) => n * 60_000;
+	it('names the checks when both starts are known', () => {
+		expect(failedAfterRest(0, m(4), m(34))).toBe('after 30m of checks');
+	});
+	it('falls back to the deploy-to-end span without a check start', () => {
+		expect(failedAfterRest(0, NaN, m(30))).toBe('after 30m');
 	});
 });

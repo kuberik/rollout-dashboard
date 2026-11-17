@@ -1,3 +1,5 @@
+import type { NodeState } from './promotion-lanes';
+
 /**
  * THE ONE SEVERITY ORDER. "Which state is worse?" is answered here and nowhere else: every headline, list sort, rollup, tile mark and
  * "worst place" fold (Home, /apps, the app page, /envs, /environments, /rollouts, /changes, the change page) ranks with `severityRank`.
@@ -20,18 +22,19 @@ export const SEVERITY_ORDER = ['failed', 'stuck', 'approval', 'held', 'deploying
 export type Severity = (typeof SEVERITY_ORDER)[number];
 
 /** every spelling of the ten slots the product uses (place states, lane states, bead states, tile marks, state-word aliases) */
-const SLOT: Record<string, Severity> = {
+const SLOT_TABLE = {
 	failed: 'failed', failing: 'failed',
 	stuck: 'stuck',
 	approval: 'approval', 'awaiting-approval': 'approval', 'approval-yours': 'approval', waiting: 'approval',
 	held: 'held', 'held-by-rule': 'held', hold: 'held',
 	deploying: 'deploying', current: 'deploying',
-	checking: 'checking',
+	checking: 'checking', paused: 'checking',
 	'rolled-back': 'rolled-back',
 	behind: 'behind', queued: 'behind',
 	healthy: 'healthy', newest: 'healthy', landed: 'healthy', live: 'healthy', running: 'healthy',
 	none: 'none'
-};
+} as const satisfies Record<NodeState, Severity> & Record<string, Severity>;
+const SLOT: Record<string, Severity> = SLOT_TABLE;
 
 /** the slot a state word belongs to; null for a word the order does not know */
 export const severityOf = (state: string | null | undefined): Severity | null => (state ? (SLOT[state] ?? null) : null);

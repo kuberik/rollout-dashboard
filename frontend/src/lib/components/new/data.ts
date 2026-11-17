@@ -33,6 +33,7 @@
  *  8 step names                              -> stepsOf(): 'Started', 'Stage N', 'Check' exactly as the tab (DeploymentPipelineCard.shortLabel)
  *  9 failure reason                          -> failureReason(): check name + message + the bake phrase, from the rollout's own history
  */
+import { bakeHeldMs, bakePaused } from '$lib/bake-hold';
 import { oldestFirst, newestFirst, earliest, isNotEarlier } from '$lib/instant';
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
 import { catalogueOrder, newestOf, behindIn, catalogueBehind } from '$lib/releases/order';
@@ -67,12 +68,16 @@ import { deployActs } from '$lib/history-marks';
 import { upToDateHeadline } from '$lib/view-models/up-to-date';
 import * as RD from '$lib/components/home/roster/roster-data';
 import { alsoApprovalAsk } from '../home/sketch/sketch-home';
-import { changeBySha, homeModel, resetHomeModel, source, isLive, viewerLogin, NOW, type HomeState } from '$lib/components/home/sketch/home-data';
+import { changeBySha, homeModel as homeModelRaw, resetHomeModel, source, isLive, viewerLogin, NOW, type HomeState } from '$lib/components/home/sketch/home-data';
 import { approvalRev, bumpApprovals } from './approval-rev.svelte';
-import { stateWord as sharedWord, severity } from './state-words';
+import { scoped } from './derivation-scope';
+/** `homeModel` once per derivation scope (the calm/quiet lenses rebuild the sketch on every call) */
+const homeModel = (state: HomeState): ReturnType<typeof homeModelRaw> => scoped(`hm|${state}`, () => homeModelRaw(state));
+import { stateWord as sharedWord, severity, failedWord } from './state-words';
 import type { EnvPipeline, EnvState } from '$lib/view-models/home-model';
 import { buildTopology, deployNameOf, siteNodeOf, upstreamOf, type AppTopology } from '$lib/view-models/sites-waves';
-import type { Environment, HealthObservation } from '../../../types';
+import type { Environment, HealthObservation, HealthCheck } from '../../../types';
+import { evidenceLine, failingNowList, worstOf, failureSince, poolOf, checkView, clock, type SnapCheck, type CheckView } from '../../view-models/health-failures';
 import type { Rollout } from '$lib/../types';
 import { placeStateWithPin } from '$lib/view-models/pin-hold';
 import type { TierKey, RolloutRow, ChangeItem, ChangeGroupKey, Region as RDRegion, AppItem, ArrivalRow } from '$lib/components/home/roster/roster-data';
@@ -97,7 +102,7 @@ export const builtAgo = (iso: string | null | undefined): string => (iso ? build
 export const ARRIVALS_WINDOW = '12h';
 
 /* ═══ raw fixture access (the tab is served from this same data) ═══ */
-type RawEntry = { message?: string; triggeredBy?: { kind?: string; name?: string }; bakeStartTime?: string; bakeEndTime?: string; version: { revision?: string; tag?: string; version?: string }; timestamp: string; bakeStatus?: string; bakeStatusMessage?: string; failedHealthChecks?: { name: string; message?: string }[] };
+type RawEntry = { bakeHoldStartTime?: string; bakeHeldDuration?: string; message?: string; triggeredBy?: { kind?: string; name?: string }; bakeStartTime?: string; bakeEndTime?: string; version: { revision?: string; tag?: string; version?: string }; timestamp: string; bakeStatus?: string; bakeStatusMessage?: string; failedHealthChecks?: { name: string; message?: string }[] };
 type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; kind?: GateKind; displayName?: string; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; wantedVersion?: string; currentVersion?: string } };
 const raws = (): RawRollout[] => source().rollouts as unknown as RawRollout[];
 const hrefParts = (href: string) => { const p = href.split('/').filter(Boolean); return p[0] === 'rollouts' ? { cluster: p[1], ns: p[2], name: p[3] } : null; };
@@ -204,14 +209,20 @@ export function reachSentence({ n, m }: Pick<PathReach, 'n' | 'm'>): string {
 export const pathPosition = (row: Pick<RolloutRow, 'app'>, state: HomeState = 'incident'): string => reachSentence(pathReach(row, state));
 
 /* ═══ failure reason (defect 9) ═══ */
-export type FailureReason = { check: string | null; message: string | null; phrase: string | null; line: string; /** what the failing check measures (the HealthCheck's `status.observations`, else the snapshot on the history entry): the Attention card's figure */ observations: HealthObservation[] };
+export type FailureReason = { /** the failing check's class (glyph lookup) */ cls?: string; /** health evidence: a quiet line under the fact and whether everything recovered */ note?: string | null; recovered?: boolean; short?: string; /** the checks the banners draw evidence and Details from (poolOf), the pending count and the worst failing check's `lastChangeTime` (the age every surface prints) */ pool?: CheckView[]; pendingN?: number; since?: string | null; /** recovered: "09:34" */ recoveredAt?: string | null; check: string | null; message: string | null; phrase: string | null; line: string; /** what the failing check measures (the HealthCheck's `status.observations`, else the snapshot on the history entry): the Attention card's figure */ observations: HealthObservation[] };
 /** The tab's failing-check line ("invoice-api-error-rate: error rate 8.2% over a 1% budget") and, where the history carries one that is not
  *  the generic bake sentence, the controller's own phrase ("HighErrorRate firing · paged on-call"). null unless the place is failing. */
 export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureReason | null {
 	if (row.group !== 'failed') return null;
 	const h = rawOf(row.href)?.status.history?.[0];
 	if (!h) return null;
-	const fc = h.failedHealthChecks?.[0] as ({ name: string; message?: string; observations?: HealthObservation[] }) | undefined;
+	type Snap = { name: string; message?: string; observations?: HealthObservation[] };
+	/* the check the line names is one failing now when there is one (a recovered check never fronts a failing rollout), else the first */
+	const hpEarly = hrefParts(row.href);
+	const liveEarly = hpEarly ? ((source().healthChecks ?? []).find((i) => i.metadata.namespace === hpEarly.ns && i.metadata.name === hpEarly.name)?.healthChecks ?? []) : [];
+	const snaps = (h.failedHealthChecks ?? []) as Snap[];
+	/* the check failing now, even when the history record never named it; the record's first only when nothing is failing now */
+	const fc = failingNowList(snaps as SnapCheck[], liveEarly as HealthCheck[])[0] as Snap | undefined;
 	const generic = /^A HealthCheck reported an error/.test(h.bakeStatusMessage ?? '');
 	const phrase = h.bakeStatusMessage && !generic ? h.bakeStatusMessage : null;
 	const check = fc?.name ?? null, message = fc?.message ?? null;
@@ -222,8 +233,23 @@ export function failureReason(row: Pick<RolloutRow, 'group' | 'href'>): FailureR
 	const hp = hrefParts(row.href);
 	const live = hp ? (source().healthChecks ?? []).find((i) => i.metadata.namespace === hp.ns && i.metadata.name === hp.name)?.healthChecks.find((c) => c.metadata?.name === check) : undefined;
 	const observations = (live?.status as { observations?: HealthObservation[] } | undefined)?.observations ?? fc?.observations ?? [];
+	/* the worst failing observation across the history entry's checks (the live HealthChecks first, the snapshot otherwise), read from observations only */
+	const liveAll = hp ? ((source().healthChecks ?? []).find((i) => i.metadata.namespace === hp.ns && i.metadata.name === hp.name)?.healthChecks ?? []) : [];
+	const winStart = new Date(Math.max(Date.parse(h.timestamp ?? '') || 0, Date.parse((h as { lastRetryTimestamp?: string }).lastRetryTimestamp ?? '') || 0));
+	const ev = evidenceLine(poolOf(liveAll as HealthCheck[], (h.failedHealthChecks ?? []) as SnapCheck[], winStart));
+	if (ev) {
+		const pool = poolOf(liveAll as HealthCheck[], (h.failedHealthChecks ?? []) as SnapCheck[], winStart);
+		const pendingN = (liveAll as HealthCheck[]).filter((x) => checkView(x, winStart, (h.failedHealthChecks ?? []) as SnapCheck[]).verdict === 'pending').length;
+		const since = failureSince(pool);
+		return { check: ev.name, message: ev.message, phrase, line: ev.cause, cls: ev.cls, observations: ev.observations, note: ev.note, recovered: ev.recovered, short: ev.short, pool, pendingN, since, recoveredAt: ev.okSince ? clock(ev.okSince) : null };
+	}
 	return { check, message, phrase, line, observations };
 }
+
+/** A failed place whose checks are all OK again (what its Attention card, Fleet row and strip box read as "Failed", not "Failing"): the failure reason's own `recovered`, by href. */
+export const failureRecovered = (href: string): boolean => !!failureReason({ group: 'failed', href })?.recovered;
+/** THE ONE age of a failed place: when its failure began (the instant the banners and the Health checks card print), null when no health evidence was kept */
+export const failureSinceAt = (href: string): string | null => failureReason({ group: 'failed', href })?.since ?? null;
 
 /* ═══ places (defect 5) ═══ */
 /* the one place word lives in view-models/regions.ts (Home reads it too); re-exported for every surface that imported it from here */
@@ -239,10 +265,14 @@ const enrich = (r: RolloutRow): TRow => {
 	t.place = placeLabel(r);
 	t.deployedAt = rawOf(r.href)?.status.history?.[0]?.timestamp ?? r.since ?? null; /* what the tab header's "9h ago" counts from */
 	if (failure) {
+		/* a failure whose checks have all recovered is `Failed`; `Failing` is a check failing now (state-words.ts failedWord) */
+		if (failure.recovered && t.word === 'Failing') t.word = failedWord(true);
 		t.cause = failure.line;
 		/* the tab ages "Deployment failed … · 20m ago" from the failing bake's END (the failed check's moment), not from the deploy timestamp */
 		const be = rawOf(r.href)?.status.history?.[0]?.bakeEndTime;
 		if (be) t.since = be;
+		/* with observation evidence the age is the worst failing check's own ("failing 6m"), the same on the hero, the cards and the Overview banner */
+		if (failure.since) t.since = failure.since;
 	}
 	/* a Rollout with no ReleaseSource has no builds to show: its row says why, in the controller's words */
 	t.noReleases = noReleasesAt(r.href) ?? null;
@@ -309,7 +339,11 @@ export function actionFor(row: Pick<TRow, 'group' | 'action'>, _state?: HomeStat
 	if (row.group === 'approval') return a.kind === 'approve' ? a : null;
 	return null;
 }
-export function rollouts(state: HomeState, starred?: ReadonlySet<string>) {
+export function rollouts(state: HomeState, starred?: ReadonlySet<string>): ReturnType<typeof rolloutsOf> {
+	/* one table per derivation scope: `rowsOf` asks for it once per (change x place) */
+	return starred ? rolloutsOf(state, starred) : scoped(`rollouts|${state}`, () => rolloutsOf(state));
+}
+function rolloutsOf(state: HomeState, starred?: ReadonlySet<string>) {
 	const R = RD.rollouts(state, starred);
 	const rows = R.rows.map(enrich);
 	/* the place verdict (view-models/place-verdict.ts, read by the env model) already decided awaiting-approval / held-by-rule / deploying for every place, even one whose own build is still baking (`stillChecking`) */
@@ -402,6 +436,8 @@ export function changes(state: HomeState, opts: { rolledBackLands?: boolean } = 
 	const R = rollouts(state);
 	const items = C.items as TChange[];
 	for (const i of items) i.fact = rosterWait(i.fact);
+	/* a change failing in a place whose checks have all recovered reads `Failed in …` (state-words.ts failedWord) */
+	for (const i of items) if (i.group === 'failed' && i.href && failureRecovered(i.href)) i.fact = i.fact.replace(/^Failing\b/, failedWord(true));
 	/* held places by label/app for linking a downstream-held change to the held tab */
 	const heldTab = (apps: string[], where: string): string | null => {
 		const tier: TierKey | null = where.endsWith('prod regions') || where === 'production' ? 'prod' : null;
@@ -613,6 +649,9 @@ const newestOfApp = (order: readonly string[], fallback: string | null): string 
 /** the app's deployed places with the app-wide newest build marked (newest = highest semver tag, else latest merge, else latest arrival) */
 /** additive (r4 /rollouts, At rest rows): an app's deployed places with the newest build; exported for the At rest fold's build and age columns */
 export function placesOf(state: HomeState, app: string): (AppPlace & { newest: string | null })[] {
+	return scoped(`placesOf|${state}|${app}`, () => placesOfRaw(state, app));
+}
+function placesOfRaw(state: HomeState, app: string): (AppPlace & { newest: string | null })[] {
 	const envs = (homeModel(state).apps.find((x) => x.app === app)?.envs ?? []).filter((e) => e.state !== 'not-deployed' && e.version);
 	const newestEnv = [...envs].sort((p, q) => {
 		const pv = shortBuild(p.version)!, qv = shortBuild(q.version)!;
@@ -623,7 +662,7 @@ export function placesOf(state: HomeState, app: string): (AppPlace & { newest: s
 	})[0];
 	const order = orderOfEnvs(envs);
 	const newest = newestOfApp(order, newestEnv ? shortBuild(newestEnv.version) : null);
-	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0, newest }));
+	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, bakePaused: !!e.bakePaused && e.state === 'checking', pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0, newest }));
 }
 export type AppFailing = { build: string | null; place: string; href: string; line: string };
 /**
@@ -634,7 +673,7 @@ export type AppFailing = { build: string | null; place: string; href: string; li
  * Every reader that turns `!onNewest` into "behind" must check `currency !== 'none'` first (onNewest/onBuild are false for it).
  */
 export type PlaceCurrency = 'newest' | 'behind' | 'none';
-export type AppPlace = { env: string; label: string; tier: TierKey; state: EnvState; /** a pin holds newer builds here: beside the state, never in it */ pinned: boolean; href: string; version: string | null; currency: PlaceCurrency; onNewest: boolean; /** runs the newest BUILD whatever its health (the Gates tab's count) */ onBuild: boolean; /** builds of the catalogue's order newer than the one it runs (releases/order.ts); 0 for a place without releases or on a build outside the order */ behind: number };
+export type AppPlace = { env: string; label: string; tier: TierKey; state: EnvState; /** baking with the clock stopped by a not-Healthy check: reads Paused, still in flight (state stays checking) */ bakePaused: boolean; /** a pin holds newer builds here: beside the state, never in it */ pinned: boolean; href: string; version: string | null; currency: PlaceCurrency; onNewest: boolean; /** runs the newest BUILD whatever its health (the Gates tab's count) */ onBuild: boolean; /** builds of the catalogue's order newer than the one it runs (releases/order.ts); 0 for a place without releases or on a build outside the order */ behind: number };
 /** the place's currency against `newest` (see PlaceCurrency) */
 const currencyOfPlace = (href: string, version: string | null, newest: string | null): PlaceCurrency => noReleasesAt(href) ? 'none' : version === newest ? 'newest' : 'behind';
 export type TApp = Omit<AppItem, 'newest' | 'onNewest' | 'fact'> & {
@@ -675,8 +714,9 @@ function pickPlace(rows: TRow[]): TRow | null {
 	return [...rows].sort((p, q) => c(p) - c(q) || Number(q.tier === 'prod') - Number(p.tier === 'prod') || newestFirst(p.since, q.since))[0] ?? null;
 }
 /** one outcome grammar for a change and an app (roster-data's, kept verbatim) */
-const outcomeOf = (w: TRow): string =>
-	w.group === 'failed' ? `Failing in ${w.where}` : w.state === 'awaiting-approval' ? `${sharedWord('approval')} in ${w.where}`
+/** a failure whose checks all recovered reads `Failed in …`; `Failing in …` is a check failing now (state-words.ts failedWord) */
+export const outcomeOf = (w: TRow): string =>
+	w.group === 'failed' ? `${failedWord(!!w.failure?.recovered)} in ${w.where}` : w.state === 'awaiting-approval' ? `${sharedWord('approval')} in ${w.where}`
 	: w.group === 'moving' ? `${w.word} ${w.state === 'deploying' ? 'to' : 'in'} ${w.where}`
 	: `${w.word.startsWith('Waits on') ? w.word : 'Held'} in ${w.where}`;
 /** QA #23: the place's release stream, oldest first, as the builds are named everywhere (`status.availableReleases`). A build in it is a RELEASE of the app, whatever place runs it today. */
@@ -744,7 +784,7 @@ export function apps(state: HomeState) {
 		})[0];
 		const order = orderOfEnvs(envs);
 		const newest = newestOfApp(order, newestEnv ? shortBuild(newestEnv.version) : a.newest);
-		const placeList: AppPlace[] = envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0 }));
+		const placeList: AppPlace[] = envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, bakePaused: !!e.bakePaused && e.state === 'checking', pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0 }));
 		const onNewest = placeList.filter((p) => p.onNewest).length;
 		const prodPl = placeList.filter((p) => p.tier === 'prod');
 		/* the outcome is recomputed from OUR pick (production first among equals) so the text and its link name the same place */
@@ -1209,7 +1249,8 @@ export function checkClock(row: Pick<RolloutRow, 'state' | 'href' | 'group'>): s
 	const raw = rawOf(row.href), e = raw?.status.history?.[0];
 	const m = /^(\d+)(s|m|h)$/.exec(raw?.spec?.bakeTime ?? '');
 	if (!e?.bakeStartTime || !m) return null;
-	const left = Date.parse(e.bakeStartTime) + +m[1] * ({ s: 1e3, m: 60e3, h: 3600e3 } as Record<string, number>)[m[2]] - NOW.getTime();
+	if (bakePaused(e)) return 'paused';
+	const left = Date.parse(e.bakeStartTime) + bakeHeldMs(e, NOW) + +m[1] * ({ s: 1e3, m: 60e3, h: 3600e3 } as Record<string, number>)[m[2]] - NOW.getTime();
 	if (!(left > 0)) return null;
 	const min = Math.ceil(left / 60000);
 	return min < 60 ? `${min} min left` : `${Math.floor(min / 60)} h ${min % 60} min left`;
@@ -1238,7 +1279,7 @@ export function stepDetail(row: Pick<RolloutRow, 'state' | 'href' | 'since' | 'g
 /** The tab's state pill (rolloutStateChip on the deployed entry, upper-cased as drawn) and its gate-holding count ("1 gate holding", "1 of 5 gates holding"; null when no gate holds). */
 export function tabPill(row: Pick<RolloutRow, 'href'>): { word: string; role: string; holding: string | null } {
 	const st = rawOf(row.href)?.status;
-	const chip = rolloutStateChip(st?.history?.[0]?.bakeStatus ?? null);
+	const chip = rolloutStateChip(st?.history?.[0]?.bakeStatus ?? null, st?.history?.[0]);
 	const cand = liveCands(st)?.[0]?.tag ?? liveCands(st)?.[0]?.version;
 	const gs = st?.gates ?? [];
 	const n = gs.filter((g) => g.allowedVersions != null && !!cand && !g.allowedVersions.includes(cand)).length;
@@ -1329,7 +1370,7 @@ export function bakeFailedOn(q: { href: string }, build: string): boolean {
 	const v = entry ? failedHereVerdict({ status: st } as never, entry.version) : null;
 	return !!entry && v?.kind === 'failed' && v.rolledBackAt == null;
 }
-export type PlaceHold = { wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string; label: GateLabel } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ upstreamFailed?: string | null; /** the catalogue builds newer than this place's own that failed in this place (history, or the wave's own failure): what the row's note names when the tab offers fewer builds than the catalogue has */ failedHere?: string[]; heldBuilds: ReturnType<typeof candidateBuilds>; /** the builds a pin holds AT THIS PLACE: `newerBuildsShown`, the list the rollout's Overview and Gates tab count (a pin is per place, never the app baseline) */ newerShown: string[]; runs: string | null };
+export type PlaceHold = { bakePaused: boolean; wave: WaveInfo | null; env: string; label: string; place: string; tier: TierKey; state: EnvState; href: string; deployedBuild: string | null; holdReason: 'approval' | 'rule' | 'health' | 'failed' | null; gate: { name: string; sentence: string; label: GateLabel } | null; /** the build that failed upstream in this place's wave chain while the gates still refuse it here (not a candidate, not waiting) */ upstreamFailed?: string | null; /** the catalogue builds newer than this place's own that failed in this place (history, or the wave's own failure): what the row's note names when the tab offers fewer builds than the catalogue has */ failedHere?: string[]; heldBuilds: ReturnType<typeof candidateBuilds>; /** the builds a pin holds AT THIS PLACE: `newerBuildsShown`, the list the rollout's Overview and Gates tab count (a pin is per place, never the app baseline) */ newerShown: string[]; runs: string | null };
 /** Every deployed place of an app (all tiers, test and staging included) with its own deployed build, WHY it holds newer builds, the gate that holds them and the builds held.
  *  invoice-api: eu-west failed (health), us-east and us-west held by the manual-approval gate (allowed a11c404 only). */
 export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHold[] {
@@ -1351,7 +1392,7 @@ export function placeHolds(app: string, state: HomeState = 'incident'): PlaceHol
 		const g = g0 ?? (rule && !approval ? (() => { const h = heldCauses(state).find((x) => x.rows.some((r) => r.href === p.href || r.hrefs?.includes(p.href))); const c = h?.cause.replace(/^Waiting on /, ''); return c && c !== 'Held by a rule' ? { name: c, label: { kind: 'named', text: c } as GateLabel, sentence: h?.reason === 'check' ? 'Releases when the check starts passing' : `Releases when ${c} ships a newer version` } : null; })() : null);
 		const cat = appOrder(app, state);
 		const failedBuilds = (p.version ? cat.slice(cat.lastIndexOf(buildName(app, p.version) ?? p.version) + 1) : []).filter((b) => failedHere(rawOf(p.href)?.status as never, { tag: b, version: b, revision: b }, waveFailedRevisions(rawOf(p.href) as never, envsOfSource())));
-		return { wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, failedHere: failedBuilds, heldBuilds: held, newerShown: newerBuildsShown(rawOf(p.href) as never, envsOfSource(), true).map((c) => { const b = (c as { version?: string; tag?: string }).version ?? (c as { tag?: string }).tag ?? ''; return shortBuild(b) ?? b; }), runs: p.version };
+		return { bakePaused: p.bakePaused, wave: waveInfoOfHref(p.href), env: p.env, label: p.label, place: placeLabel({ tier: p.tier, regions: [p.label] }), tier: p.tier, state: p.state, href: p.href, deployedBuild: buildName(app, p.version), holdReason: reason, gate: g, upstreamFailed, failedHere: failedBuilds, heldBuilds: held, newerShown: newerBuildsShown(rawOf(p.href) as never, envsOfSource(), true).map((c) => { const b = (c as { version?: string; tag?: string }).version ?? (c as { tag?: string }).tag ?? ''; return shortBuild(b) ?? b; }), runs: p.version };
 	});
 }
 /** Where a build already runs (the Builds list's "live in us-east, us-west"): the app's places whose deployed build is `build` (tab name, tag or SHA). */
@@ -1624,7 +1665,9 @@ export function rowsOf(state: HomeState, tier: TierKey, label: string): TRow[] {
 	}
 	return out;
 }
-const changeBuilds = (c: Pick<ChangeItem, 'repo' | 'mergedAt' | 'title'>): { sha: string | null; contained: string[]; entry: FxChange | undefined } => {
+type ChangeBuilds = { sha: string | null; contained: string[]; entry: FxChange | undefined };
+const changeBuilds = (c: Pick<ChangeItem, 'repo' | 'mergedAt' | 'title'>): ChangeBuilds => scoped(`cb|${c.repo}|${c.mergedAt}|${c.title}`, () => changeBuildsRaw(c));
+const changeBuildsRaw = (c: Pick<ChangeItem, 'repo' | 'mergedAt' | 'title'>): ChangeBuilds => {
 	const entry = chgList().find((x) => x.repo === c.repo && x.mergedAt === c.mergedAt) ?? chgList().find((x) => x.title === c.title);
 	let contained = (entry as unknown as { containedIn?: string[] } | undefined)?.containedIn ?? [];
 	if (entry?.kind === 'pr' && entry.number != null) {
@@ -1634,7 +1677,11 @@ const changeBuilds = (c: Pick<ChangeItem, 'repo' | 'mergedAt' | 'title'>): { sha
 	return { sha: shortRevisionOrNull(entry?.mergeCommitSha) ?? null, contained: contained.map((x) => shortRevision(x)), entry };
 };
 /** (gg) Every place of the change's apps with its deployed build and whether that build CONTAINS the change (the PR's own containedIn: a "Custom build" does not count). */
-export function placesOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState = 'incident'): { app: string; place: string; tier: TierKey; build: string | null; state: EnvState; href: string; containsChange: boolean }[] {
+type PlaceOfChange = { app: string; place: string; tier: TierKey; build: string | null; state: EnvState; href: string; containsChange: boolean }[];
+export function placesOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState = 'incident'): PlaceOfChange {
+	return scoped(`poc|${state}|${c.repo}|${c.mergedAt}|${c.title}|${c.apps.join(',')}`, () => placesOfChangeRaw(c, state));
+}
+function placesOfChangeRaw(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState): PlaceOfChange {
 	const { contained } = changeBuilds(c);
 	return c.apps.flatMap((app) => placesOf(state, app).map((p) => {
 		const sha = shortRevisionOrNull(rawOf(p.href)?.status.history?.[0]?.version.revision) ?? p.version ?? '';
@@ -1651,9 +1698,13 @@ export function changeCommits(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 't
 	return { commits, builds: [...by.values()] };
 }
 /** (ii) Every deploy that carried the change, one row per place and deploy, rollbacks and redeploys included, with the tab's own timestamps, oldest first. */
-export function historyOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState = 'incident'): { app: string; place: string; build: string; at: string; kind: 'deploy' | 'rollback' | 'redeploy'; who: string; outcome: string; href: string }[] {
+type HistoryOfChange = { app: string; place: string; build: string; at: string; kind: 'deploy' | 'rollback' | 'redeploy'; who: string; outcome: string; href: string }[];
+export function historyOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState = 'incident'): HistoryOfChange {
+	return scoped(`hoc|${state}|${c.repo}|${c.mergedAt}|${c.title}|${c.apps.join(',')}`, () => historyOfChangeRaw(c, state));
+}
+function historyOfChangeRaw(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState): HistoryOfChange {
 	const { contained } = changeBuilds(c);
-	const out: ReturnType<typeof historyOfChange> = [];
+	const out: HistoryOfChange = [];
 	for (const app of c.apps) for (const e of homeModel(state).apps.find((x) => x.app === app)?.envs ?? []) {
 		const raw = rawOf(e.href);
 		if (!raw || e.state === 'not-deployed') continue;

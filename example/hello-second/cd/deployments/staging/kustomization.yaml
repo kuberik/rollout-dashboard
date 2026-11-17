@@ -48,22 +48,3 @@ replacements:
           - spec.environment
         options:
           create: true
-patches:
-  - patch: |-
-      apiVersion: environments.kuberik.com/v1alpha1
-      kind: Environment
-      metadata:
-        name: hello-second-app
-      spec:
-        relationship:
-          environment: dev
-          type: After
-  - patch: |-
-      apiVersion: environments.kuberik.com/v1alpha1
-      kind: Environment
-      metadata:
-        name: hello-second-manifests
-      spec:
-        relationship:
-          environment: dev
-          type: After

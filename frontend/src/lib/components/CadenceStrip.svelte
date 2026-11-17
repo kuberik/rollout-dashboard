@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { bakePaused } from '$lib/bake-hold';
 	/**
 	 * THE TENURE STRIP (History's header `below` slot). Redesign, round 4,
 	 * 2026-10-10.
@@ -45,20 +46,24 @@
 	 * WHY NOT `DeploymentTimeline`: that is the multi-lane compare tool with
 	 * zoom and fanning; it is still what "Compare namespace" opens.
 	 */
-	import { toneInk } from '$lib/view-models/state-tone';
+	import { toneInk, toneSolid } from '$lib/view-models/state-tone';
 	import { ArrowsRepeatOutline, UndoOutline, CodePullRequestSolid } from 'flowbite-svelte-icons';
 	import { startOfDayMs, formatRelativeShort } from '$lib/display-time';
 	import { displayTimeZone, timeZonePreference } from '$lib/timezone.svelte';
 	import { actorFrom } from '$lib/actor';
 	import Avatar from '$lib/components/Avatar.svelte';
+	import SegmentedControl from '$lib/components/SegmentedControl.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import RestGlyph from '$lib/components/RestGlyph.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
+	import { snapshotCause } from '$lib/view-models/health-failures';
 
 	type Entry = {
 		timestamp: string;
 		bakeStatus?: string;
 		bakeStartTime?: string;
+		/** set while the bake clock is stopped (`bake-hold.ts`): the running build reads Paused */
+		bakeHoldStartTime?: string | null;
 		bakeEndTime?: string;
 		version: { tag: string; version?: string };
 		/**
@@ -73,7 +78,7 @@
 		 */
 		commitTitle?: string | null;
 		triggeredBy?: { kind?: string | null; name?: string | null } | null;
-		failedHealthChecks?: { name: string; message?: string }[];
+		failedHealthChecks?: { name: string; message?: string; observations?: any[]; failures?: any[] }[];
 		bakeStatusMessage?: string;
 	};
 
@@ -232,14 +237,14 @@
 		return out.reverse(); // chronological, left to right
 	});
 
-	function liveState(s: Seg): 'checking' | 'deploying' | null {
+	function liveState(s: Seg): 'checking' | 'paused' | 'deploying' | null {
 		if (!s.head) return null;
-		if (s.e.bakeStatus === 'InProgress') return 'checking';
+		if (s.e.bakeStatus === 'InProgress') return bakePaused(s.e) ? 'paused' : 'checking';
 		if (s.e.bakeStatus === 'Deploying' || !s.e.bakeStatus) return 'deploying';
 		return null;
 	}
 	/** The mark at a segment's start: an outcome or an act, never the norm. */
-	function markOf(s: Seg): 'failed' | 'checking' | 'deploying' | 'rollback' | null {
+	function markOf(s: Seg): 'failed' | 'checking' | 'paused' | 'deploying' | 'rollback' | null {
 		if (s.failed) return 'failed';
 		const live = liveState(s);
 		if (live) return live;
@@ -572,13 +577,14 @@
 		if (s.failed) return 'Failed';
 		const live = liveState(s);
 		if (live === 'checking') return 'Checking';
+		if (live === 'paused') return 'Paused';
 		if (live === 'deploying') return 'Deploying';
 		return 'Healthy';
 	}
 	function outcomeInk(s: Seg): string {
 		if (s.failed) return toneInk('failed');
 		const live = liveState(s);
-		if (live === 'checking' || live === 'deploying') return toneInk(live);
+		if (live === 'checking' || live === 'paused' || live === 'deploying') return toneInk(live);
 		return 'text-fg-muted';
 	}
 	function whenLabel(t: number): string {
@@ -800,11 +806,7 @@
 								<!-- The running build's foot: its state colour, ending at Now. -->
 								<span
 									class="cadence-live-line"
-									style="background-color: {live === 'checking'
-										? 'var(--k-progress-solid)'
-										: live === 'deploying'
-											? 'var(--k-active-solid)'
-											: 'var(--k-fg-muted)'}"
+									style="background-color: {live ? toneSolid(live) : 'var(--k-fg-muted)'}"
 									aria-hidden="true"
 								></span>
 							{/if}
@@ -940,16 +942,12 @@
 		{/if}
 	</div>
 	<div class="cadence-controls flex shrink-0 items-center gap-2">
-		{#each RANGES as r (r)}
-			<button
-				type="button"
-				class="pill"
-				aria-pressed={range === r}
-				onclick={() => onRangeChange?.(r)}
-			>
-				{RANGE_LABEL[r]}
-			</button>
-		{/each}
+		<SegmentedControl
+			options={RANGES.map((r) => ({ value: r, label: RANGE_LABEL[r] }))}
+			value={range}
+			onChange={(r) => onRangeChange?.(r)}
+			label="Time range"
+		/>
 		{#if onToggleCompare}
 			<button
 				type="button"
@@ -972,6 +970,7 @@
 		{@const diff = diffHref?.(seg.i)}
 		{@const canRb = canRollback(seg)}
 		{@const checks = seg.failed ? (e.failedHealthChecks ?? []) : []}
+		{@const sc = seg.failed ? snapshotCause(checks) : null}
 		{@const failMsg = seg.failed && checks.length === 0 ? (e.bakeStatusMessage ?? '') : ''}
 		{@const reason = footReason(seg)}
 		<!-- ONE TEMPLATE for every segment: mark · build · outcome; commit
@@ -1045,9 +1044,9 @@
 					     panel does, at the card's own 12px (`compact`). Only the
 					     live build (`i === 0`) is still an open alarm. -->
 					<span class="block min-w-0 flex-1">
-						<FailedCheckLine compact check={checks[0] ?? { name: failMsg }} danger={seg.i === 0} />
+						<FailedCheckLine compact check={sc?.check ?? checks[0] ?? { name: failMsg }} danger={seg.i === 0} />
 						<span class="text-fg-subtle block pl-[18px]"
-							>{checks.length > 1 ? `${checks.length} failed checks` : 'Failed check'} · Show in the
+							>{sc ? (sc.more > 0 ? `+${sc.more} more` : 'Failed check') : checks.length > 1 ? `${checks.length} failed checks` : 'Failed check'} · Show in the
 							list</span
 						>
 					</span>

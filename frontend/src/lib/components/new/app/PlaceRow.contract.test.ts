@@ -6,7 +6,12 @@ const src = readFileSync('src/lib/components/new/app/PlaceRow.svelte', 'utf8');
 describe('PlaceRow never clips', () => {
 	it('a chip that names a region takes the phone row and the state word sits under it', () => {
 		expect(src).toContain('class:pl-mid--long={label.length > 8}');
-		expect(src).toContain('.pl-mid--long { grid-template-columns: minmax(0, 1fr); }');
+	});
+	it('one list, one row form: the region chip decides the form for EVERY row of the ledger, never for its own row alone (narrow-cards)', () => {
+		// below 480px every row stacks; 480-560 every row is inline on the 168px chip track
+		expect(src).toContain(':global([data-ledger]:has(.pl-mid--long)) .pl-mid { grid-template-columns: minmax(0, 1fr); }');
+		expect(src).toContain(':global([data-ledger]:has(.pl-mid--long)) .pl-mid { grid-template-columns: 168px minmax(0, 1fr); }');
+		expect(src).not.toContain('.pl-mid--long { grid-template-columns: minmax(0, 1fr); }');
 	});
 	it('the state word + wave fact wraps instead of ellipsising, in a track at least 200px wide', () => {
 		expect(src).not.toContain('text-overflow: ellipsis');

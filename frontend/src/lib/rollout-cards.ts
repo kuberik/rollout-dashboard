@@ -35,6 +35,7 @@ import {
 } from './source-dashboard';
 import { blockingStory } from './view-models/blocking-story';
 import type { BlockingStory, GateContext, ContractHolds } from './view-models/blocking-story';
+import { bakePaused } from './bake-hold';
 import { heldVerdict, verdictForGates, causeLabelForGates } from './view-models/held';
 import { placeVerdict, pickBuildInQuestion, alsoKindOf, isApprovalLike, type PlaceVerdict } from './view-models/place-verdict';
 import type { HeldCause, AlsoHold } from './view-models/held';
@@ -373,6 +374,12 @@ export function detectRollback(r: Rollout | null | undefined): RollbackMark | nu
 	};
 }
 
+/** a Failed head that recorded failed health checks (`failedHealthChecks[]`) is a health-check failure whatever its message says; else the message decides */
+export function failureCategoryOf(latest: { bakeStatusMessage?: string; failedHealthChecks?: readonly unknown[] } | null | undefined): string | null {
+	if (latest?.failedHealthChecks?.length) return 'healthcheck';
+	return categorizeFailure(latest?.bakeStatusMessage);
+}
+
 export type RolloutCard = {
 	ns: string;
 	name: string;
@@ -394,6 +401,8 @@ export type RolloutCard = {
 	version: string | null;
 	timestamp: string | null;
 	bakeStatus: string;
+	/** the bake clock is stopped by a not-Healthy check (only meaningful while the bake is InProgress) */
+	bakeHeld: boolean;
 	statusKey: StatusKey;
 	isRunning: boolean;
 	bakeStatusMessage: string | null;
@@ -684,11 +693,12 @@ export function buildRolloutCards(
 			version: latest?.version ? getDisplayVersion(latest.version) : null,
 			timestamp: latest?.timestamp || null,
 			bakeStatus,
+			bakeHeld: bakePaused(latest),
 			statusKey,
 			isRunning,
 			bakeStatusMessage: latest?.bakeStatusMessage || null,
 			failureCategory:
-				bakeStatus === 'Failed' ? categorizeFailure(latest?.bakeStatusMessage) : null,
+				bakeStatus === 'Failed' ? failureCategoryOf(latest) : null,
 			previousSucceededVersion,
 			pinnedVersion: r.spec?.wantedVersion || null,
 			rolledBack: detectRollback(r),

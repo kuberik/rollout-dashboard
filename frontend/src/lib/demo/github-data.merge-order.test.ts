@@ -34,7 +34,7 @@ function mergeOrderViolations(scenario: 'calm' | 'incident' | 'wide'): string[] 
 	// its own `mergedAt` when it shows up in some OTHER change's `containedIn`).
 	const bySha = new Map<string, (typeof changes)[number]>();
 	for (const c of changes) {
-		if (c.mergeCommitSha) bySha.set(c.mergeCommitSha, c);
+		if (c.mergeCommitSha) bySha.set(`${c.owner}/${c.repo}@${c.mergeCommitSha}`, c); // a sha belongs to one repo: payout-api and billing-edge run the same tags (m-60..62)
 	}
 
 	const violations: string[] = [];
@@ -42,7 +42,7 @@ function mergeOrderViolations(scenario: 'calm' | 'incident' | 'wide'): string[] 
 		const mergedMs = new Date(change.mergedAt).getTime();
 		if (!Number.isFinite(mergedMs)) continue;
 		for (const containingSha of change.containedIn) {
-			const containingChange = bySha.get(containingSha);
+			const containingChange = bySha.get(`${change.owner}/${change.repo}@${containingSha}`);
 			if (!containingChange) continue; // the containing build has no change record of its own — nothing to compare
 			const containingMergedMs = new Date(containingChange.mergedAt).getTime();
 			if (!Number.isFinite(containingMergedMs)) continue;

@@ -59,8 +59,11 @@
 	import AppPulse from './AppPulse.svelte';
 	import AppActivity from './AppActivity.svelte';
 	import { laneOf, approvalOf } from '../Footprint.svelte';
-	import { apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, pinSinceOfHref, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
-	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme } from '../rollout-view';
+	import { failureRecovered, failureSinceAt, apps, heldHere, ago, approvalTarget, appHolds, heldBanner, avatarSrc, deployedBuild, tabPill, heldCauses, shortBuild, urgencyClass, checkClock, placeHolds, pinSinceOfHref, legacyPolicyAt, gatesOf, rowsOf, stepsOf, type HomeState, type TRow, type PlaceHold } from '../data';
+	import { rowAction, plural, actionHref, VIEWER, tabEnv, envTheme, byFailRank } from '../rollout-view';
+	import FailureDetails from '$lib/components/FailureDetails.svelte';
+	import { bannerEvidence } from '$lib/view-models/health-failures';
+	import { formatTimeAgoCompact } from '$lib/utils';
 	import { approvalIn, rowPlaceName } from '../state-words';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
 	import { approvalMessage, behindOfPlace, pillOf, buildsOf, holdRows, ledgerOf, pinnedPlaces, pinnedVersion, causeLineOf, newerThan, placesInPillState, placesPhrase, tierRank } from './app-model';
@@ -83,9 +86,11 @@
 	/* round 2 B4: the held places' gate objects (the Gates tab's own source, same query key) give the pretty names the fleet list lacks */
 	const heldPlaces = $derived(places.filter((p) => p.holdReason === 'approval' || p.holdReason === 'rule'));
 	const gateQueries = createQueries(() => ({
-		queries: heldPlaces.map((p) => { const [, , cluster, ns, nm] = p.href.split('/'); return rolloutQueryOptions({ namespace: ns, name: nm, cluster, options: { staleTime: 15000, retry: false } }); })
+		queries: heldPlaces.map((p) => { const [, , cluster, ns, nm] = p.href.split('/'); return rolloutQueryOptions({ namespace: ns, name: nm, cluster, options: { staleTime: 15000, retry: false } }); }),
+		// See ChangeVersionModal `pickerTitleQueries`: svelte-query 6.0.12 throws when a top-level result array shrinks by 2+.
+		combine: (results) => ({ items: results.map((r) => ({ data: r.data })) })
 	}));
-	$effect(() => { gateQueries.forEach((q, i) => { const h = heldPlaces[i]?.href; const key = h ? heldKeyOfHref(h) : null; if (!q.data || !key) return; const [, , cluster, ns] = (h as string).split('/'); publishGatePretty(cluster, ns, prettyMapOf(q.data.rolloutGates)); publishHeldHere(key, heldHereOfDetail(q.data as never)); }); });
+	$effect(() => { gateQueries.items.forEach((q, i) => { const h = heldPlaces[i]?.href; const key = h ? heldKeyOfHref(h) : null; if (!q.data || !key) return; const [, , cluster, ns] = (h as string).split('/'); publishGatePretty(cluster, ns, prettyMapOf(q.data.rolloutGates)); publishHeldHere(key, heldHereOfDetail(q.data as never)); }); });
 	const gates = $derived(gatesOf(name, scenario));
 	const rowFor = (p: PlaceHold): TRow => {
 		const un = rowsOf(scenario, p.tier, p.label).find((r) => r.app === name);
@@ -241,7 +246,7 @@
 		const act = rowAction(r);
 		return { row: r, pinned: pins.has(p.place), approve, slipAction: r.group === 'failed' || act?.kind === 'approve' ? null : act, toggle: r.group === 'rest' ? null : () => flip(r.key), open: r.key === openKey };
 	};
-	const gateRows = $derived(holdRows(gates, places, only, name, pins, pinnedVersion(item?.holds ?? [])).filter((r) => r.holding && (r.kind === 'pin' || r.held.length > 0)));
+	const gateRows = $derived(holdRows(gates, places, only, name, pins, pinnedVersion(item?.holds ?? [])).filter((r) => r.holding && (r.kind === 'pin' || r.kind === 'paused' || r.held.length > 0)));
 	const current = $derived.by(() => { const h = (focus?.href ?? '').split('/').filter(Boolean); return h[0] === 'rollouts' ? { ns: h[2], name: h[3] } : null; });
 
 	/* the wait line (a waiting or held app): the Facia lead's words, from the same helpers */
@@ -269,7 +274,9 @@
 	const waitMessage = $derived(checkingNow ? (checkLeft ?? 'The health checks are running.') : waitsOnApproval ? approvalMessage(heldN, places.find((p) => p.href === stateRow?.href) ?? null, places) : cause);
 
 	/* the statement = the Apps tile's own: the failing place (the lead, else the first), its check line, Roll back (+ Retry, as the tab offers) + Open rollout */
-	const failRow = $derived(failing.find((r) => r.lead) ?? failing[0] ?? null);
+	const failRow = $derived(byFailRank(failing)[0] ?? null);
+	/* the rollout Overview banner's own lines, Details and class glyph (view-models/health-failures.ts bannerEvidence): the age is in the message, as there */
+	const failEv = $derived(failRow?.failure?.pool ? bannerEvidence(failRow.failure.pool, failRow.failure.pendingN ?? 0, failRow.failure.since ? formatTimeAgoCompact(failRow.failure.since, $now) : null) : null);
 	const failCheck = $derived(failRow?.failure ? { name: failRow.failure.check ?? failRow.failure.line, message: failRow.failure.check ? (failRow.failure.message ?? undefined) : undefined } : null);
 	const failAct = $derived(failRow ? rowAction(failRow) : null);
 	let retry = $state<'idle' | 'busy' | 'done' | 'error'>('idle');
@@ -358,7 +365,7 @@
 			{/if}
 			{#if built && lane && !pipeline}
 				<div class="ad-strip flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1" data-ad-strip>
-					<div class="min-w-0 basis-full sm:flex-1 sm:basis-0" use:lagFit><PromotionLane {lane} {calm} words yours={!!stateRow?.needsYou} youCan={(n) => { const p = places.find((x) => x.href === hrefFor(n)); return !!p && !!rowFor(p).needsYou; }} mutedRest {hrefFor} {current} sites reserve /></div>
+					<div class="min-w-0 basis-full sm:flex-1 sm:basis-0" use:lagFit><PromotionLane {lane} {calm} words yours={!!stateRow?.needsYou} youCan={(n) => { const p = places.find((x) => x.href === hrefFor(n)); return !!p && !!rowFor(p).needsYou; }} mutedRest {hrefFor} {current} sites reserve recovered={(n) => failureRecovered(hrefFor(n))} failedSince={(n) => failureSinceAt(hrefFor(n))} /></div>
 					<a href={href('/environments')} class="nav-link t-ui-sm shrink-0 !py-0 max-sm:mt-1 max-sm:min-h-11 max-sm:items-center sm:max-xl:hidden">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
 				</div>
 			{/if}
@@ -376,7 +383,8 @@
 			{/if}
 			{#if failRow}
 				<div data-ad-statement>
-					<StatementBanner severity="failed" title="Deployment failed" check={failCheck ?? undefined} observations={failRow.failure?.observations}
+					{#snippet failDetails()}{#if failEv}<FailureDetails pool={failEv.pool} />{/if}{/snippet}
+					<StatementBanner severity="failed" title="Deployment failed" check={failEv ? failEv.check : failCheck ?? undefined} observations={failEv ? failEv.observations : failRow.failure?.observations} message={failEv?.message} footnoteLabel={failEv ? 'Details' : undefined} footnoteBody={failEv ? failDetails : undefined}
 						primary={failAct ? { label: 'Roll back', href: actionHref(failAct), icon: UndoOutline, key: 'rollback' } : undefined}
 						secondary={[
 							{ label: retry === 'done' ? 'Retry started' : retry === 'error' ? 'Retry failed' : 'Retry', onclick: () => retryDeploy(failRow), busy: retry === 'busy', icon: PlaySolid, key: 'retry' },

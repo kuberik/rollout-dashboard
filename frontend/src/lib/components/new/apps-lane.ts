@@ -22,7 +22,7 @@ const NS: Partial<Record<string, NodeState>> = {
 	deploying: 'deploying',
 	checking: 'checking'
 };
-export const NOISY = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking']);
+export const NOISY = new Set<NodeState>(['failed', 'stuck', 'held', 'deploying', 'checking', 'paused']);
 export const nodeHref = (n: LaneNode) => {
 	const c = n.card as unknown as {
 		href?: string;
@@ -38,6 +38,7 @@ export function maskLane(a: TApp, lane: Lane): Lane {
 		const p = byHref.get(nodeHref(n));
 		if (!p) return n;
 		const want =
+			(p.state === 'checking' && p.bakePaused && !p.pinned ? 'paused' : undefined) ??
 			NS[placeStateWithPin(p.state, p.pinned)] ??
 			(p.currency === 'none'
 				? 'none'

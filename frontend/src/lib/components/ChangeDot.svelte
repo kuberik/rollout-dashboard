@@ -24,7 +24,7 @@
 	title={bead.title}
 	data-bead={bead.state}
 >
-	{#if bead.state !== 'landed'}<WaveMark mark={waveMark([{ state: SITE[bead.state] }])} />{/if}
+	{#if bead.state !== 'landed'}<WaveMark mark={waveMark([{ state: SITE[bead.state], recovered: bead.recovered }])} />{/if}
 	{#if bead.count !== null}<span class="cd-x">{bead.count}</span>
 	{:else}{#each bead.refs as r (r)}<span>{r}</span>{/each}{#if bead.more}<span class="cd-x">+{bead.more}</span>{/if}{/if}
 </svelte:element>

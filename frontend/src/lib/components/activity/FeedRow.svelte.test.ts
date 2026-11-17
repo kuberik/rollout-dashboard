@@ -22,3 +22,24 @@ describe('FeedRow manual deploy (QA #14 review)', () => {
 		expect(container.querySelector('.fr-from')?.textContent).toBe('aaa1111');
 	});
 });
+
+describe('FeedRow recovered failure', () => {
+	const base = { app: 'hello', href: '/x', verb: 'failed its health check', tone: 'failed' as const, age: '14:10' };
+	const mark = (extra: Record<string, unknown>) => {
+		const { container } = render(FeedRow, { props: { ...base, ...extra } });
+		const m = container.querySelector('.fr-mk')!.cloneNode(true) as HTMLElement;
+		m.querySelectorAll('.sr-only').forEach((e) => e.remove());
+		m.querySelectorAll('[title]').forEach((e) => e.removeAttribute('title'));
+		return { html: m.innerHTML, verb: container.querySelector('.fr-v')!.className };
+	};
+	test('words go neutral while the mark stays the failed mark; only a superseded failure takes the resolved mark', () => {
+		const live = mark({ live: true });
+		const recovered = mark({ live: false, markLive: true });
+		const superseded = mark({ live: false, markLive: false });
+		expect(recovered.html).toBe(live.html);
+		expect(recovered.verb).not.toContain('text-danger');
+		expect(live.verb).toContain('text-danger');
+		expect(superseded.html).not.toBe(live.html);
+		expect(mark({ live: false }).html).toBe(superseded.html);
+	});
+});

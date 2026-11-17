@@ -43,3 +43,11 @@ describe('moving rollup (what "N moving" counts)', () => {
 		expect(rp).toEqual([{ text: 'no releases yet', ink: 'subtle' }]);
 	});
 });
+
+describe('rollup: a recovered failure is failed, not failing', () => {
+	it('splits failing now from recovered', () => {
+		const rp = rollupParts([{ state: 'failed' }, { state: 'failed', recovered: true }, { state: 'failed', recovered: true }]);
+		expect(rp).toEqual([{ text: '1 failing', ink: 'danger' }, { text: '2 failed', ink: 'subtle' }]);
+		expect(rollupParts([{ state: 'failed', recovered: true }])).toEqual([{ text: '1 failed', ink: 'subtle' }]);
+	});
+});

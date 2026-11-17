@@ -6,4 +6,4 @@
 	let { class: className = '', children }: { class?: string; children: Snippet } = $props();
 </script>
 
-<ul class="divide-y divide-line-subtle overflow-hidden rounded-lg border border-line bg-surface {className}">{@render children()}</ul>
+<ul class="divide-y divide-line-subtle overflow-hidden rounded-md border border-line bg-surface {className}">{@render children()}</ul>

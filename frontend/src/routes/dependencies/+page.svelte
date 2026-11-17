@@ -45,13 +45,12 @@
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
-	import { ShareNodesSolid, ServerOutline, ArrowRightOutline } from 'flowbite-svelte-icons';
+	import { ShareNodesSolid, ServerOutline, ArrowRightOutline, ChevronDownOutline } from 'flowbite-svelte-icons';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import ClusterMark from '$lib/components/ClusterMark.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
 	import DependencyNetwork from '$lib/components/DependencyNetwork.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PartialDataNotice from '$lib/components/PartialDataNotice.svelte';
@@ -179,6 +178,8 @@ import { heldHereGates } from '$lib/view-models/held';
 	 * real, useful filter (the node IS placed in that column), just not an
 	 * environment, so it may not borrow that chip's identity mark.
 	 */
+	/* the namespace pills' fold (visual audit #20): closed, the filter row is one line */
+	let nsOpen = $state(false);
 	const realEnvs = $derived(graphEnvs.filter((e) => envThemes.has(e)));
 	const namespaceEnvs = $derived(graphEnvs.filter((e) => !envThemes.has(e)));
 
@@ -310,68 +311,11 @@ import { heldHereGates } from '$lib/view-models/held';
 </svelte:head>
 
 <div class="mx-auto w-full px-4 py-6 sm:px-6">
-	<!-- ══ THE HEAD BAND ════════════════════════════════════════════════════
-	     ⛔ THE `h1` IS `sr-only` NOW — THE PREMISE THAT KEPT IT DRAWN CHANGED
-	     UNDER US. (2026-09-02) This page used to be the one documented
-	     exception to the duplication rule: `Navbar.svelte`'s `currentSection`
-	     had no branch for `/dependencies`, so the breadcrumb rendered nothing
-	     and this `h1` was the page's ONLY visible name. `21e72da` gave the
-	     navbar a `/dependencies` branch (`kuberik | Dependencies`), so the
-	     breadcrumb now prints the same word this `h1` did, 25px above it — the
-	     exact duplication `/apps`, `/environments`, `/versions` and `/activity`
-	     were unvoiced for. The rule was always DUPLICATION, not position (see
-	     `lib/CLAUDE.md`); the page just moved from one side of it to the
-	     other.
-
-	     ⛔ NOT DELETED. The skip link lands on `main` and a11y asserts a
-	     level-1 heading exists, so `sr-only` — the mechanism every other
-	     unvoiced `h1` on this product uses — keeps the word announced first to
-	     a screen reader while costing zero pixels.
-
-	     WHAT FILLS THE SLOT IS THE ROLLUP, PROMOTED — same sentence as before,
-	     character for character, now carried by `PageHeader`'s list form (the
-	     same component `/rollouts`, `/apps` and `/activity` use): the count on
-	     the title's baseline, the sentence as `summary` below it. -->
-	{#if !query.isLoading && !query.isError}
-		<!-- ⭐ THE COUNT NAMES WHAT THE TITLE NAMES. (round 2 review, 2026-10-08)
-		     This used to count NODES (rollouts) beside a title that says
-		     "Dependencies" — a reader sees "Dependencies 24" and the page is
-		     about RULES, so the count was the wrong axis, and the summary
-		     then opened on a bare "rollout" with no lead-in. The header now
-		     counts `full.edges.length` (the rules — "a `RolloutDependency` or
-		     an `Environment` promotion order", this page's own subject); the
-		     rollout count moves into the summary as "across N rollouts",
-		     the axis the title does not already fix. -->
-		<PageHeader title="Dependencies" count={full.edges.length} summaryBelow>
-			{#snippet summary()}
-				{#if trivial}
-					across {full.nodes.length} rollout{full.nodes.length === 1 ? '' : 's'}, none depends on
-					another.
-				{:else}
-					rule{full.edges.length === 1 ? '' : 's'} across {full.nodes.length} rollout{full.nodes
-						.length === 1
-						? ''
-						: 's'}
-					{#if blocked.length > 0}
-						· <span class="text-fg">{blocked.length} holding</span>
-					{:else}
-						<!-- ⛔ A PAGE WITH NOTHING WRONG MUST STILL SAY SOMETHING.
-						     Naming the healthy verdict is what turns silence into an
-						     answer rather than "something is missing". -->
-						· nothing is waiting on another deploy
-					{/if}
-					{#if full.unlinkedRollouts > 0}
-						· {full.unlinkedRollouts} not in the graph
-					{/if}
-					{#if full.hasCycle}
-						· <span class="text-fg">contains a cycle</span>
-					{/if}
-				{/if}
-			{/snippet}
-		</PageHeader>
-	{:else}
-		<h1 class="sr-only">Dependencies</h1>
-	{/if}
+	<!-- THE HEAD BAND IS GONE (visual audit #20, 2026-11-13). The navbar already says "Dependencies", and a list page opens on its content
+	     (lib/CLAUDE.md: a title that repeats the navbar is a duplicate; no page-level count rollup under a visible title, owner 2026-11-03).
+	     The figures it printed live where they label something: "N of M links held" is the graph card's rollup and the Held links card's,
+	     and "N not in the graph" / "contains a cycle" are the graph card's own footnote. The `h1` stays for the skip link and a11y. -->
+	<h1 class="sr-only">Dependencies</h1>
 
 	<PartialDataNotice
 		errors={query.data?.clusterErrors ?? []}
@@ -459,7 +403,7 @@ import { heldHereGates } from '$lib/view-models/held';
 					     at every width: first on a phone (see the mobile-order
 					     note by `.dep-rail`), beside the graph in the rail at
 					     ≥1024. -->
-					<a href="#held-links" class="nav-link">Show held links</a>
+					<a href="#held-links" class="btn btn-secondary" data-action="held-links">Show held links</a>
 				{/snippet}
 			</AlertPanel>
 		{/if}
@@ -522,18 +466,38 @@ import { heldHereGates } from '$lib/view-models/held';
 						     state — one filter LANGUAGE — just no borrowed
 						     identity mark. -->
 						<span class="mx-1 hidden h-4 w-px bg-line sm:inline-block" aria-hidden="true"></span>
-						{#each namespaceEnvs as env (env)}
-							{@const sel = envFilters.includes(env)}
-							<button
-								type="button"
-								onclick={() => toggleEnv(env)}
-								aria-pressed={sel}
-								aria-label={`Namespace ${env}`}
-								title="Not bound to an Environment — grouped by namespace"
-								class="pill"
-								>{env}</button
-							>
-						{/each}
+						<!-- THE NAMESPACE GROUP FOLDS (visual audit #20, 2026-11-13). Sixteen namespace pills wrapped the row to three lines (104px,
+						     taller than the banner above it). Folded, the row is the tier chips + one `Namespaces N` pill, one line; a selected
+						     namespace stays visible so the active filter is never hidden. An inline disclosure, not a dropdown or popover
+						     (list rules: multi-select chips, no dropdowns); opened, the pills wrap in place as before. -->
+						<button
+							type="button"
+							class="pill"
+							aria-expanded={nsOpen}
+							aria-controls="dep-ns-filters"
+							onclick={() => (nsOpen = !nsOpen)}
+							data-ns-fold
+							>Namespaces <span class="tabular-nums text-fg-subtle">{namespaceEnvs.length}</span><ChevronDownOutline
+								class="h-3 w-3 text-fg-subtle transition-transform {nsOpen ? 'rotate-180' : ''}"
+								aria-hidden="true"
+							/></button
+						>
+						<span id="dep-ns-filters" class="contents">
+							{#each namespaceEnvs as env (env)}
+								{@const sel = envFilters.includes(env)}
+								{#if nsOpen || sel}
+									<button
+										type="button"
+										onclick={() => toggleEnv(env)}
+										aria-pressed={sel}
+										aria-label={`Namespace ${env}`}
+										title="Not bound to an Environment — grouped by namespace"
+										class="pill"
+										>{env}</button
+									>
+								{/if}
+							{/each}
+						</span>
 					{/if}
 					{#if envFilters.length > 0}
 						<button
@@ -559,6 +523,11 @@ import { heldHereGates } from '$lib/view-models/held';
 					</p>
 				{:else}
 					<DependencyNetwork {graph} {themeOf} {heldRequirement} orderKey={envFilters.join(',')} />
+				{/if}
+				{#if full.unlinkedRollouts > 0 || full.hasCycle}
+					<p class="t-meta mt-3 text-fg-subtle" data-graph-footnote>
+						{#if full.unlinkedRollouts > 0}{full.unlinkedRollouts} rollout{full.unlinkedRollouts === 1 ? '' : 's'} depend{full.unlinkedRollouts === 1 ? 's' : ''} on nothing and are not drawn{/if}{#if full.unlinkedRollouts > 0 && full.hasCycle}<span class="text-fg-disabled"> · </span>{/if}{#if full.hasCycle}<span class="text-fg">the graph contains a cycle</span>{/if}
+					</p>
 				{/if}
 			</Card>
 		{/snippet}

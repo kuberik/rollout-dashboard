@@ -22,6 +22,7 @@ import { rolloutPath } from '../source-dashboard';
 import type { PrCell, PrService, PrState } from './pr-pipeline';
 import { shortenVersion } from '../utils';
 import { lagLabel } from './env-rank';
+import { exhaustive } from './exhaustive';
 // Verbs come from NextStep's one table (DESIGN-LANGUAGE §3.19): the Gates-tab
 // link navigates, so it is "Review"; "Why held" has no step of its own.
 import { stepLabel } from '$lib/components/NextStep.svelte';
@@ -103,17 +104,20 @@ export type JourneyStop = {
 /** States where the subject has actually arrived — the line is solid up to
  *  the furthest one of these, and only one of these shows a time label that
  *  means "reached" rather than "next"/nothing. */
-const REACHED: ReadonlySet<NodeState> = new Set([
-	'newest',
-	'failed',
-	'stuck',
-	'held',
-	'deploying',
-	'checking'
-]);
+const REACHED: Record<NodeState, boolean> = {
+	newest: true,
+	failed: true,
+	stuck: true,
+	held: true,
+	deploying: true,
+	checking: true,
+	paused: true,
+	behind: false,
+	none: false
+};
 
 export function isReached(state: NodeState): boolean {
-	return REACHED.has(state);
+	return REACHED[state];
 }
 
 /* worst-first is `severity.ts`'s ONE order */
@@ -159,7 +163,7 @@ function worstOf(states: NodeState[]): NodeState {
  * what actually says "resolved" in the node's own label.
  */
 export function nodeStateFromCell(
-	cell: Pick<PrCell, 'state' | 'stuck' | 'held' | 'superseded'>
+	cell: Pick<PrCell, 'state' | 'stuck' | 'held' | 'superseded' | 'bakePaused'>
 ): NodeState {
 	if (cell.stuck) return 'stuck';
 	if (isEnvHeld(cell)) return 'held';
@@ -191,7 +195,7 @@ export function nodeStateFromCell(
 		case 'retrying':
 			return 'deploying';
 		case 'baking':
-			return 'checking';
+			return cell.bakePaused ? 'paused' : 'checking';
 		case 'queued':
 		case 'promoting':
 		case 'waiting-upstream':
@@ -261,7 +265,7 @@ export function pickNext(stops: JourneyStop[], tiers: Tier[]): JourneyStop | nul
 /** A callout is owed only when the frontier needs a person or is in flight —
  *  never on a plain `'newest'` frontier (live everywhere so far). */
 export function needsCallout(state: NodeState): boolean {
-	return state === 'failed' || state === 'stuck' || state === 'held' || state === 'deploying' || state === 'checking';
+	return state === 'failed' || state === 'stuck' || state === 'held' || state === 'deploying' || state === 'checking' || state === 'paused';
 }
 
 /** The frontier's state as one human word — "Live" once nothing needs a
@@ -278,10 +282,16 @@ export function frontierStateWord(state: NodeState): string {
 			return 'Held';
 		case 'checking':
 			return 'Checking';
+		case 'paused':
+			return 'Paused';
 		case 'deploying':
 			return 'Deploying';
-		default:
+		case 'newest':
+		case 'behind':
+		case 'none':
 			return 'Live';
+		default:
+			return exhaustive(state, 'Live');
 	}
 }
 
@@ -455,10 +465,15 @@ function actionFor(
 				: { kind: 'why-held', label: 'Why held', href };
 		case 'deploying':
 		case 'checking':
+		case 'paused':
 		case 'stuck':
 			return { kind: 'open', label: stepLabel('open'), href };
-		default:
+		case 'newest':
+		case 'behind':
+		case 'none':
 			return undefined;
+		default:
+			return exhaustive(state, undefined);
 	}
 }
 
@@ -477,7 +492,7 @@ function stopReason(cell: Pick<PrCell, 'reason' | 'holdCause'>, state: NodeState
 
 function cellNodeLabel(
 	env: string,
-	cell: Pick<PrCell, 'state' | 'revision' | 'superseded'>,
+	cell: Pick<PrCell, 'state' | 'revision' | 'superseded' | 'bakePaused'>,
 	nodeState: NodeState
 ): string {
 	const rev = cell.revision ? shortenVersion(cell.revision) : null;
@@ -499,7 +514,7 @@ function cellNodeLabel(
 		case 'retrying':
 			return `${env} · deploying${rev ? ` ${rev}` : ''}`;
 		case 'baking':
-			return `${env} · checking${rev ? ` ${rev}` : ''}`;
+			return `${env} · ${cell.bakePaused ? 'paused' : 'checking'}${rev ? ` ${rev}` : ''}`;
 		default:
 			break;
 	}
@@ -512,8 +527,14 @@ function cellNodeLabel(
 			return `${env} · held`;
 		case 'behind':
 			return `${env} · queued`;
-		default:
+		case 'newest':
+		case 'deploying':
+		case 'checking':
+		case 'paused':
+		case 'none':
 			return `${env} · not reached yet`;
+		default:
+			return exhaustive(nodeState, `${env} · not reached yet`);
 	}
 }
 
@@ -630,7 +651,7 @@ export function journeyFromChange(
 			else if (state === 'held') bump('held');
 			else if (state === 'stuck') bump('stuck');
 			else if (state === 'deploying') bump('deploying');
-			else if (state === 'checking') bump('checking');
+			else if (state === 'checking' || state === 'paused') bump('checking');
 			else if (state === 'newest') bump('live');
 		}
 		const state = worstOf(withState.map((w) => w.state));
@@ -678,8 +699,12 @@ function laneNodeLabel(env: string, n: Pick<LaneNode, 'state' | 'behind'>): stri
 			return `${env} · deploying`;
 		case 'checking':
 			return `${env} · checking`;
-		default:
+		case 'paused':
+			return `${env} · ${frontierStateWord('paused').toLowerCase()}`;
+		case 'none':
 			return `${env} · not reached yet`;
+		default:
+			return exhaustive(n.state, `${env} · not reached yet`);
 	}
 }
 
