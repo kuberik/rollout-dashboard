@@ -42,7 +42,8 @@
 	 * tint; how careful to be stays in the confirm LEVEL (typed in prod), not in the colour.
 	 */
 	import { Modal } from 'flowbite-svelte';
-	import { PlaySolid } from 'flowbite-svelte-icons';
+	import { ExclamationCircleSolid, PlaySolid } from 'flowbite-svelte-icons';
+	import { DIALOG_ERROR_CLASS, retryFailureText } from '$lib/view-models/failure-text';
 	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import {
 		confirmLevel,
@@ -82,7 +83,7 @@
 			await onConfirm();
 			open = false;
 		} catch (e) {
-			failure = e instanceof Error ? e.message : 'Failed to retry';
+			failure = retryFailureText(e);
 		} finally {
 			pending = false;
 		}
@@ -166,7 +167,12 @@
 	</div>
 
 	{#if failure}
-		<p role="alert" class="t-meta break-words border-t border-line px-5 py-2 text-danger" data-retry-error>{failure}</p>
+		<div class="px-5 pb-4">
+			<div role="alert" class={DIALOG_ERROR_CLASS} data-dialog-error>
+				<ExclamationCircleSolid class="mt-0.5 h-4 w-4 shrink-0" />
+				<p class="min-w-0 flex-1" data-retry-error>{failure}</p>
+			</div>
+		</div>
 	{/if}
 	<div class="flex justify-end gap-2 border-t border-line px-5 py-3">
 		<button type="button" class="btn btn-secondary btn-sm" onclick={() => (open = false)}

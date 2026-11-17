@@ -30,6 +30,7 @@
 	import EmptyGlyph from './EmptyGlyph.svelte';
 	import type { NodeState } from '$lib/view-models/promotion-lanes';
 	import { rolloutStateChip } from '$lib/view-models/rollout-state-chip';
+	import { DIALOG_ERROR_CLASS } from '$lib/view-models/failure-text';
 	import { failureRecovered } from '$lib/components/new/data';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import {
@@ -3793,7 +3794,12 @@
 		     (and the blocker paragraph after it) land flush against the
 		     sheet's actual bottom edge, not a phantom one 170px short of it. -->
 		{#if deployError}
-			<p role="alert" class="t-meta shrink-0 break-words border-t border-line px-4 py-2 text-danger" data-deploy-error>{deployError}</p>
+			<div class="shrink-0 px-4 pb-3">
+				<div role="alert" class={DIALOG_ERROR_CLASS} data-dialog-error>
+					<ExclamationCircleSolid class="mt-0.5 h-4 w-4 shrink-0" />
+					<p class="min-w-0 flex-1" data-deploy-error>{deployError}</p>
+				</div>
+			</div>
 		{/if}
 		<div
 			class="border-line flex shrink-0 items-center justify-between gap-2 border-t px-4 py-3 max-sm:min-h-11 max-sm:pb-[calc(12px+env(safe-area-inset-bottom))]"

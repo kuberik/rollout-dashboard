@@ -31,7 +31,7 @@
 	import { retryConfirm } from '$lib/view-models/retry-confirm';
 	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import { stalledKruiseName, hasFailedStepTests } from '$lib/view-models/retry-context';
-	import { failureText } from '$lib/view-models/failure-text';
+	import { failureText, RETRY_FAILED } from '$lib/view-models/failure-text';
 	import { retryActionHref } from '$lib/components/new/rollout-view';
 	import type { ManagedResourceStatus } from '../../types';
 
@@ -122,7 +122,7 @@
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ kruiseRolloutName: stalledKruiseName(managed) || '', testAction: '' })
 		});
-		if (!res.ok) throw new Error(await failureText('Failed to retry', res));
+		if (!res.ok) throw new Error(await failureText(RETRY_FAILED, res));
 		announce({ tone: 'success', message: 'Retry started', description: `${confirm.displayTag ?? name} · Check restarted`, logs: true });
 		await client.invalidateQueries({ queryKey: rolloutQueryOptions({ namespace, name, cluster }).queryKey });
 	}

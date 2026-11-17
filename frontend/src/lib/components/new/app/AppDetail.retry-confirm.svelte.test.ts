@@ -85,7 +85,7 @@ describe('AppDetail Retry confirmation', () => {
 	it('a failed Retry prints its reason inside the open confirm', async () => {
 		retryStatus = 500;
 		await typedRetry(mountApp('search-indexer'));
-		await waitFor(() => expect(document.querySelector('[data-retry-error]')?.textContent).toBe('Failed to retry deployment: nope'));
+		await waitFor(() => expect(document.querySelector('[data-retry-error]')?.textContent).toBe('Failed to retry: nope'));
 		expect(document.querySelector('#rcm-title')).not.toBeNull();
 	});
 	it('an accepted Retry closes the confirm and says "Retry started"', async () => {

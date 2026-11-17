@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import { failureText } from '$lib/view-models/failure-text';
+	import { failureText, retryOutcome, RETRY_FAILED } from '$lib/view-models/failure-text';
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { HUE_INK, HUE_SOLID } from '$lib/view-models/state-tone';
@@ -2482,7 +2482,7 @@
 			});
 
 			if (!response.ok) {
-				throw new Error(await failureText('Failed to retry deployment', response));
+				throw new Error(await failureText(RETRY_FAILED, response));
 			}
 
 			showToast = true;
@@ -2511,15 +2511,17 @@
 			await rolloutQuery.refetch();
 		} catch (error) {
 			console.error('Retry deployment error:', error);
+			const { message: failure, toast } = retryOutcome(error, rethrow);
+			// the confirm that is still open prints the failure itself; a toast as well would say it twice
+			if (!toast) throw new Error(failure);
 			showToast = true;
-			toastMessage = `Failed to retry: ${error instanceof Error ? error.message : 'Unknown error'}`;
+			toastMessage = failure;
 			toastDescription = '';
 			toastShowLogsAction = false;
 			toastType = 'error';
 			setTimeout(() => {
 				showToast = false;
 			}, 3000);
-			if (rethrow) throw new Error(toastMessage.replace(/^Failed to retry: /, ''));
 		}
 	}
 </script>

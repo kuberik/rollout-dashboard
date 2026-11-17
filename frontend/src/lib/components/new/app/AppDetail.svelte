@@ -2,7 +2,7 @@
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import RetryConfirmModal from '$lib/components/RetryConfirmModal.svelte';
 	import Toast from '$lib/components/Toast.svelte';
-	import { failureText } from '$lib/view-models/failure-text';
+	import { failureText, retryOutcome, RETRY_FAILED } from '$lib/view-models/failure-text';
 	import RolloutHeaderFlows from '$lib/components/RolloutHeaderFlows.svelte';
 	import { retryConfirm } from '$lib/view-models/retry-confirm';
 	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
@@ -326,14 +326,14 @@
 		retry = 'busy';
 		try {
 			const res = await fetch(apiPath(p[1], `/rollouts/${p[2]}/${p[3]}/retry`), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kruiseRolloutName: '', testAction: '' }) });
-			if (!res.ok) throw new Error(await failureText('Failed to retry deployment', res));
+			if (!res.ok) throw new Error(await failureText(RETRY_FAILED, res));
 			retry = 'done';
 			announceRetry({ tone: 'success', message: 'Retry started', description: `${retryDecision.displayTag ?? r.app} · Check restarted`, logsHref: `${r.href.replace(/\/$/, '')}/logs` });
 		} catch (e) {
 			retry = 'error';
-			const reason = e instanceof Error ? e.message : 'Unknown error';
-			if (rethrow) throw new Error(reason);
-			announceRetry({ tone: 'danger', message: `Failed to retry: ${reason}`, description: '', logsHref: '' });
+			const { message: failure, toast } = retryOutcome(e, rethrow);
+			if (!toast) throw new Error(failure);
+			announceRetry({ tone: 'danger', message: failure, description: '', logsHref: '' });
 		}
 		setTimeout(() => (retry = 'idle'), 3000);
 	}

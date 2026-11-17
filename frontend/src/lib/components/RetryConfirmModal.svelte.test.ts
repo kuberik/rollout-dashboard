@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import { render } from '@testing-library/svelte';
+import { render, fireEvent, waitFor } from '@testing-library/svelte';
 import RetryConfirmModal from './RetryConfirmModal.svelte';
 import { PlaySolid } from 'flowbite-svelte-icons';
 import type { DeployIntent } from '$lib/view-models/deploy-risk';
@@ -107,5 +107,27 @@ describe('the Retry dialog draws the same glyph as its triggers', () => {
 		const disc = d.querySelector('#rcm-title')!.parentElement!.parentElement!;
 		expect(confirm.querySelector('svg path')!.getAttribute('d')).toBe(play);
 		expect(disc.querySelector('svg path')!.getAttribute('d')).toBe(play);
+	});
+});
+
+/** A failed confirm prints inside the dialog as its own callout: icon + tinted panel in the danger role, above the footer. */
+describe('a failed Retry prints as the dialog callout', () => {
+	test('icon and tinted danger panel, inset above the footer, one sentence', async () => {
+		render(RetryConfirmModal, {
+			open: true,
+			intent: intent({ direction: 'retry', production: false }),
+			consequences: [],
+			tag: '1.4.0',
+			onConfirm: () => Promise.reject(new Error('Failed to retry: denied'))
+		});
+		const d = document.querySelector('dialog')!;
+		await fireEvent.click([...d.querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Retry')!);
+		await waitFor(() => expect(d.querySelector('[data-dialog-error]')).not.toBeNull());
+		const box = d.querySelector('[data-dialog-error]')!;
+		expect(box.getAttribute('role')).toBe('alert');
+		expect(box.className).toMatch(/bg-danger-tint/);
+		expect(box.className).toMatch(/rounded-md/);
+		expect(box.querySelector('svg'), 'an icon').not.toBeNull();
+		expect(box.querySelector('[data-retry-error]')!.textContent).toBe('Failed to retry: denied');
 	});
 });
