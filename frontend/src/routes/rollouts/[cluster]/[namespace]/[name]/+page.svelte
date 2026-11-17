@@ -2360,7 +2360,7 @@
 			}
 
 			// Auto-dismiss toast after 3 seconds
-			hideToastSoon();
+			hideToastSoon(toastType);
 		} catch (e) {
 			console.error('Failed to check for new versions:', e);
 			toastLoading = false;
@@ -2371,7 +2371,7 @@
 			toastType = 'error';
 
 			// Auto-dismiss toast after 3 seconds
-			hideToastSoon();
+			hideToastSoon(toastType);
 		} finally {
 			isReconciling = false;
 		}
@@ -2450,7 +2450,7 @@
 			toastType = 'success';
 
 			// Auto-hide toast after 3 seconds
-			hideToastSoon();
+			hideToastSoon(toastType);
 
 			// Refresh the rollout data
 			await rolloutQuery.refetch();
@@ -2463,7 +2463,7 @@
 			toastType = 'error';
 
 			// Auto-hide toast after 3 seconds
-			hideToastSoon();
+			hideToastSoon(toastType);
 		}
 	}
 
@@ -2500,7 +2500,7 @@
 			}
 			toastShowLogsAction = true;
 			toastType = 'success';
-			hideToastSoon();
+			hideToastSoon(toastType);
 			await rolloutQuery.refetch();
 		} catch (error) {
 			console.error('Retry deployment error:', error);
@@ -2512,7 +2512,7 @@
 			toastDescription = '';
 			toastShowLogsAction = false;
 			toastType = 'error';
-			hideToastSoon();
+			hideToastSoon(toastType);
 		}
 	}
 </script>
@@ -3471,7 +3471,7 @@
 							toastDescription = '';
 							toastShowLogsAction = false;
 							showToast = true;
-							hideToastSoon();
+							hideToastSoon(toastType);
 						}}
 						onError={(m) => {
 							toastType = 'error';
@@ -3479,7 +3479,7 @@
 							toastDescription = '';
 							toastShowLogsAction = false;
 							showToast = true;
-							hideToastSoon();
+							hideToastSoon(toastType);
 						}}
 					/>
 				{/if}
@@ -4941,7 +4941,7 @@
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		hideToastSoon();
+		hideToastSoon(toastType);
 		rolloutQuery.refetch();
 		justClearedPin = true;
 		setTimeout(() => (justClearedPin = false), 8000);
@@ -4952,7 +4952,7 @@
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		hideToastSoon();
+		hideToastSoon(toastType);
 	}}
 />
 
@@ -4977,7 +4977,7 @@
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		hideToastSoon();
+		hideToastSoon(toastType);
 		// The mutation is DONE now (unlike `onDeployStart`, which fires
 		// before it) — an explicit refetch here is what actually shrinks
 		// the poll gap `pendingAction` is bridging, rather than waiting for
@@ -4990,7 +4990,7 @@
 		toastDescription = '';
 		toastShowLogsAction = false;
 		showToast = true;
-		hideToastSoon();
+		hideToastSoon(toastType);
 	}}
 />
 

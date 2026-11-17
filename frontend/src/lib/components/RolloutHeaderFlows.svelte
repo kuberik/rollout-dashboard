@@ -115,7 +115,7 @@
 	function announce(next: NonNullable<typeof toast>) {
 		toast = next;
 		toastOpen = true;
-		hideToast();
+		hideToast(next.tone);
 	}
 	/** Rejects with the reason so the confirm prints it inside the open dialog; resolving closes the dialog and the success toast follows. */
 	async function retry() {

@@ -81,6 +81,7 @@
 	import FactList, { type Fact } from './FactList.svelte';
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
+	import { WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
 	import { tick } from 'svelte';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	import { resolveGateName } from '$lib/view-models/gate-name';
@@ -2347,9 +2348,7 @@
 					response.status === 500 &&
 					errorData.details?.includes('dashboard is not managing the wantedVersion field')
 				) {
-					throw new Error(
-						"Another controller owns this rollout's wanted version, so the dashboard cannot pin it."
-					);
+					throw new Error(WANTED_VERSION_OWNED_REASON);
 				}
 				const reason = [errorData.details, errorData.error, errorData.message].find((v) => typeof v === 'string' && v.trim());
 				const failed = direction === 'rollback' ? 'Failed to roll back' : 'Failed to change version';
@@ -2372,6 +2371,9 @@
 				// The pressed button was disabled while the request ran, so focus fell to <body>: put it back inside the dialog.
 				await tick();
 				confirmBtnEl?.focus();
+				// The callout takes room from the sheet's scrolling area on a phone: keep the field the person just typed in on screen.
+				const fields = rightContentEl?.querySelectorAll<HTMLElement>('textarea, input[type="text"]');
+				fields?.[fields.length - 1]?.scrollIntoView?.({ block: 'nearest' });
 			} else onError(message);
 			announce(message, 'assertive');
 		} finally {

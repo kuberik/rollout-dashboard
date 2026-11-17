@@ -47,6 +47,9 @@ export const placeStateWithPin = (state: EnvState, pinned: boolean | undefined):
 /** The one sentence for a disabled Roll back / pin / change-version control when another manager owns `spec.wantedVersion` (the Overview prints the same words). */
 export const WANTED_VERSION_OWNED_REASON = "Another controller owns this rollout's wanted version, so the dashboard cannot pin it.";
 
+/** The hover tooltip of the failure banner's Roll back: what it does, or, when another manager owns the field, the same reason its title and aria-describedby carry. */
+export const rollbackTooltip = (managed: boolean): string => (managed ? 'Revert to the previous version.' : WANTED_VERSION_OWNED_REASON);
+
 /**
  * May the dashboard write `spec.wantedVersion`? False only when ANOTHER manager owns the field (clearing it would be fought over). The ONE
  * predicate behind every Clear pin: the Overview's header, banner and compact row, the Gates tab's pin box and the dialog all disable on it,

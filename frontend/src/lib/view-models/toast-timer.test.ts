@@ -25,4 +25,15 @@ describe('toast hide timer', () => {
 		vi.advanceTimersByTime(1500); // 5s = 2s + 3s
 		expect(hide).toHaveBeenCalledTimes(1);
 	});
+	test('an error toast has no timer; a success after it hides on its own', () => {
+		vi.useFakeTimers();
+		const hide = vi.fn();
+		const arm = toastHideTimer(hide);
+		arm('danger');
+		vi.advanceTimersByTime(60_000);
+		expect(hide).not.toHaveBeenCalled();
+		arm('success');
+		vi.advanceTimersByTime(3000);
+		expect(hide).toHaveBeenCalledTimes(1);
+	});
 });

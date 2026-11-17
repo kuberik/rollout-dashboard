@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import RetryConfirmModal from '$lib/components/RetryConfirmModal.svelte';
 	import Toast from '$lib/components/Toast.svelte';
@@ -320,7 +321,13 @@
 	function announceRetry(t: NonNullable<typeof retryToast>) {
 		retryToast = t;
 		retryToastOpen = true;
-		hideRetryToast();
+		hideRetryToast(t.tone);
+	}
+	/** The Retry button was disabled while the request ran, so focus fell to <body> (or stayed on a dialog that is gone): put it back on Retry through the label swap. */
+	async function restoreRetryFocus() {
+		await tick();
+		const a = document.activeElement;
+		if (!a || a === document.body || (!showRetryConfirm && a.closest('dialog'))) document.querySelector<HTMLElement>('[data-action="retry"]')?.focus();
 	}
 	/** Posts the retry. Rejects with the reason (the typed confirm prints it inside itself); the toast follows either way once the dialog is gone. */
 	async function postRetry(r: TRow, rethrow = false) {
@@ -337,6 +344,7 @@
 			if (!toast) throw new Error(failure);
 			announceRetry({ tone: 'danger', message: failure, description: '', logsHref: '' });
 		}
+		await restoreRetryFocus();
 		setTimeout(() => (retry = 'idle'), 3000);
 	}
 	const hrefFor = (n: { card: unknown }) => (n.card as { href?: string }).href ?? '';
@@ -478,7 +486,7 @@
 		</div>
 	</div>
 
-	<RetryConfirmModal bind:open={showRetryConfirm} intent={retryDecision.intent} consequences={retryDecision.consequences} tag={retryDecision.displayTag} onConfirm={async () => { if (confirmRetryFor) await postRetry(confirmRetryFor, true); }} onClosedFailure={(m) => announceRetry({ tone: 'danger', message: m, description: '', logsHref: '' })} />
+	<RetryConfirmModal bind:open={showRetryConfirm} intent={retryDecision.intent} consequences={retryDecision.consequences} tag={retryDecision.displayTag} onConfirm={async () => { if (confirmRetryFor) await postRetry(confirmRetryFor, true); }} onClosedFailure={(m) => { announceRetry({ tone: 'danger', message: m, description: '', logsHref: '' }); void restoreRetryFocus(); }} />
 	{#snippet retryLogs()}<a href={retryToast?.logsHref} class="nav-link shrink-0">View logs</a>{/snippet}
 	<Toast bind:open={retryToastOpen} tone={retryToast?.tone ?? 'info'} message={retryToast?.message ?? ''} description={retryToast?.description ?? ''} action={retryToast?.tone === 'success' ? retryLogs : undefined} />
 	{#if rollbackRequest > 0}

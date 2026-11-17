@@ -3151,7 +3151,7 @@
 			onError={(m) => {
 				flowErrorMessage = m;
 				flowErrorOpen = true;
-				hideFlowError();
+				hideFlowError('danger');
 			}}
 		/>
 		<Toast bind:open={flowErrorOpen} tone="danger" message={flowErrorMessage} />

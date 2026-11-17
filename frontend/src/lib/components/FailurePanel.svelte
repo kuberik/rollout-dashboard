@@ -4,7 +4,7 @@
 	import { canHover } from '$lib/can-hover.svelte';
 	import type { Rollout, HealthCheck, KruiseRollout, RolloutTest } from '../../types';
 	import { PlaySolid, UndoOutline } from 'flowbite-svelte-icons';
-	import { WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
+	import { WANTED_VERSION_OWNED_REASON, rollbackTooltip } from '$lib/view-models/pin-hold';
 	import StatementBanner from './StatementBanner.svelte';
 	import ChangeVersionFlow from './ChangeVersionFlow.svelte';
 	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
@@ -278,9 +278,9 @@
 	secondary={retryFirst ? (rollbackShown ? [rollbackAct] : []) : canUpdate ? [{ ...retryAct, after: true }] : []}
 	tooltips={{
 		...(canUpdate ? { 'failure-retry-btn': 'Reset health checks and failed tests, then retry the deployment.' } : {}),
-		...(rollbackShown ? { 'failure-rollback-btn': 'Revert to the previous version.' + (!isDashboardManagingWantedVersion ? ' Disabled: wantedVersion managed externally.' : '') } : {})
+		...(rollbackShown ? { 'failure-rollback-btn': rollbackTooltip(isDashboardManagingWantedVersion) } : {})
 	}}
-	note={rollbackShown && !canHover.current && !isDashboardManagingWantedVersion ? "Another controller owns this rollout's wanted version, so the dashboard cannot pin it." : undefined}
+	note={rollbackShown && !canHover.current && !isDashboardManagingWantedVersion ? WANTED_VERSION_OWNED_REASON : undefined}
 >
 	{#snippet footnoteBody()}
 		{#if evidence}

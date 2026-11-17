@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pinLeadSentence } from './pin-hold';
+import { pinLeadSentence, rollbackTooltip, WANTED_VERSION_OWNED_REASON } from './pin-hold';
 
 describe('pinLeadSentence', () => {
 	it('a pinned rollout leads with the pin, and never says builds can deploy', () => {
@@ -13,5 +13,15 @@ describe('pinLeadSentence', () => {
 	});
 	it('an unpinned rollout has no pin lead', () => {
 		expect(pinLeadSentence({ pinnedTo: null, headline: 'x', consequence: 'y' })).toBeNull();
+	});
+});
+
+describe('rollbackTooltip', () => {
+	it('owned elsewhere: the same plain reason as the control\'s title and description, never the field name', () => {
+		expect(rollbackTooltip(false)).toBe(WANTED_VERSION_OWNED_REASON);
+		expect(rollbackTooltip(false)).not.toMatch(/wantedVersion/);
+	});
+	it('managed here: what the button does', () => {
+		expect(rollbackTooltip(true)).toBe('Revert to the previous version.');
 	});
 });

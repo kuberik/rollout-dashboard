@@ -98,6 +98,9 @@ describe('AppDetail Retry confirmation', () => {
 		await fireEvent.click([...m.getByRole('dialog').querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Cancel') as HTMLButtonElement);
 		await waitFor(() => expect(document.body.textContent).toContain('Failed to retry: nope'), { timeout: 3000 });
 		expect(document.querySelector('[data-retry-error]')).toBeNull();
+		// focus stays on the Retry button through its "Retry failed" label swap, never on <body>
+		await waitFor(() => expect((document.activeElement as HTMLElement | null)?.getAttribute('data-action')).toBe('retry'));
+		expect(document.activeElement!.textContent).toContain('Retry failed');
 	});
 	it('an accepted Retry closes the confirm and says "Retry started"', async () => {
 		await typedRetry(mountApp('search-indexer'));

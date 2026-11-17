@@ -910,15 +910,20 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 			}
 			return new Response(JSON.stringify({}), { status: 200 });
 		});
+		const scrolled: Element[] = [];
+		Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this); };
 		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
 		const confirmBtn = await screen.findByRole('button', { name: /^Roll back$/i });
-		await fireEvent.input(screen.getByPlaceholderText(NOTE_PLACEHOLDER), { target: { value: 'why' } });
+		const note = screen.getByPlaceholderText(NOTE_PLACEHOLDER);
+		await fireEvent.input(note, { target: { value: 'why' } });
 		confirmBtn.focus();
 		await fireEvent.click(confirmBtn);
 		await waitFor(() => expect(document.querySelector('[data-deploy-error]')).not.toBeNull());
 		expect(document.querySelector('[data-deploy-error]')!.textContent).toBe('Failed to roll back: denied');
 		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Roll back$/i })));
 		expect(document.activeElement).not.toBe(document.body);
+		// the callout shrinks the sheet's scrolling area: the field just typed in is scrolled back into view
+		expect(scrolled).toContain(note);
 	});
 
 	// ⭐ SUPERSEDED, round 3 (coordinator, whole-product consistency review).
