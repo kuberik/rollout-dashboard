@@ -34,7 +34,9 @@ if (!HTMLDialogElement.prototype.showModal) {
 }
 const cancel = (_m: ReturnType<typeof mountApp>) => fireEvent.click([...[...document.querySelectorAll('dialog[open]')].pop()!.querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Cancel') as HTMLButtonElement);
 const typedRetry = async (m: ReturnType<typeof mountApp>) => {
-	await fireEvent.click(await m.findByRole('button', { name: /^Retry$/ }));
+	const opener = await m.findByRole('button', { name: /^Retry$/ });
+	opener.focus();
+	await fireEvent.click(opener);
 	const input = (await m.findByLabelText(/to confirm/)) as HTMLInputElement;
 	await fireEvent.input(input, { target: { value: input.labels?.[0]?.querySelector('span')?.textContent ?? '' } });
 	await fireEvent.click([...m.getByRole('dialog').querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Retry') as HTMLButtonElement);
@@ -73,6 +75,10 @@ describe('AppDetail toasts', { timeout: 20_000 }, () => {
 		const m = mountApp('search-indexer');
 		await typedRetry(m);
 		await cancel(m);
+		// closing a confirm in flight hands focus back to its opener at once, not when the late answer arrives
+		await new Promise((r) => setTimeout(r, 60));
+		expect(retryStatus).toBe(500);
+		expect((document.activeElement as HTMLElement | null)?.getAttribute('data-action'), 'focus is on Retry while the request still runs').toBe('retry');
 		await waitFor(() => expect(toastVisibility.count).toBe(1), { timeout: 4000 });
 		await new Promise((r) => setTimeout(r, 3600));
 		expect(toastVisibility.count, 'still open past the success lifetime').toBe(1);

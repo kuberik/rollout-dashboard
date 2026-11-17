@@ -910,8 +910,8 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 			}
 			return new Response(JSON.stringify({}), { status: 200 });
 		});
-		const scrolled: Element[] = [];
-		Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this); };
+		const scrolledField: Element[] = [];
+		Element.prototype.scrollIntoView = function (this: Element) { scrolledField.push(this); };
 		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
 		const confirmBtn = await screen.findByRole('button', { name: /^Roll back$/i });
 		const note = screen.getByPlaceholderText(NOTE_PLACEHOLDER);
@@ -922,8 +922,42 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 		expect(document.querySelector('[data-deploy-error]')!.textContent).toBe('Failed to roll back: denied');
 		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Roll back$/i })));
 		expect(document.activeElement).not.toBe(document.body);
-		// the callout shrinks the sheet's scrolling area: the field just typed in is scrolled back into view
-		expect(scrolled).toContain(note);
+		// the field is never scrolled itself (that clipped its value); with it in view the pane stays put
+		expect(scrolledField).toEqual([]);
+	});
+
+	test('a failed Roll back that leaves the field out of view scrolls the pane, not the field', async () => {
+		fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.startsWith('/api/rollouts?namespace=')) return new Response(JSON.stringify(NAMESPACE_LIST_RESPONSE), { status: 200 });
+			if (url.includes('/change-version')) return new Response(JSON.stringify({ details: 'denied' }), { status: 500 });
+			return new Response(JSON.stringify({}), { status: 200 });
+		});
+		const scrolledField: Element[] = [];
+		Element.prototype.scrollIntoView = function (this: Element) { scrolledField.push(this); };
+		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
+		const confirmBtn = await screen.findByRole('button', { name: /^Roll back$/i });
+		const note = screen.getByPlaceholderText(NOTE_PLACEHOLDER);
+		await fireEvent.input(note, { target: { value: 'why' } });
+		const pane = note.closest('.cvm-scroll-fade, .sm\\:overflow-y-auto') as HTMLElement;
+		pane.style.overflowY = 'auto';
+		let top = 0;
+		Object.defineProperty(pane, 'scrollTop', { get: () => top, set: (v: number) => { top = v; }, configurable: true });
+		const rect = (top: number, bottom: number) => ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top, toJSON() {} }) as DOMRect;
+		const orig = Element.prototype.getBoundingClientRect;
+		Element.prototype.getBoundingClientRect = function (this: Element) {
+			if (this === pane) return rect(100, 600);
+			if (this === note) return rect(700, 740);
+			return orig.call(this);
+		};
+		try {
+			await fireEvent.click(confirmBtn);
+			await waitFor(() => expect(document.querySelector('[data-deploy-error]')).not.toBeNull());
+			await waitFor(() => expect(pane.scrollTop).toBe(172));
+			expect(scrolledField).toEqual([]);
+		} finally {
+			Element.prototype.getBoundingClientRect = orig;
+		}
 	});
 
 	// ⭐ SUPERSEDED, round 3 (coordinator, whole-product consistency review).

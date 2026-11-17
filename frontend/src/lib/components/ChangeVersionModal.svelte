@@ -82,6 +82,7 @@
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
 	import { WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
+	import { paneScrollDelta, scrollPaneOf } from '$lib/view-models/scroll-into-pane';
 	import { tick } from 'svelte';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	import { resolveGateName } from '$lib/view-models/gate-name';
@@ -2371,9 +2372,14 @@
 				// The pressed button was disabled while the request ran, so focus fell to <body>: put it back inside the dialog.
 				await tick();
 				confirmBtnEl?.focus();
-				// The callout takes room from the sheet's scrolling area on a phone: keep the field the person just typed in on screen.
+				// The callout takes room from the pane's scrolling area: if the field the person just typed in is now out of view, scroll the PANE (never the field).
 				const fields = rightContentEl?.querySelectorAll<HTMLElement>('textarea, input[type="text"]');
-				fields?.[fields.length - 1]?.scrollIntoView?.({ block: 'nearest' });
+				const field = fields?.[fields.length - 1];
+				const pane = field ? scrollPaneOf(field) : null;
+				if (pane && field) {
+					const delta = paneScrollDelta(pane.getBoundingClientRect(), field.getBoundingClientRect());
+					if (delta !== 0) pane.scrollTop += delta;
+				}
 			} else onError(message);
 			announce(message, 'assertive');
 		} finally {

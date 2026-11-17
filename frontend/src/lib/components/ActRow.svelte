@@ -118,11 +118,11 @@
 
 <div class="ar" class:ar-fill={fill} class:ar-end={align === 'end'} bind:this={root} data-act-row>
 	{#each items as { act, variant, phone } (act.key ?? act.label)}
-		{@const cls = `ar-item ar-${phone} ${act.phoneOnly ? 'ar-phoneonly' : ''} ${act.desktopOnly ? 'ar-desktoponly' : ''} relative z-[1] shrink-0 gap-1.5 ${variant === 'quiet' ? 'nav-link inline-flex h-8 min-h-0 items-center' : variant === 'primary' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}`}
+		{@const cls = `${act.busy ? 'opacity-60 cursor-progress' : ''} ar-item ar-${phone} ${act.phoneOnly ? 'ar-phoneonly' : ''} ${act.desktopOnly ? 'ar-desktoponly' : ''} relative z-[1] shrink-0 gap-1.5 ${variant === 'quiet' ? 'nav-link inline-flex h-8 min-h-0 items-center' : variant === 'primary' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}`}
 		{#if act.href}
 			<a href={act.href} class={cls} id={act.id} data-action={act.key} {...act.data} title={act.title} aria-label={act.ariaLabel} target={act.external ? '_blank' : undefined} rel={act.external ? 'noopener noreferrer' : undefined}>{@render face(act, variant)}</a>
 		{:else}
-			<button type="button" class={cls} id={act.id} data-action={act.key} {...act.data} title={act.title} aria-label={act.ariaLabel} aria-describedby={act.describedBy} disabled={act.busy || act.disabled} onclick={act.onclick}>{@render face(act, variant)}</button>
+			<button type="button" class={cls} id={act.id} data-action={act.key} {...act.data} title={act.title} aria-label={act.ariaLabel} aria-describedby={act.describedBy} disabled={act.disabled} aria-disabled={act.busy ? 'true' : undefined} onclick={act.busy ? undefined : act.onclick}>{@render face(act, variant)}</button>
 		{/if}
 	{/each}
 	{#if menu.length}

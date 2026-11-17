@@ -36,6 +36,8 @@
 	 * which the root layout reads to keep the header revealed — auto-hide
 	 * resumes the instant the toast closes. Non-floating (`floating={false}`)
 	 * render is the design specimen only and never registers.
+	 * SUPERSEDED for phones: a toast docks at the BOTTOM, 8px above the fixed bottom tab bar (`--tabbar-h`), so it never covers the rollout tabs or
+	 * the header; an error toast waits to be dismissed, and at the top it would have sat over the navigation until then.
 	 * Enter: 160ms fade + 8px rise; leave: 120ms fade. Status is the ICON's
 	 * colour only — the toast body stays neutral.
 	 */
@@ -121,7 +123,7 @@
 	<div
 		role={tone === 'danger' ? 'alert' : 'status'}
 		class="{floating
-			? 'fixed right-2 left-2 z-[60] top-[calc(env(safe-area-inset-top,0px)+4px)] sm:top-auto sm:right-4 sm:bottom-4 sm:left-auto sm:w-[380px]'
+			? 'fixed right-2 left-2 z-[60] bottom-[calc(var(--tabbar-h,0px)+8px)] sm:right-4 sm:bottom-4 sm:left-auto sm:w-[380px]'
 			: 'relative w-full max-w-[380px]'} flex items-start gap-3 rounded-md bg-overlay px-4 py-3"
 		style="box-shadow: var(--k-shadow-overlay)"
 		in:fly={{ y: 8, duration: 160, easing: cubicOut }}
