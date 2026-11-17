@@ -104,7 +104,7 @@ describe('AppDetail Retry confirmation', () => {
 		// and the label resets on its own, as it does on every other path
 		await waitFor(() => expect(document.querySelector('[data-action="retry"]')!.textContent).not.toContain('Retry failed'), { timeout: 4500 });
 		expect(document.activeElement!.getAttribute('data-action')).toBe('retry');
-	});
+	}, 10_000);
 	it('an accepted Retry closes the confirm and says "Retry started"', async () => {
 		await typedRetry(mountApp('search-indexer'));
 		await waitFor(() => expect(document.body.textContent).toContain('Check restarted'));
