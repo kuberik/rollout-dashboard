@@ -123,6 +123,35 @@ describe('History Roll back obeys the wanted-version ownership rule', () => {
 		expect(document.querySelector('[data-owned-reason]')?.textContent).toBe(WANTED_VERSION_OWNED_REASON);
 		expect(new URL(String(window.location.href)).searchParams.get('action')).toBeNull();
 	});
+	test('owned elsewhere: a ?deploy=<build>&action=rollback link (the diff page\'s) opens no dialog', async () => {
+		vi.stubGlobal('fetch', vi.fn(detailFetch('flux-controller')));
+		const payload = fleet(() => ({ at: 2, cameFrom: 1, hold: 'none' }));
+		const tags = (payload.rollouts.items[0].status.history as { version: { tag: string } }[]).map((h) => h.version.tag);
+		expect(tags.length).toBeGreaterThan(1);
+		store.value.update((p: any) => ({ ...p, url: new URL(`http://localhost/rollouts/rollout-a/alpha-dev/alpha-app/history?deploy=${encodeURIComponent(tags[1])}&action=rollback`) }));
+		render(WithQueryClient, { props: { component: History as any } });
+		await waitFor(() => expect(rowButtons().length).toBeGreaterThan(0), { timeout: 8000 });
+		await new Promise((r) => setTimeout(r, 600));
+		expect(document.querySelector('dialog[open]')).toBeNull();
+	});
+	test('owned by the dashboard: the same link opens the Roll back dialog (positive control)', async () => {
+		vi.stubGlobal('fetch', vi.fn(detailFetch(null)));
+		const payload = fleet(() => ({ at: 2, cameFrom: 1, hold: 'none' }));
+		const tags = (payload.rollouts.items[0].status.history as { version: { tag: string } }[]).map((h) => h.version.tag);
+		store.value.update((p: any) => ({ ...p, url: new URL(`http://localhost/rollouts/rollout-a/alpha-dev/alpha-app/history?deploy=${encodeURIComponent(tags[1])}&action=rollback`) }));
+		render(WithQueryClient, { props: { component: History as any } });
+		await waitFor(() => expect(document.querySelector('dialog[open]')).not.toBeNull(), { timeout: 8000 });
+	});
+	test('owned elsewhere: the cadence strip\'s hover card Roll back is disabled with the reason', async () => {
+		vi.stubGlobal('fetch', vi.fn(detailFetch('flux-controller')));
+		render(WithQueryClient, { props: { component: History as any } });
+		await waitFor(() => expect(document.querySelector('.cadence-segment[data-state="healthy"]')).not.toBeNull(), { timeout: 8000 });
+		await fireEvent.mouseEnter(document.querySelector('.cadence-segment[data-state="healthy"]')!);
+		const b = (await screen.findAllByRole('button', { name: /Roll back to this/ })).find((e) => !e.closest('[data-row-actions]') && !e.closest('.deploy-row')) as HTMLButtonElement;
+		expect(b, 'the hover card\'s Roll back').toBeTruthy();
+		expect(b.disabled).toBe(true);
+		expect(b.getAttribute('title')).toBe(WANTED_VERSION_OWNED_REASON);
+	});
 	test('owned elsewhere: the expanded panel\'s Roll back is disabled too', async () => {
 		vi.stubGlobal('fetch', vi.fn(detailFetch('flux-controller')));
 		render(WithQueryClient, { props: { component: History as any } });

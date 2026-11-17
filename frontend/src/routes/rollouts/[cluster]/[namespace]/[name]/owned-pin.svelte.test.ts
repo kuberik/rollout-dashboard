@@ -3,6 +3,28 @@ import { describe, test, expect, vi, afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 
+// jsdom has no `<dialog>` showModal/close and no Web Animations API; the
+// real ChangeVersionModal needs both. Same file-scoped polyfill the
+// Overview's `../change-version-param.svelte.test.ts` uses.
+if (typeof HTMLDialogElement !== 'undefined' && !HTMLDialogElement.prototype.showModal) {
+	HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+		this.setAttribute('open', '');
+	};
+	HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+		this.removeAttribute('open');
+	};
+}
+if (typeof Element !== 'undefined' && !Element.prototype.animate) {
+	(Element.prototype as any).animate = () => ({
+		finished: Promise.resolve(),
+		cancel: () => {},
+		play: () => {},
+		pause: () => {},
+		addEventListener: () => {},
+		removeEventListener: () => {}
+	});
+}
+
 /** The Overview refuses Roll back on a rollout another controller owns, and says why as text (a title is hover-only). */
 const state = vi.hoisted(() => ({
 	page: {
@@ -48,11 +70,11 @@ afterEach(() => vi.unstubAllGlobals());
 const ROLLOUT_DETAIL_URL = /\/api\/(?:clusters\/[^/]+\/)?rollouts\/[^/]+\/[^/]+(\?|$)/;
 
 /** Same shape `subject-detail.svelte.test.ts`'s own `detailFetch` uses. */
-function detailFetch() {
-	const payload = fleet();
+function detailFetch(owned = true) {
+	const payload = fleet(() => ({ at: 2, cameFrom: 1, hold: 'none' }));
 	const one = JSON.parse(JSON.stringify(payload.rollouts.items[0]));
-	one.metadata.managedFields = [{ manager: 'flux-controller', operation: 'Apply', fieldsV1: { 'f:spec': { 'f:wantedVersion': {} } } }];
-	one.spec = { ...(one.spec ?? {}), wantedVersion: one.status?.history?.[0]?.version?.tag ?? 'pinned' };
+	if (owned) one.metadata.managedFields = [{ manager: 'flux-controller', operation: 'Apply', fieldsV1: { 'f:spec': { 'f:wantedVersion': {} } } }];
+	if (owned) one.spec = { ...(one.spec ?? {}), wantedVersion: one.status?.history?.[0]?.version?.tag ?? 'pinned' };
 	const env = payload.environments.items[0];
 	const list = respond(payload) as any;
 	return async (input: any) => {
@@ -86,4 +108,20 @@ describe('the Overview on a rollout whose wanted version another controller owns
 			expect(btn.getAttribute('aria-describedby')).toBe('owned-reason');
 		}
 	});
+	test('owned elsewhere: ?action=rollback opens no dialog and clears the param', async () => {
+		state.page.params = { cluster: 'rollout-a', namespace: 'alpha-dev', name: 'alpha-app' };
+		state.page.url = new URL('http://localhost/rollouts/rollout-a/alpha-dev/alpha-app?action=rollback');
+		vi.stubGlobal('fetch', vi.fn(detailFetch(true)));
+		render(WithQueryClient, { props: { component: RolloutDetail as any } });
+		await waitFor(() => expect(document.querySelector('#owned-reason')).not.toBeNull(), { timeout: 8000 });
+		await new Promise((r) => setTimeout(r, 800));
+		expect(document.querySelector('dialog[open]')).toBeNull();
+	});
+	test('owned by the dashboard: the same link opens the Roll back dialog (positive control)', async () => {
+		state.page.params = { cluster: 'rollout-a', namespace: 'alpha-dev', name: 'alpha-app' };
+		state.page.url = new URL('http://localhost/rollouts/rollout-a/alpha-dev/alpha-app?action=rollback');
+		vi.stubGlobal('fetch', vi.fn(detailFetch(false)));
+		render(WithQueryClient, { props: { component: RolloutDetail as any } });
+		await waitFor(() => expect(document.querySelector('dialog[open]')).not.toBeNull(), { timeout: 12000 });
+	}, 20_000);
 });

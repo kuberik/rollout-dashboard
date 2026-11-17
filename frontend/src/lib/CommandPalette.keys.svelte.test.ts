@@ -95,6 +95,18 @@ describe('palette Tab, Enter and Space', { timeout: 60_000 }, () => {
 		await tick();
 		expect(options().indexOf(selected())).toBe(before + 1);
 	});
+	test('ArrowUp and ArrowDown pressed on a focused action hand focus back to the search box', async () => {
+		reactivePage.url = new URL('http://localhost/');
+		draw();
+		for (const key of ['ArrowDown', 'ArrowUp']) {
+			const act = await toRowWithAction();
+			act.focus();
+			expect(document.activeElement).toBe(act);
+			await fireEvent.keyDown(act, { key });
+			await tick();
+			expect(document.activeElement, key).toBe(input());
+		}
+	});
 	test('Enter on a focused action is not taken by the palette: it runs the action', async () => {
 		reactivePage.url = new URL('http://localhost/');
 		draw();
