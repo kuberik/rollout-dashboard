@@ -3167,7 +3167,7 @@
 						{/if}
 						{#if !isDashboardManagingWantedVersion}
 							<!-- THE REASON IS TEXT AT EVERY WIDTH (a tooltip is hover-only and a disabled button is out of the keyboard's reach): one quiet line under the row, the buttons it explains point at it with aria-describedby. -->
-							<p id="owned-reason" class="t-meta text-fg-subtle w-full" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>
+							<p id="owned-reason" class="t-meta text-fg-subtle max-lg:w-full lg:w-0 lg:min-w-full lg:text-right" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>
 						{/if}
 					{/if}
 				{/snippet}

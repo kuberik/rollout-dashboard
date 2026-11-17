@@ -282,7 +282,7 @@
 	{@render phoneActions()}
 	<!-- A Roll back is disabled when another manager owns the wanted version. The reason is TEXT at every width, once, under the actions (the Overview's own words): a title is hover-only and a disabled button is out of the keyboard's reach. -->
 	{#if ownedReasonShown}
-		<p id="owned-reason" class="t-meta text-fg-subtle" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>
+		<p id="owned-reason" class="t-meta text-fg-subtle {below ? 'mb-6' : ''}" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>
 	{/if}
 	{#if below}{@render below()}{/if}
 {/snippet}
