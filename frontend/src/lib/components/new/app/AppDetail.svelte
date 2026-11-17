@@ -341,7 +341,10 @@
 		} catch (e) {
 			retry = 'error';
 			const { message: failure, toast } = retryOutcome(e, rethrow);
-			if (!toast) throw new Error(failure);
+			if (!toast) {
+				setTimeout(() => (retry = 'idle'), 3000);
+				throw new Error(failure);
+			}
 			announceRetry({ tone: 'danger', message: failure, description: '', logsHref: '' });
 		}
 		await restoreRetryFocus();

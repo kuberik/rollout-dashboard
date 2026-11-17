@@ -101,6 +101,9 @@ describe('AppDetail Retry confirmation', () => {
 		// focus stays on the Retry button through its "Retry failed" label swap, never on <body>
 		await waitFor(() => expect((document.activeElement as HTMLElement | null)?.getAttribute('data-action')).toBe('retry'));
 		expect(document.activeElement!.textContent).toContain('Retry failed');
+		// and the label resets on its own, as it does on every other path
+		await waitFor(() => expect(document.querySelector('[data-action="retry"]')!.textContent).not.toContain('Retry failed'), { timeout: 4500 });
+		expect(document.activeElement!.getAttribute('data-action')).toBe('retry');
 	});
 	it('an accepted Retry closes the confirm and says "Retry started"', async () => {
 		await typedRetry(mountApp('search-indexer'));
