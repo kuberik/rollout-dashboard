@@ -124,3 +124,47 @@ describe('Enter on a rollout that needs a person', { timeout: 60_000 }, () => {
 		cleanup();
 	});
 });
+
+describe('a new query or scope starts the highlight on the first drawn row, and Enter opens it', { timeout: 60_000 }, () => {
+	const arrowDown = async (input: HTMLInputElement, n: number) => {
+		for (let i = 0; i < n; i++) await fireEvent.keyDown(input, { key: 'ArrowDown' });
+	};
+	test.each([
+		['d', 'ds', /checkout-api/],
+		['d', 'be', /search-indexer/],
+		['o', 'os', /apps/],
+		['v', 'vi', /activity/]
+	])('after "%s" and two ArrowDowns, typing "%s" puts the highlight back on row one; Enter opens that row', async (first, q, dest) => {
+		rec.live = '';
+		reactivePage.url = new URL('http://localhost/');
+		draw();
+		const input = document.body.querySelector<HTMLInputElement>('input')!;
+		await type(input, first);
+		await arrowDown(input, 2);
+		expect(options()[0].getAttribute('aria-selected')).toBe('false');
+		await type(input, q);
+		const rows = options();
+		expect(rows[0].getAttribute('aria-selected'), `first row for "${q}"`).toBe('true');
+		expect(rows.filter((r) => r.getAttribute('aria-selected') === 'true')).toHaveLength(1);
+		vi.mocked(goto).mockClear();
+		await fireEvent.keyDown(input, { key: 'Enter' });
+		expect(vi.mocked(goto)).toHaveBeenCalledTimes(1);
+		expect(lastGoto()).toMatch(dest);
+		expect(lastGoto()).not.toContain('action=');
+		cleanup();
+	});
+	test('a scope change (Tab on a Jump-to row) starts the highlight on the first drawn row', async () => {
+		rec.live = '';
+		reactivePage.url = new URL('http://localhost/');
+		draw();
+		const input = document.body.querySelector<HTMLInputElement>('input')!;
+		for (let i = 0; i < 40 && !/^Rollouts\b/.test(selectedText()); i++) await fireEvent.keyDown(input, { key: 'ArrowDown' });
+		expect(selectedText()).toMatch(/^Rollouts\b/);
+		await fireEvent.keyDown(input, { key: 'Tab' });
+		await tick();
+		await tick();
+		expect(options()[0].getAttribute('aria-selected')).toBe('true');
+		expect(options().filter((r) => r.getAttribute('aria-selected') === 'true')).toHaveLength(1);
+		cleanup();
+	});
+});

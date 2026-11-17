@@ -40,11 +40,18 @@ import { installLiveSource, type FleetSource } from '$lib/components/home/sketch
 import { buildGateContext } from '$lib/view-models/blocking-story';
 import type { Rollout, Environment } from '../types';
 
+// the fixture is read once for the file: every draw below only changes the stubbed failure starts and the fleet's order
+let fixture: { l: any; gh: any; hc: any } | null = null;
 function props(reverse = false) {
-	resetDemoState('calm');
-	const l = JSON.parse(respond('GET', '/api/rollouts').body ?? '{}');
-	const gh = JSON.parse(respond('GET', '/api/github/changes?days=365').body!);
-	const hc = JSON.parse(respond('GET', '/api/health-checks').body ?? 'null');
+	if (!fixture) {
+		resetDemoState('calm');
+		fixture = {
+			l: JSON.parse(respond('GET', '/api/rollouts').body ?? '{}'),
+			gh: JSON.parse(respond('GET', '/api/github/changes?days=365').body!),
+			hc: JSON.parse(respond('GET', '/api/health-checks').body ?? 'null')
+		};
+	}
+	const { l, gh, hc } = fixture;
 	installLiveSource({ rollouts: l.rollouts.items, environments: l.environments.items, rolloutDependencies: l.rolloutDependencies, kustomizations: [], kruiseRollouts: [], changes: gh.changes, changesState: 'ok', healthChecks: hc?.rolloutHealthChecks?.items ?? null, github: { configured: true, connected: true, login: 'demo' }, me: 'demo', now: new Date() } as unknown as FleetSource);
 	return {
 		open: true,

@@ -125,11 +125,12 @@ describe('the palette search highlight', { timeout: 60_000 }, () => {
 			expect(selectedText(), `query "${q}"`).toBe(fresh[q]);
 			expect(options()[0].getAttribute('aria-selected'), `first row for "${q}"`).toBe('true');
 		}
-		// Enter acts on that result (a failing rollout's primary action opens its page with the action)
+		// Enter opens that result
 		vi.mocked(goto).mockClear();
 		const hl = options().find((o) => o.getAttribute('aria-selected') === 'true')!;
 		const href = hl.querySelector('a')?.getAttribute('href');
 		await fireEvent.keyDown(input, { key: 'Enter' });
-		if (href) expect(String(vi.mocked(goto).mock.calls[0]?.[0])).toContain(href.split("?")[0]);
+		expect(href).toBeTruthy();
+		expect(String(vi.mocked(goto).mock.calls[0]?.[0])).toBe(href!.split('?')[0]);
 	});
 });
