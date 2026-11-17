@@ -2971,6 +2971,7 @@
 																	<button
 																		title={managesPin ? 'Roll back to this build' : WANTED_VERSION_OWNED_REASON}
 																		aria-label="Roll back to this build"
+																		aria-describedby={managesPin ? undefined : `owned-reason-${i}`}
 																		type="button"
 																		class="btn btn-secondary btn-xs"
 																		disabled={!managesPin}
@@ -3059,6 +3060,10 @@
 																	/>
 																{/if}
 															</div>
+															<!-- a disabled Roll back has no hover on a phone and the header's reason is a screen above: the same reason, beside the buttons (below lg, where this panel carries the actions) -->
+															{#if !managesPin && entry.version.tag !== rollout?.status?.history?.[0]?.version?.tag && entry.bakeStatus === 'Succeeded'}
+																<p id="owned-reason-{i}" class="t-meta text-fg-subtle mt-2 lg:hidden" data-owned-reason-inline>{WANTED_VERSION_OWNED_REASON}</p>
+															{/if}
 														</div>
 													{/if}
 												</div>

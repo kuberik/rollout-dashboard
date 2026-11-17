@@ -136,6 +136,25 @@ describe('History Roll back obeys the wanted-version ownership rule', () => {
 		for (const b of panel()) {
 			expect(b.disabled).toBe(true);
 			expect(b.getAttribute('title')).toBe(WANTED_VERSION_OWNED_REASON);
+			// a phone has no hover: the same reason sits beside the panel's button and describes it
+			const id = b.getAttribute('aria-describedby');
+			expect(id, 'the disabled Roll back names its reason').toBeTruthy();
+			const reason = document.getElementById(id!);
+			expect(reason?.textContent).toBe(WANTED_VERSION_OWNED_REASON);
+			expect(reason?.parentElement).toBe(b.closest('.hist-row-actions')?.parentElement);
 		}
+	});
+	test('owned by the dashboard: the expanded panel carries no inline reason', async () => {
+		vi.stubGlobal('fetch', vi.fn(detailFetch(null)));
+		render(WithQueryClient, { props: { component: History as any } });
+		await waitFor(() => expect(rowButtons().length).toBeGreaterThan(0), { timeout: 8000 });
+		const panel = () => rowButtons().filter((b) => !b.closest('[data-row-actions]'));
+		for (const r of document.querySelectorAll<HTMLElement>('.deploy-row button[aria-expanded="false"]')) {
+			await fireEvent.click(r);
+			if (panel().length) break;
+		}
+		await waitFor(() => expect(panel().length).toBeGreaterThan(0));
+		expect(document.querySelector('[data-owned-reason-inline]')).toBeNull();
+		for (const b of panel()) expect(b.getAttribute('aria-describedby')).toBeNull();
 	});
 });
