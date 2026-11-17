@@ -1874,21 +1874,11 @@
 												{@const approved = historyApprovalFact(entry.approval, byVerified)}
 												{@const commitTitle = commitTitleOf(i)}
 												{@const commitAuthor = commitAuthorOf(i)}
-												<!-- ⛔ THE AT-REST ROW BUTTON THAT USED TO LIVE HERE IS GONE
-							     (AD round 5, item 8): "on incident, remove the at-rest
-							     'Roll back to 3f1ed09' row button — RolloutTabHeader's
-							     primary header button already says it." Round 3 added a
-							     row-level always-visible "Roll back to {name}" on the
-							     last healthy entry specifically so an incident reader
-							     never needed hover to find it — correct instinct, wrong
-							     place: `RolloutTabHeader` now carries that exact button
-							     as the page's ONE primary action (`rollbackHref` wired at
-							     this page's own header call, pointing at History's own
-							     `?action=rollback`), so the row repeated a decision the
-							     header already states louder. The row's hover-reveal
-							     rollback button (below, desktop-only) and the expanded
-							     panel's own button are what remain — same two actions,
-							     no second always-on copy. -->
+												<!-- NO AT-REST ROLL BACK ON A ROW. An incident reader finds the rollback in
+							     the tab header: `RolloutTabHeader` carries it as the page's one primary
+							     action and opens the confirm in place (`RolloutHeaderFlows`), so a row
+							     does not repeat it. A row's own Roll back is hover-revealed (desktop
+							     only), and the expanded panel has its own button. -->
 
 												<div
 													use:registerEntry={i}
@@ -2307,13 +2297,13 @@
 										is unchanged and demoted to the second line, because seventeen
 										other callers depend on exactly what it does today.
 									-->
-														<!-- ⭐ THE ACTION COLUMN, RESERVED (hover-capable widths only; revealed on hover or focus-within, never on the running row or an expanded one). Roll back and
-										     View diff live in their own column BEFORE the time, so the summary
-										     truncates before it and nothing slides over text or over the date.
-										     It is empty (and invisible) at rest, on the running row and on an
-										     expanded one, and does not exist below lg, where the same two actions
+														<!-- ⭐ THE ACTION COLUMN, RESERVED (hover-capable widths only; revealed on hover or focus-within, never on the running row or an expanded one). Roll back lives in its own
+										     column BEFORE the time, so the summary truncates before it and nothing slides over text or over the date.
+										     It is exactly as wide as its one button (6.5rem), on every row, so the dates align and the summary keeps
+										     every pixel the button does not need. It is empty (and invisible) at rest, on the running row and on an
+										     expanded one, and does not exist below lg, where Roll back and View diff
 										     stay in the expanded panel. -->
-														<div class="hidden w-52 shrink-0 items-center justify-end lg:flex" data-row-actions>
+														<div class="hidden w-[6.5rem] shrink-0 items-center justify-end lg:flex" data-row-actions>
 															{#if !isCurrent && !isExpanded}
 																	<div
 																		class="pointer-events-none flex items-center justify-end gap-2 opacity-0 transition-opacity lg:group-hover:pointer-events-auto lg:group-hover:opacity-100 lg:focus-within:pointer-events-auto lg:focus-within:opacity-100"
@@ -2335,14 +2325,6 @@
 																				Roll back
 																			</button>
 																		{/if}
-																		<DiffLink
-																			{cluster}
-																			namespace={rollout?.metadata?.namespace ?? ''}
-																			name={rollout?.metadata?.name ?? ''}
-																			history={rollout?.status?.history ?? []}
-																			index={i}
-																			{atLimit}
-																		/>
 																	</div>
 															{/if}
 														</div>

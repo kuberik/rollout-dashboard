@@ -2042,7 +2042,7 @@ describe('deploy-risk: a retry states what it destroys', () => {
 		says(lines[2], 'latency is still failing right now. Nothing has re-checked this build since.');
 		says(
 			lines[3],
-			'Retrying resets that check to “Pending — reset due to new deployment”, which clears the failure detail shown above.'
+			'Retrying resets that check to “Pending — reset due to new deployment”, which clears the recorded failure detail.'
 		);
 	});
 
@@ -2074,7 +2074,7 @@ describe('deploy-risk: a retry states what it destroys', () => {
 		);
 		says(
 			many[3],
-			'Retrying resets those checks to “Pending — reset due to new deployment”, which clears the failure detail shown above.'
+			'Retrying resets those checks to “Pending — reset due to new deployment”, which clears the recorded failure detail.'
 		);
 	});
 

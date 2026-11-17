@@ -1515,9 +1515,9 @@ lib/view-models/deploy-risk.ts	code	Nothing has vouched for this build in …. T
 lib/view-models/deploy-risk.ts	code	Prod is selected. Type
 lib/view-models/deploy-risk.ts	code	Retries … in … — the same build whose last deploy here failed.
 lib/view-models/deploy-risk.ts	code	Retries the current build in … — the same build whose last deploy here failed.
-lib/view-models/deploy-risk.ts	code	Retrying resets that check to “Pending — reset due to new deployment”, which clears the failure detail shown above.
+lib/view-models/deploy-risk.ts	code	Retrying resets that check to “Pending — reset due to new deployment”, which clears the recorded failure detail.
 lib/view-models/deploy-risk.ts	code	Retrying resets this rollout’s health checks to “Pending — reset due to new deployment”, which erases the record that anything failed here.
-lib/view-models/deploy-risk.ts	code	Retrying resets those checks to “Pending — reset due to new deployment”, which clears the failure detail shown above.
+lib/view-models/deploy-risk.ts	code	Retrying resets those checks to “Pending — reset due to new deployment”, which clears the recorded failure detail.
 lib/view-models/deploy-risk.ts	code	Roll back
 lib/view-models/deploy-risk.ts	code	Several builds are selected, so type the rule's name.
 lib/view-models/deploy-risk.ts	code	This build already failed here. Type

@@ -18,7 +18,8 @@ describe('History deploy row: the actions have their own column, nothing slides 
 		expect(timeAt).toBeGreaterThan(slotAt);
 		const open = src.slice(src.lastIndexOf('<div', slotAt), slotAt);
 		expect(open).toMatch(/\bhidden\b/);
-		expect(open).toMatch(/\bw-52\b/);
+		expect(open).toMatch(/\bw-\[6\.5rem\]/);
+		expect(open).not.toMatch(/\bw-(52|48|44|40|36)\b/);
 		expect(open).toMatch(/\bshrink-0\b/);
 		expect(open).toMatch(/\blg:flex\b/);
 		expect(slot).toContain('Roll back to this build');
@@ -32,5 +33,18 @@ describe('History deploy row: the actions have their own column, nothing slides 
 	test('the time column holds only the clock and the age', () => {
 		expect(time).toContain('clockTime(entry.timestamp)');
 		expect(time).not.toContain('btn');
+	});
+	test('the column is as wide as its one button, so a summary keeps every pixel the button does not need', () => {
+		const open = src.slice(src.lastIndexOf('<div', slotAt), slotAt);
+		const rem = Number(/w-\[([\d.]+)rem\]/.exec(open)?.[1]);
+		// the Roll back button measures 92px (5.75rem): the column adds only a small gap
+		expect(rem).toBeGreaterThanOrEqual(5.75);
+		expect(rem).toBeLessThanOrEqual(7);
+		expect(slot).not.toContain('<DiffLink');
+	});
+	test('the running row and an expanded row draw no actions, but keep the column so the dates align', () => {
+		const open = src.lastIndexOf('<div', slotAt);
+		expect(src.slice(slotAt, slotAt + 200)).toMatch(/\{#if !isCurrent && !isExpanded\}/);
+		expect(slotAt).toBeGreaterThan(open);
 	});
 });

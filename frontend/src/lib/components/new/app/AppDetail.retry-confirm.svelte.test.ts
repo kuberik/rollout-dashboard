@@ -51,4 +51,12 @@ describe('AppDetail Retry confirmation', () => {
 		await fireEvent.click(confirm);
 		await waitFor(() => expect(posts.length).toBe(1));
 	});
+	it('Roll back opens its confirm on the app page (a button, not a link to the Overview)', async () => {
+		const { findByRole, queryByRole } = mountApp('search-indexer');
+		const btn = await findByRole('button', { name: /^Roll back$/ });
+		expect(queryByRole('link', { name: /^Roll back$/ })).toBeNull();
+		await fireEvent.click(btn);
+		expect(await findByRole('dialog', {}, { timeout: 5000 })).toBeTruthy();
+		expect(location.pathname).not.toMatch(/\/rollouts\//);
+	});
 });

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import RetryConfirmModal from '$lib/components/RetryConfirmModal.svelte';
+	import RolloutHeaderFlows from '$lib/components/RolloutHeaderFlows.svelte';
 	import { retryConfirm } from '$lib/view-models/retry-confirm';
 	import { rolloutMatchesEnvironment } from '$lib/source-dashboard';
 	import { newestFirst } from '$lib/instant';
@@ -294,11 +295,20 @@
 	const failActs = $derived.by(() => {
 		if (!failRow) return { primary: undefined, secondary: [] as Act[] };
 		return failureActs<Act>(failureRecovered(failRow.href), {
-			rollback: failAct ? { label: 'Roll back', href: actionHref(failAct), icon: UndoOutline, key: 'rollback' } : null,
+			rollback: failAct ? { label: 'Roll back', onclick: () => pressRollback(failRow), icon: UndoOutline, key: 'rollback' } : null,
 			retry: { label: retry === 'done' ? 'Retry started' : retry === 'error' ? 'Retry failed' : 'Retry', onclick: () => retryDeploy(failRow), busy: retry === 'busy', icon: PlaySolid, key: 'retry' },
 			rest: [{ label: 'Open rollout', href: failRow.href, after: true, key: 'open-rollout' }]
 		});
 	});
+	/* Roll back opens its confirm HERE, as Retry does and as the rollout tabs' headers do (the same host, `RolloutHeaderFlows`): Cancel leaves you on the app page. */
+	let rollbackRequest = $state(0);
+	let rollbackHref = $state('');
+	function pressRollback(r: TRow | null) {
+		if (!r) return;
+		rollbackHref = r.href;
+		rollbackRequest++;
+	}
+	const rollbackPath = $derived(rollbackHref.split('/').filter(Boolean));
 	let retry = $state<'idle' | 'busy' | 'done' | 'error'>('idle');
 	async function postRetry(r: TRow) {
 		const p = r.href.split('/').filter(Boolean);
@@ -449,6 +459,11 @@
 	</div>
 
 	<RetryConfirmModal bind:open={showRetryConfirm} intent={retryDecision.intent} consequences={retryDecision.consequences} tag={retryDecision.displayTag} onConfirm={() => { if (confirmRetryFor) void postRetry(confirmRetryFor); }} />
+	{#if rollbackRequest > 0}
+		{#key rollbackHref}
+			<RolloutHeaderFlows cluster={rollbackPath[1] ?? ''} namespace={rollbackPath[2] ?? ''} name={rollbackPath[3] ?? ''} request={0} {rollbackRequest} />
+		{/key}
+	{/if}
 	<ChangeVersionFlow bind:open={modalOpen} rollout={modalRollout} isPinVersionMode={false} initialSelectedVersion={modalVersion} initialExplanation={modalExplanation} cluster={modalCluster ?? ''} />
 {/if}
 

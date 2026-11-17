@@ -593,8 +593,8 @@ export function retryConsequences(intent: DeployIntent, facts: RetryFacts, tag?:
 			facts.failingChecks.length === 0
 				? 'Retrying resets this rollout’s health checks to “Pending — reset due to new deployment”, which erases the record that anything failed here.'
 				: facts.failingChecks.length > 1
-					? 'Retrying resets those checks to “Pending — reset due to new deployment”, which clears the failure detail shown above.'
-					: 'Retrying resets that check to “Pending — reset due to new deployment”, which clears the failure detail shown above.'
+					? 'Retrying resets those checks to “Pending — reset due to new deployment”, which clears the recorded failure detail.'
+					: 'Retrying resets that check to “Pending — reset due to new deployment”, which clears the recorded failure detail.'
 		);
 	}
 
