@@ -149,6 +149,9 @@ describe('Retry in flight and after a failure', () => {
 		await fireEvent.click(primary());
 		await waitFor(() => expect(primary().textContent!.trim()).toBe('Retrying…'));
 		expect(primary().querySelector('.animate-spin')).not.toBeNull();
+		// Cancel keeps working while the request runs
+		const cancel = [...d.querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Cancel') as HTMLButtonElement;
+		expect(cancel.disabled).toBe(false);
 		expect(d.getAttribute('aria-busy')).toBe('true');
 		expect(document.activeElement).toBe(d);
 		reject(new Error('Failed to retry: denied'));

@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import RolloutHeaderFlows from './RolloutHeaderFlows.svelte';
 import WithQueryClient from '$lib/testing/WithQueryClient.svelte';
+import { toastVisibility, resetToastVisibility } from '$lib/stores/toast-visibility.svelte';
 
 const goto = vi.fn();
 vi.mock('$app/navigation', async (orig) => ({ ...(await orig<Record<string, unknown>>()), goto: (...a: unknown[]) => goto(...a) }));
@@ -233,6 +234,34 @@ describe('a failure after the dialog was closed is still reported', () => {
 		await waitFor(() => expect(document.querySelector('[data-retry-error]')).not.toBeNull(), { timeout: 3000 });
 		await new Promise((r) => setTimeout(r, 300));
 		expect(sentences(/Failed to retry: nope/)).toBe(1);
+	});
+});
+
+/** The host's toast: a failure the operator walked away from waits to be dismissed; a success hides on its own. */
+describe('the toast lifetime, per tone', () => {
+	const cancelBtn = () => [...document.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent?.trim() === 'Cancel')!;
+	beforeEach(() => resetToastVisibility());
+	const typedRetry = async () => {
+		await waitFor(() => expect(document.querySelector('#rcm-title')).not.toBeNull());
+		await fireEvent.input(document.querySelector('#rcm-confirm')!, { target: { value: '064b655' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^Retry$/ }));
+	};
+	test('an error toast stays past the success lifetime', { timeout: 15_000 }, async () => {
+		retryStatus = 500;
+		delayMs = 300;
+		mount({ env: 'prod', failed: true, site: 'eu-west', request: 1 });
+		await typedRetry();
+		await fireEvent.click(cancelBtn());
+		expect(await screen.findByText('Failed to retry: nope', {}, { timeout: 3000 })).toBeInTheDocument();
+		await new Promise((r) => setTimeout(r, 3600));
+		expect(toastVisibility.count, 'the toast is still open').toBe(1);
+	});
+	test('a success toast hides by itself', { timeout: 15_000 }, async () => {
+		mount({ env: 'prod', failed: true, site: 'eu-west', request: 1 });
+		await typedRetry();
+		expect(await screen.findByText('Retry started', {}, { timeout: 3000 })).toBeInTheDocument();
+		expect(toastVisibility.count).toBe(1);
+		await waitFor(() => expect(toastVisibility.count, 'the toast closed itself').toBe(0), { timeout: 5000 });
 	});
 });
 
