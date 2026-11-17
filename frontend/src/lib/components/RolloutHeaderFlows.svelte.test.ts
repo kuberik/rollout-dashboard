@@ -98,11 +98,11 @@ async function confirmRollback() {
 }
 
 describe('header Roll back reports its result where the operator is', () => {
-	test('a failed change-version request shows "Failed to change version"', async () => {
+	test('a failed change-version request shows "Failed to roll back"', async () => {
 		changeStatus = 500;
 		mount({ env: 'dev', failed: false, rollbackRequest: 1 });
 		await confirmRollback();
-		expect(await screen.findByText(/^Failed to change version/)).toBeInTheDocument();
+		expect(await screen.findByText(/^Failed to roll back/)).toBeInTheDocument();
 	});
 	test('a failed request prints the server\'s reason inside the OPEN dialog (a toast would sit under its backdrop)', async () => {
 		changeStatus = 500;
@@ -113,7 +113,7 @@ describe('header Roll back reports its result where the operator is', () => {
 			expect(e).not.toBeNull();
 			return e!;
 		});
-		expect(err.textContent).toBe('Failed to change version: boom');
+		expect(err.textContent).toBe('Failed to roll back: boom');
 		expect(screen.getByPlaceholderText('Why are you rolling back?')).toBeInTheDocument();
 	});
 	test('an accepted one shows the success toast', async () => {
@@ -200,7 +200,7 @@ describe('a failure after the dialog was closed is still reported', () => {
 		mount({ env: 'dev', failed: false, rollbackRequest: 1 });
 		await confirmRollback();
 		await fireEvent.click(cancelBtn());
-		expect(await screen.findByText('Failed to change version: boom', {}, { timeout: 3000 })).toBeInTheDocument();
+		expect(await screen.findByText('Failed to roll back: boom', {}, { timeout: 3000 })).toBeInTheDocument();
 		expect(document.querySelector('[data-deploy-error]')).toBeNull();
 	});
 	test('Roll back: still open when it fails -> inline only, no toast', async () => {
@@ -210,7 +210,7 @@ describe('a failure after the dialog was closed is still reported', () => {
 		await confirmRollback();
 		await waitFor(() => expect(document.querySelector('[data-deploy-error]')).not.toBeNull(), { timeout: 3000 });
 		await new Promise((r) => setTimeout(r, 300));
-		expect(sentences(/Failed to change version: boom/)).toBe(1);
+		expect(sentences(/Failed to roll back: boom/)).toBe(1);
 	});
 	test('Retry: closed, then fails -> one toast with the dialog\'s sentence', async () => {
 		retryStatus = 500;
