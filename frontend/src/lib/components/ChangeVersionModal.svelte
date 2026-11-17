@@ -2320,6 +2320,8 @@
 	async function handleDeploy() {
 		if (!rollout || !selectedVersion || deploying) return;
 		deploying = true;
+		// The pressed button is about to be disabled; park focus on the dialog so it never drops to <body>.
+		void tick().then(() => confirmBtnEl?.closest('dialog')?.focus());
 		deployError = '';
 		onDeployStart();
 		try {
@@ -2502,6 +2504,8 @@
 	dismissable={!selectedVersion}
 	role="dialog"
 	aria-modal="true"
+	tabindex={-1}
+	aria-busy={deploying}
 	classes={{
 		body: selectedVersion ? 'max-sm:max-h-dvh' : 'max-sm:h-full',
 		close:

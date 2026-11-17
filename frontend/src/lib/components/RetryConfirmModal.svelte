@@ -83,6 +83,8 @@
 	let confirmBtnEl = $state<HTMLButtonElement | null>(null);
 	async function confirm() {
 		pending = true;
+		// The pressed button is about to be disabled; park focus on the dialog so it never drops to <body>.
+		void tick().then(() => confirmBtnEl?.closest('dialog')?.focus());
 		failure = '';
 		try {
 			await onConfirm();
@@ -123,6 +125,8 @@
 	size="sm"
 	role="dialog"
 	aria-modal="true"
+	tabindex={-1}
+	aria-busy={pending}
 	class="rounded-lg bg-overlay"
 	classes={{ body: 'p-0 space-y-0' }}
 	aria-labelledby="rcm-title"

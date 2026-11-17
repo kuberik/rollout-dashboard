@@ -883,6 +883,9 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 		// the header X is the same dismiss as Cancel, so it agrees with it
 		expect(screen.getByRole('button', { name: 'Close' })).not.toBeDisabled();
 		expect(document.querySelector('.animate-spin')).not.toBeNull();
+		const dlgEl = document.querySelector('dialog')!;
+		expect(dlgEl.getAttribute('aria-busy')).toBe('true');
+		expect(document.activeElement).toBe(dlgEl);
 
 		// A second click while pending must not fire a second request -- both
 		// the `disabled` attribute and `handleDeploy`'s own `deploying` guard

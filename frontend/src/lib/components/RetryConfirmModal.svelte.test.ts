@@ -149,6 +149,8 @@ describe('Retry in flight and after a failure', () => {
 		await fireEvent.click(primary());
 		await waitFor(() => expect(primary().textContent!.trim()).toBe('Retrying…'));
 		expect(primary().querySelector('.animate-spin')).not.toBeNull();
+		expect(d.getAttribute('aria-busy')).toBe('true');
+		expect(document.activeElement).toBe(d);
 		reject(new Error('Failed to retry: denied'));
 		await waitFor(() => expect(d.querySelector('[data-dialog-error]')).not.toBeNull());
 		await waitFor(() => expect(document.activeElement).toBe(primary()));
