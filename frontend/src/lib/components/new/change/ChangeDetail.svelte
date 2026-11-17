@@ -116,7 +116,7 @@
 	{#if checks?.href}<a href={checks.href} target="_blank" rel="noopener noreferrer" class="btn btn-secondary" data-link="checks">CI checks<span aria-hidden="true">↗</span></a>{/if}
 {/snippet}
 
-<div class="w-full px-4 py-6 tabular-nums sm:px-6" data-change-detail data-truth-kind="change-detail" data-truth-state={st.kind} data-truth-ref={c.refLabel} data-truth-author={c.author ?? ''} {...changeTruth(c, scenario)}>
+<div class="w-full px-4 py-6 sm:px-6" data-change-detail data-truth-kind="change-detail" data-truth-state={st.kind} data-truth-ref={c.refLabel} data-truth-author={c.author ?? ''} {...changeTruth(c, scenario)}>
 	<PageHeader title={c.title}>
 		{#snippet titleAfter()}
 			<!-- r4: the state beside the title, only when adverse (the strip and the banner say the rest); one coloured chip -->
@@ -160,7 +160,7 @@
 		{:else if st.kind === 'landed' || st.kind === 'healthy'}
 			<!-- CG10: no "Live in 3 prod regions" band: the strip's marks and the Places' rollup say it; a band that restates them costs a card -->
 		{:else}
-			<div class="flex items-start gap-3 rounded-lg border border-line bg-surface px-4 py-3">
+			<div class="flex items-start gap-3 rounded-md border border-line bg-surface px-4 py-3">
 				<span class="flex h-6 items-center"><StatusMark state="newest" /></span>
 				<div class="min-w-0"><p class="t-heading text-fg" data-statement-title>{st.title}</p></div>
 			</div>

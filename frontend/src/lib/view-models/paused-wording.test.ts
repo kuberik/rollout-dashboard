@@ -7,11 +7,12 @@ import { holdRows } from '$lib/components/new/app/app-model';
 
 const held = { bakeStatus: 'InProgress', bakeHoldStartTime: '2026-10-10T11:30:00Z' };
 
+const hold = { bakeHoldStartTime: '2026-11-17T10:00:00Z' };
 describe('history wording for a held bake', () => {
 	it('the current-row chip says Paused, and Checking without a hold', () => {
-		expect(currentRowChip('InProgress', null, true)).toBe('Paused');
-		expect(currentRowChip('InProgress', null)).toBe('Checking');
-		expect(currentRowChip('Failed', null, true)).toBe(currentRowChip('Failed', null));
+		expect(currentRowChip('InProgress', null, hold)).toEqual({ role: 'held', label: 'paused' });
+		expect(currentRowChip('InProgress', null)?.label).toBe('checking');
+		expect(currentRowChip('Failed', null, hold)).toEqual(currentRowChip('Failed', null));
 	});
 	it('the live line counts from the hold start', () => {
 		expect(liveStatusVerb(held)).toEqual({ word: 'Paused for', since: 'hold' });

@@ -9,6 +9,7 @@
 	 * and the one-pill-per-region filter row.
 	 */
 	import FilterChip from '$lib/components/FilterChip.svelte';
+	import SegmentedControl from '$lib/components/SegmentedControl.svelte';
 	import { displayTimeZone } from '$lib/timezone.svelte';
 	import { formatClockTime } from '$lib/display-time';
 	import { startOfDayMs } from '$lib/display-time';
@@ -1650,22 +1651,22 @@
 	{/if}
 {/snippet}
 
-{#snippet rangeControl(cls: string)}
+{#snippet rangeControl(cls: string, fill = false)}
 	<!-- ONE window control, single-select, in the first section header's action slot (controls sit on a section header's right).
-	     It governs the chart, the KPIs, the rail and the feed. `.btn.btn-ghost.btn-xs` + `aria-pressed`, as before. -->
-	<div class="items-center gap-0.5 {cls}" role="group" aria-label="Time range">
-		{#each CHART_RANGES as r (r.value)}
-			<button
-				type="button"
-				class="btn btn-ghost btn-xs {cls.includes('grid') ? 'justify-center' : ''}"
-				disabled={allEntries.length === 0}
-				aria-pressed={timelineRange === r.value}
-				onclick={() => {
-					rangeTouched = true;
-					timelineRange = r.value;
-				}}>{r.label}</button
-			>
-		{/each}
+	     It governs the chart, the KPIs, the rail and the feed. The shared SegmentedControl, the same object History draws.
+	     The wrapper carries the responsive show/hide: the control's own scoped `display` would beat a Tailwind `hidden`. -->
+	<div class={cls}>
+		<SegmentedControl
+			options={CHART_RANGES}
+			value={timelineRange}
+			label="Time range"
+			{fill}
+			disabled={allEntries.length === 0}
+			onChange={(r) => {
+				rangeTouched = true;
+				timelineRange = r;
+			}}
+		/>
 	</div>
 {/snippet}
 
@@ -1727,19 +1728,19 @@
 				{#if rolloutsQuery.isLoading}
 					<section aria-hidden="true">
 						<div class="flex h-8 items-center gap-2"><SkeletonBar width="w-4" height="h-4" /><SkeletonBar width="w-20" height="h-4" /></div>
-						<div class="skel-card mt-3 hidden h-[330px] rounded-lg border border-line bg-surface sm:block"></div>
-						<div class="skel-card mt-3 h-[470px] rounded-lg border border-line bg-surface sm:hidden"></div>
+						<div class="skel-card mt-3 hidden h-[330px] rounded-md border border-line bg-surface sm:block"></div>
+						<div class="skel-card mt-3 h-[470px] rounded-md border border-line bg-surface sm:hidden"></div>
 					</section>
 				{:else if allEntries.length > 0}
 					<section id="deploys" data-section="deploys" data-tour="activity-chart">
 						<SectionHeader title="Deploys" icon={ChartOutline} rollup={deploysRollup}>
-							{#snippet action()}{@render rangeControl('hidden sm:flex')}{/snippet}
+							{#snippet action()}{@render rangeControl('hidden sm:block')}{/snippet}
 						</SectionHeader>
-						<div class="act-chart rounded-lg border border-line bg-surface p-4 lg:px-3.5">
+						<div class="act-chart rounded-md border border-line bg-surface p-4 lg:px-3.5">
 							<!-- KPI head: Home's KpiTile, flat inside the card. Phone: a 2×2 grid (every figure at full size, none clipped);
 							     ≥640: one row of four with hairline dividers. -->
 							<!-- phone: the window control leaves the header (it would squeeze the rollup out) and sits as six equal buttons at the top of the card -->
-							{@render rangeControl('mb-4 grid grid-cols-6 sm:hidden')}
+							{@render rangeControl('mb-4 sm:hidden', true)}
 							<div class="act-kpis mb-4" role="group" aria-label="Deploy stats">
 								<div class="min-w-0 pr-4">
 									<KpiTile
@@ -1858,7 +1859,7 @@
 							{#each skelDayGroups as g (g.key)}
 								<section>
 									<div class="flex h-8 items-center gap-2"><SkeletonBar width="w-4" height="h-4" /><SkeletonBar width="w-24" height="h-4" /></div>
-									<div class="skel-card mt-3 rounded-lg border border-line bg-surface" style="height: {g.rows * skelRowHeight}px"></div>
+									<div class="skel-card mt-3 rounded-md border border-line bg-surface" style="height: {g.rows * skelRowHeight}px"></div>
 								</section>
 							{/each}
 						</div>
