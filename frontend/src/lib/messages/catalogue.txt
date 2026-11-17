@@ -188,9 +188,7 @@ lib/components/CadenceStrip.svelte	text	No earlier deploys
 lib/components/CadenceStrip.svelte	code	Not offered as a rollback
 lib/components/CadenceStrip.svelte	text	Roll back
 lib/components/CadenceStrip.svelte	aria-label	Roll back to this
-lib/components/CadenceStrip.svelte	title	Roll back to this
 lib/components/CadenceStrip.svelte	aria-label	Roll back to this build
-lib/components/CadenceStrip.svelte	title	Roll back to this build
 lib/components/CadenceStrip.svelte	code	Running for …
 lib/components/CadenceStrip.svelte	code	Running now
 lib/components/CadenceStrip.svelte	code	same build
