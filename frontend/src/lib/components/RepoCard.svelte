@@ -24,8 +24,8 @@
 	const deploys = $derived((model.apps?.length ?? 0) > 1 && shell === 'card' ? { text: `deploys ${model.apps!.slice(0, 2).join(', ')}${model.apps!.length > 2 ? ` +${model.apps!.length - 2}` : ''}`, full: model.apps!.join(', ') } : null);
 </script>
 
-<svelte:element this={shell === 'item' ? 'li' : 'article'} class="rc relative flex min-w-0 flex-col {shell === 'card' ? 'gap-2.5 rounded-lg border border-line bg-surface p-4' : 'gap-2 px-4 py-3 max-sm:px-3 hover:bg-hover'} {className}" data-repo={model.repo}>
-	<a {href} class="absolute inset-0 z-0 {shell === 'card' ? 'rounded-lg' : ''}" aria-label={model.repo}></a>
+<svelte:element this={shell === 'item' ? 'li' : 'article'} class="rc relative flex min-w-0 flex-col {shell === 'card' ? 'gap-2.5 rounded-md border border-line bg-surface p-4' : 'gap-2 px-4 py-3 max-sm:px-3 hover:bg-hover'} {className}" data-repo={model.repo}>
+	<a {href} class="absolute inset-0 z-0 {shell === 'card' ? 'rounded-md' : ''}" aria-label={model.repo}></a>
 	<header class="pointer-events-none relative z-[1] flex min-w-0 items-center gap-2">
 		{#if !team}<AppGlyph name={model.repo} size={20} class="shrink-0" />{/if}
 		<h3 class="min-w-0 truncate {team ? 't-ui font-medium' : 't-card-title'} text-fg">{model.repo}</h3>
