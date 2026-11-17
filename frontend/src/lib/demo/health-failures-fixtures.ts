@@ -13,6 +13,7 @@
  *   C5    search-indexer      Failed          prometheus-alert           Failed      S7  failed 14m ago for 3m, recovered (the witness keeps the bake failed)
  *   C6    catalog-api         Failed          datadog                    Failed      S5  failed 10m ago, OK 1m ago
  *   C7    inventory-api       InProgress      prometheus-alert           InProgress  S8  Pending: the provider's error is the message (5m)
+ *                                                                                      its wanted version is owned by another field manager (Flux): the header's Roll back is disabled and says why
  *
  * EVERY time is computed from `Date.now()` on each request (not from `hcAgo`, which is anchored to the server start and drifts: the take-A shots
  * read "1h ago"). `checkout-api` (the brief's name for C1) already exists in the mock fleet, so C1 is `checkout-gateway`.
@@ -345,6 +346,16 @@ export function healthFailuresFleet(): Obj {
 	};
 }
 
+/** C7's rollouts: another manager (Flux) applies `spec.wantedVersion`, so the dashboard cannot pin it and a Roll back (a pin) is unavailable */
+export function ownedElsewhere<R extends { metadata: Obj; spec: Obj; status: { wantedVersion?: unknown } }>(r: R): R {
+	if (r.metadata.name !== 'inventory-api') return r;
+	return {
+		...r,
+		metadata: { ...r.metadata, managedFields: [{ manager: 'flux-controller', operation: 'Apply', fieldsV1: { 'f:spec': { 'f:wantedVersion': {} } } }] },
+		spec: { ...r.spec, wantedVersion: r.status.wantedVersion }
+	};
+}
+
 export const HEALTH_FAILURES_APPS = ['checkout-gateway', 'checkout-web', 'payments-api', 'orders-hub', 'search-indexer', 'catalog-api', 'inventory-api'] as const;
 
 /** the newest change of each app: one title per app, so a row or a palette entry names ITS change and none reads as one change failing everywhere */
@@ -378,6 +389,6 @@ export function install(on = true, withReleaseSwitch = false): void {
 	}
 	build_();
 	setExtraHealthChecks({ one: healthFailuresChecks, fleet: healthFailuresFleet });
-	setExtraFixtures('health-failures', { environments: () => fixtures.flatMap(environmentsOf), rollouts: () => (build_(), fixtures.flatMap(rolloutsOf)), restamp });
+	setExtraFixtures('health-failures', { environments: () => fixtures.flatMap(environmentsOf), rollouts: () => (build_(), fixtures.flatMap(rolloutsOf).map(ownedElsewhere)), restamp });
 	registerExtraApps({ ...(withReleaseSwitch ? RS_GH : {}), ...ghOf(fixtures) }, { ...(withReleaseSwitch ? RS_MERGE : {}), ...mergeOf(fixtures) });
 }

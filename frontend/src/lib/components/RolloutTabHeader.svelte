@@ -147,6 +147,8 @@
 	const pressRetry = () => retryRequest++;
 	/** another field manager (Flux) owns `spec.wantedVersion`: Roll back is a pin, so it is disabled, with the Overview's own reason */
 	const managesPin = $derived(dashboardManagesWantedVersion(rollout));
+	/** a calm build's Roll back is disabled because another manager owns the wanted version */
+	const ownedQuiet = $derived(quietRollback && !isFailed && !!rollbackNow && !managesPin);
 	const rollbackTitle = $derived(managesPin ? `Roll back to ${rollbackDisplay}` : WANTED_VERSION_OWNED_REASON);
 	const pressRollback = () => {
 		if (managesPin) rollbackRequest++;
@@ -277,6 +279,10 @@
 {/snippet}
 {#snippet belowAll()}
 	{@render phoneActions()}
+	<!-- A calm build's Roll back is disabled when another manager owns the wanted version. A phone has no hover, so the reason is TEXT here (the Overview's own words), as it is under a failed build's pair. -->
+	{#if ownedQuiet}
+		<p class="t-meta text-fg-subtle lg:hidden" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>
+	{/if}
 	{#if below}{@render below()}{/if}
 {/snippet}
 
@@ -298,7 +304,7 @@
 	actions={actions || (inlineRollback && isFailed && rollbackNow) || (quietRollback && rollbackNow)
 		? actionsRow
 		: undefined}
-	below={below || (inlineRollback && isFailed && rollbackNow) ? belowAll : undefined}
+	below={below || (inlineRollback && isFailed && rollbackNow) || ownedQuiet ? belowAll : undefined}
 	titleAfter={starThenTitleAfter}
 	identity={chip || identityExtra ? identity : undefined}
 	meta={subtitle || metaRender || chip

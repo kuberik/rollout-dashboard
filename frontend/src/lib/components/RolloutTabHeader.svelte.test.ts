@@ -188,3 +188,32 @@ describe('RolloutTabHeader: the space under the phone action pair', () => {
 		expect(cell.nextElementSibling?.getAttribute('data-test-below')).toBe('1');
 	});
 });
+
+/** A calm build whose wanted version another manager owns: the disabled Roll back says why in visible text (a phone has no hover). */
+describe('RolloutTabHeader: a disabled quiet Roll back prints its reason', () => {
+	const calm = (owner: string | null) =>
+		({
+			metadata: {
+				name: 'checkout-worker',
+				namespace: 'checkout-worker-staging',
+				...(owner ? { managedFields: [{ manager: owner, operation: 'Apply', fieldsV1: { 'f:spec': { 'f:wantedVersion': {} } } }] } : {})
+			},
+			spec: { wantedVersion: 'a02f1c4' },
+			status: {
+				history: [
+					{ bakeStatus: 'Succeeded', version: { tag: 'a02f1c4', created: '2026-10-11T10:00:00Z' }, timestamp: '2026-10-11T10:00:00Z' },
+					{ bakeStatus: 'Succeeded', version: { tag: '3f1ed09', created: '2026-10-10T10:00:00Z' }, timestamp: '2026-10-10T10:00:00Z' }
+				]
+			}
+		}) as never;
+	test('owned by Flux: the button is disabled and the Overview\'s own reason is on the page as text', async () => {
+		const { WANTED_VERSION_OWNED_REASON } = await import('$lib/view-models/pin-hold');
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('flux-controller'), quietRollback: true } });
+		expect(container.querySelector<HTMLButtonElement>('[data-phone-end]')!.disabled).toBe(true);
+		expect(container.querySelector('[data-owned-reason]')?.textContent).toBe(WANTED_VERSION_OWNED_REASON);
+	});
+	test('owned by the dashboard: no reason line', () => {
+		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('rollout-dashboard'), quietRollback: true } });
+		expect(container.querySelector('[data-owned-reason]')).toBeNull();
+	});
+});
