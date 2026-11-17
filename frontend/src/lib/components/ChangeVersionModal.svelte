@@ -3808,7 +3808,7 @@
 		     (and the blocker paragraph after it) land flush against the
 		     sheet's actual bottom edge, not a phantom one 170px short of it. -->
 		{#if deployError}
-			<div class="shrink-0 px-4 pb-3">
+			<div class="shrink-0 px-4 pt-3 pb-3">
 				<div role="alert" class={DIALOG_ERROR_CLASS} data-dialog-error>
 					<ExclamationCircleSolid class="mt-0.5 h-4 w-4 shrink-0" />
 					<p class="min-w-0 flex-1" data-deploy-error>{deployError}</p>
