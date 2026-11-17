@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { siteOf } from '$lib/view-models/sites-waves';
 	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { failureRecovered } from '$lib/components/new/data';
 	import { checkHoldSentence } from '$lib/view-models/check-hold-sentence';
@@ -2391,6 +2392,8 @@
 		{rollout}
 		{cluster}
 		{autoDeploy}
+		environmentName={environment?.spec?.environment ?? null}
+		site={environment ? siteOf(environment) : null}
 		onSuccess={() => rolloutQuery.refetch()}
 	/>
 {/if}
