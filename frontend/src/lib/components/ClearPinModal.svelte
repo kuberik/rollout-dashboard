@@ -42,6 +42,7 @@
 	import { shortRevisionOrNull } from '$lib/version-utils';
 	import { announce } from '$lib/stores/announce.svelte';
 	import { CLEAR_PIN_LABEL, clearPinDialogTitle } from './pin-copy';
+	import { failureText } from '$lib/view-models/failure-text';
 	import { toastHideTimer } from '$lib/view-models/toast-timer';
 	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
 	import { rolloutFailureTarget } from '$lib/view-models/failure-target';
@@ -221,7 +222,7 @@
 				}
 			);
 			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}));
+				const errorData = await response.clone().json().catch(() => ({}));
 				if (
 					response.status === 500 &&
 					typeof errorData.details === 'string' &&
@@ -231,7 +232,7 @@
 						"Cannot clear pin: Dashboard is not managing this rollout's wantedVersion field. This field may be managed by another controller or external system."
 					);
 				}
-				throw new Error('Failed to clear pin');
+				throw new Error(await failureText('Failed to clear pin', response));
 			}
 			open = false;
 			notify('success', 'Successfully cleared version pin');

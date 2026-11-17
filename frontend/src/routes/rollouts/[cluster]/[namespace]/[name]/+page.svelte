@@ -3186,7 +3186,6 @@
 						{#if !isDashboardManagingWantedVersion}
 							<!-- THE REASON IS TEXT AT EVERY WIDTH (a tooltip is hover-only and a disabled button is out of the keyboard's reach): one quiet line under the row, the buttons it explains point at it with aria-describedby. -->
 							<p id="owned-reason" class="t-meta text-fg-subtle max-lg:w-full lg:w-0 lg:min-w-full lg:text-right" data-owned-reason>{WANTED_VERSION_OWNED_REASON}</p>
-							<span id="owned-clear-reason" class="sr-only">{WANTED_VERSION_OWNED_CLEAR_REASON}</span>
 						{/if}
 					{/if}
 				{/snippet}
@@ -5031,11 +5030,12 @@
 	}}
 />
 
-<!-- The toast's position is the shared Toast component's own house position
-     (bottom-right from `sm`, top under the header on a phone — see
-     `Toast.svelte`'s doc comment). This page's one addition is the
-     end-of-page `TOAST_DOCK_CLEARANCE` spacer above, so the rail's last rows
-     can scroll out from under a bottom-right toast at sm+. -->
+<!-- Success and loading toasts stack in the app's one toast dock (`FailureToasts` in the root layout: bottom-right from `sm`, bottom above the
+     tab bar on a phone). This page's one addition is the end-of-page `TOAST_DOCK_CLEARANCE` spacer above, so the rail's last rows can
+     scroll out from under a bottom-right toast at sm+. -->
+{#if !isDashboardManagingWantedVersion}
+	<span id="owned-clear-reason" class="sr-only">{WANTED_VERSION_OWNED_CLEAR_REASON}</span>
+{/if}
 <!-- ⭐ ROUND 3, ITEM 13: the retry toast's one action, "View logs" — only
      `retryDeployment` sets `toastShowLogsAction`, every other toast on this
      page resets it, so this snippet renders only on the toast it was asked

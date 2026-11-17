@@ -4,10 +4,14 @@
  * ("orders-hub in prod: Failed to roll back: <reason>"): on another rollout's page it is still clear whose request failed.
  * Success toasts stay page-local and time out; only failures live here.
  */
+import { nextToastOrder } from '$lib/toast-dock';
+
 export type FailureToast = { id: number; message: string };
 
+/** the list never grows past this: the oldest give way (a person cannot act on more than a screenful) */
+const KEEP = 25;
+
 let items = $state<FailureToast[]>([]);
-let seq = 0;
 
 export const failureToasts = {
 	get items(): readonly FailureToast[] {
@@ -31,7 +35,7 @@ export function failureToastText(target: string, message: string): string {
 export function reportFailure(target: string, message: string): void {
 	const text = failureToastText(target, message);
 	if (items.some((t) => t.message === text)) return;
-	items = [...items, { id: ++seq, message: text }];
+	items = [...items, { id: nextToastOrder(), message: text }].slice(-KEEP);
 }
 
 export function dismissFailure(id: number): void {

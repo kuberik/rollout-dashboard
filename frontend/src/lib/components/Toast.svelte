@@ -50,7 +50,7 @@
 		CloseOutline
 	} from 'flowbite-svelte-icons';
 	import StatusSpinner from './StatusSpinner.svelte';
-	import { toDock } from '$lib/toast-dock';
+	import { toDock, nextToastOrder } from '$lib/toast-dock';
 	import { HUE_INK } from '$lib/view-models/state-tone';
 	import { showToast, hideToast } from '$lib/stores/toast-visibility.svelte';
 	import { untrack, type Snippet } from 'svelte';
@@ -63,6 +63,7 @@
 		message = '',
 		dismissable = true,
 		onclose,
+		order = nextToastOrder(),
 		floating = true,
 		description = '',
 		children,
@@ -74,6 +75,8 @@
 		dismissable?: boolean;
 		/** the dismiss X was pressed (for a toast whose lifetime a store owns) */
 		onclose?: () => void;
+		/** where it sits in the dock's column (arrival order); a failure list passes its own so an older one never lands after a newer one */
+		order?: number;
 		/** `false` renders in flow (the design specimen); never false in product. */
 		floating?: boolean;
 		/**
@@ -128,7 +131,7 @@
 {#if open}
 	<div
 		role={tone === 'danger' ? 'alert' : 'status'}
-		use:toDock={{ enabled: floating, onDocked: () => (docked = true) }}
+		use:toDock={{ enabled: floating, onDocked: () => (docked = true), order }}
 		class="{docked
 			? 'relative w-full'
 			: floating

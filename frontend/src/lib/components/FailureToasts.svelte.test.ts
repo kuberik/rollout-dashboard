@@ -48,6 +48,27 @@ describe('FailureToasts', () => {
 		}
 	});
 
+	describe('the cap', () => {
+		it('shows the 3 newest failures and a "+N more failures" row that expands to all, oldest first', async () => {
+			const { container } = render(FailureToasts);
+			for (let i = 1; i <= 5; i++) reportFailure(`app-${i} in prod`, 'Failed to retry');
+			await Promise.resolve();
+			const dock = container.querySelector<HTMLElement>('[data-toast-dock]')!;
+			const texts = () => [...dock.children].map((c) => c.textContent!.trim().replace(/\s+/g, ' '));
+			await new Promise((r) => setTimeout(r, 0));
+			expect(texts()).toEqual(['+2 more failures', 'app-3 in prod: Failed to retry', 'app-4 in prod: Failed to retry', 'app-5 in prod: Failed to retry']);
+			await fireEvent.click(dock.querySelector('[data-failure-more]')!);
+			await new Promise((r) => setTimeout(r, 0));
+			expect(texts().map((t) => t.slice(0, 5))).toEqual(['app-1', 'app-2', 'app-3', 'app-4', 'app-5']);
+		});
+		it('the dock never grows past the screen: it is height-capped and scrolls', () => {
+			const { container } = render(FailureToasts);
+			const cls = container.querySelector<HTMLElement>('[data-toast-dock]')!.className;
+			expect(cls).toContain('max-h-[calc(100dvh-var(--tabbar-h,0px)-72px)]');
+			expect(cls).toContain('overflow-y-auto');
+		});
+	});
+
 	describe('Esc', () => {
 		const esc = () => fireEvent.keyDown(window, { key: 'Escape' });
 		it('dismisses the newest failure first', async () => {

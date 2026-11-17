@@ -51,6 +51,13 @@ describe('Clear pin toasts', () => {
 		await new Promise((r) => setTimeout(r, 3500));
 		expect(failureToasts.items.length).toBe(1);
 	}, 15_000);
+	test('the failure includes the server\'s reason and spells the place like every other failure ("prod · eu-west")', async () => {
+		vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"denied by policy"}', { status: 403 })));
+		render(ClearPinModal, { open: true, rollout: devRollout({ metadata: { name: 'checkout-api', namespace: 'checkout-api-prod-eu-west', labels: { environment: 'prod-eu-west' } } }) });
+		await fireEvent.click(screen.getByRole('button', { name: /^Clear pin$/ }));
+		await waitFor(() => expect(failureToasts.items.length).toBe(1));
+		expect(failureToasts.items[0].message).toBe('checkout-api in prod · eu-west: Failed to clear pin: denied by policy');
+	});
 	test('a successful Clear pin hides by itself', async () => {
 		await press(200);
 		await waitFor(() => expect(toastVisibility.count).toBe(1));

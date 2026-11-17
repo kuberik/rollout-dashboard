@@ -153,6 +153,11 @@ describe('rollout page: the header after a Change version submit', () => {
 		await new Promise((r) => setTimeout(r, 100));
 		expect(document.activeElement, 'focus is on the opener while the request still runs').toBe(opener());
 		expect(opener().disabled).toBe(false);
+		// pressing the busy button again opens nothing
+		const before = dlgs().length;
+		await fireEvent.click(opener());
+		await new Promise((r) => setTimeout(r, 300));
+		expect(dlgs().length).toBe(before);
 	}, 40_000);
 });
 

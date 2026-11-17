@@ -21,4 +21,17 @@ describe('the failure toast list', () => {
 		dismissFailure(failureToasts.items[0].id);
 		expect(failureToasts.items).toEqual([]);
 	});
+	it('the same failure on two sites is two toasts, never one', () => {
+		reportFailure('checkout-api in prod · eu-central', 'Failed to roll back: denied');
+		reportFailure('checkout-api in prod · us-east-1', 'Failed to roll back: denied');
+		expect(failureToasts.items.map((t) => t.message)).toEqual([
+			'checkout-api in prod · eu-central: Failed to roll back: denied',
+			'checkout-api in prod · us-east-1: Failed to roll back: denied'
+		]);
+	});
+	it('the list is capped: the oldest give way', () => {
+		for (let i = 0; i < 30; i++) reportFailure(`app-${i} in prod`, 'Failed to retry');
+		expect(failureToasts.items.length).toBe(25);
+		expect(failureToasts.items[0].message).toBe('app-5 in prod: Failed to retry');
+	});
 });

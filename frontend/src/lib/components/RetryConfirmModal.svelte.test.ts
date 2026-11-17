@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, fireEvent, waitFor } from '@testing-library/svelte';
 import RetryConfirmModal from './RetryConfirmModal.svelte';
+import RetryConfirmModalHarness from './RetryConfirmModal.harness.svelte';
 import { PlaySolid } from 'flowbite-svelte-icons';
 import type { DeployIntent } from '$lib/view-models/deploy-risk';
 
@@ -168,5 +169,11 @@ describe('the close X', () => {
 		const buttons = [...d.querySelectorAll('button')];
 		expect(buttons[0].getAttribute('aria-label')).toBe('Close');
 		expect(buttons.filter((b) => b.getAttribute('aria-label') === 'Close').length).toBe(1);
+	});
+	test('pressing it closes the dialog', async () => {
+		render(RetryConfirmModalHarness, { intent: intent({ direction: 'retry', production: false }) });
+		expect(document.querySelector('[data-open]')!.textContent).toBe('true');
+		await fireEvent.click(document.querySelector<HTMLButtonElement>('dialog button[aria-label="Close"]')!);
+		await waitFor(() => expect(document.querySelector('[data-open]')!.textContent).toBe('false'));
 	});
 });
