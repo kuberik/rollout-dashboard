@@ -730,9 +730,9 @@
 					     `hello-frontend-app` spill out of the panel on a page where it
 					     used to wrap. The disc contributes 0 to the group's min-content
 					     (−56 + 40 + 16), so the floor is byte-identical to the old one. -->
-					<div class="ap-title-line flex items-center">
-						<div class="ap-disc-slot relative mr-6 -ml-16 h-0 w-10 shrink-0">
-							<div class="ap-disc-pos absolute top-0 left-0 h-10 w-10 -translate-y-1/2">
+					<div class="flex items-center">
+						<div class="relative mr-6 -ml-16 h-0 w-10 shrink-0">
+							<div class="absolute top-0 left-0 h-10 w-10 -translate-y-1/2">
 								{#if pulse}
 									<!-- ⭐ D-2 REOPENED TWICE (2026-10-08, design reviewer +
 									     coordinator, via fix-dash): the original `animate-alert-halo`
@@ -1281,97 +1281,5 @@
 	/* follow (r34 needs-you r2): a fixed text track and the actions right after it */
 	@container (min-width: 640px) {
 		.ap-follow .ap-grid { grid-template-columns: 2.5rem minmax(30ch, 44rem) auto; justify-content: start; }
-	}
-	/* ⭐ PHONE: THE DISC GOES INLINE, THE TEXT GETS THE WIDTH (visual audit #9, 2026-11-13).
-	   Below 640px of banner width the 48px icon column + 16px gap cost 84px of a 343px banner
-	   (24%), so the headline wrapped inside a region name ("prod · eu-" / "west") and the body
-	   ran in a 239px (/rollouts) to 119px (/activity) track. Here the icon column collapses to
-	   0, the disc shrinks to 24px and sits on the headline's first line (24px line box, so the
-	   centres match without the h-0 trick), and every row under it starts at the banner's own
-	   left padding. From 640 up nothing changes: 40px disc, halo, the 48px column.
-	   The title stays ONE text node (tests and find-in-page read it whole), so a hyphenated
-	   name can still break at its hyphen; the 303px track is what keeps "prod · eu-west" whole. */
-	@container (max-width: 639.98px) {
-		.ap-grid {
-			grid-template-columns: 0 minmax(0, 1fr) auto;
-			column-gap: 0;
-		}
-		.ap-headline-row {
-			min-height: 0;
-			align-items: flex-start;
-		}
-		.ap-title-line {
-			align-items: flex-start;
-		}
-		.ap-disc-slot {
-			margin: 0 0.625rem 0 0;
-			height: 1.5rem;
-			width: 1.5rem;
-		}
-		.ap-disc-pos {
-			height: 1.5rem;
-			width: 1.5rem;
-			translate: none;
-		}
-		.ap-cq .ap-disc {
-			height: 1.5rem;
-			width: 1.5rem;
-			margin: 0;
-		}
-		.ap-cq .ap-disc :global(svg) {
-			height: 0.875rem;
-			width: 0.875rem;
-		}
-	}
-	/* PHONE: ONE LEADING MARK, EIGHT PIXELS BETWEEN FACTS, SIXTEEN BEFORE THE DECISION (PR #178 review, owner 2026-11-17: "the second row has an icon too and also feels crammed").
-	   The title's 24px disc is the only leading mark. The check line's class glyph (bug / trend / exclamation) is hidden here: the banner's check line is always danger, its class is said by the figure caption or the check name, and failing vs recovered is said in words by the title and the sentence ("Recovered at 06:57"). The recovered ring lives in Details (FailureDetails), not in this row, so it is unchanged. The change line's author avatar is hidden too so a wrapped author row starts with text; the name (or "you") stays.
-	   Rhythm on the 4px scale: title -> body 8, body row -> body row 8 (the message body's own column already uses gap-2; the change line's mt-1 becomes 8 and its wrap gap 4), body -> Details 8, Details -> actions 16. Type, colours, banner padding, disc and buttons are untouched. */
-	@container (max-width: 639.98px) {
-		.ap-message-row {
-			margin-top: 0.5rem;
-		}
-		.ap-message-row > :global(:first-child) {
-			margin-top: 0;
-		}
-		.ap-message-row > :global(.ap-change:not(:first-child)) {
-			margin-top: 0.5rem;
-		}
-		/* the author stays on the change line behind its rule; the title truncates first (a wrap left "you" alone on a row) */
-		.ap-change > span {
-			row-gap: 0.25rem;
-			flex-wrap: nowrap;
-		}
-		.ap-change > span > :global(:first-child) {
-			flex: 0 1 auto;
-			min-width: 0;
-		}
-		/* the author keeps its own width up to a third of the line and truncates past that, so build · title · #PR always has two thirds and the title (never "#54") gives way */
-		.ap-change [data-ap-author] {
-			display: block;
-			flex: 0 0 auto;
-			max-width: 33%;
-			overflow: hidden;
-			text-overflow: ellipsis;
-		}
-		/* a wrapped body line never ends on a one-word orphan ("approval" alone at 320) */
-		.ap-message-row {
-			text-wrap: pretty;
-		}
-		/* the multi-fact check line's dot-list keeps no 4px focus slack above it, so figure -> condition row is 8px with or without the scope */
-		.ap-message-row :global(.check-line .dot-list) {
-			margin-bottom: 0;
-			padding-top: 0;
-			padding-bottom: 0;
-		}
-		.ap-message-row :global(.check-glyph),
-		.ap-change [data-ap-author] > :global(:first-child) {
-			display: none;
-		}
-		.ap-grid .ap-disclosure-cell {
-			margin-top: 0.5rem;
-		}
-		.ap-grid .ap-actions-cell {
-			margin-top: 1rem;
-		}
 	}
 </style>
