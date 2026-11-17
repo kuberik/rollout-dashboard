@@ -490,7 +490,7 @@ describe('⚠️ retry consequences — it says production, and it says what it 
 		// And the consequence nobody was told about: the controller resets the
 		// check on retry and deletes the message and `lastErrorTime` with it.
 		expect(lines[3]).toContain('Pending — reset due to new deployment');
-		expect(lines[3]).toContain('clears the failure detail');
+		expect(lines[3]).toContain('clears the recorded failure detail');
 	});
 
 	it('every line names the real place (prod) somewhere a reader will hit it', () => {
