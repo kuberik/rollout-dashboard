@@ -219,6 +219,14 @@ describe('RolloutTabHeader: a disabled quiet Roll back prints its reason', () =>
 		expect(reason.id).toBe('owned-reason');
 		expect(container.querySelector('[data-phone-end]')!.getAttribute('aria-describedby')).toBe('owned-reason');
 	});
+	test('with a strip below (History) the reason leaves 24px before it; without one (Gates, Logs) the page supplies the gap', async () => {
+		const { createRawSnippet } = await import('svelte');
+		const strip = createRawSnippet(() => ({ render: () => '<div data-strip></div>' }));
+		const withStrip = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('flux-controller'), quietRollback: true, below: strip } });
+		expect(withStrip.container.querySelector('[data-owned-reason]')!.className).toContain('mb-6');
+		const without = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('flux-controller'), quietRollback: true } });
+		expect(without.container.querySelector('[data-owned-reason]')!.className).not.toContain('mb-6');
+	});
 	test('owned by the dashboard: no reason line', () => {
 		const { container } = render(RolloutTabHeader, { props: { name: 'checkout-worker', rollout: calm('rollout-dashboard'), quietRollback: true } });
 		expect(container.querySelector('[data-owned-reason]')).toBeNull();
