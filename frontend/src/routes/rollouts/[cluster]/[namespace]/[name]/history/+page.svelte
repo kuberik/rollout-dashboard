@@ -2318,6 +2318,10 @@
 									     were still eating the width its text needed. `position:
 									     relative` here, `position: absolute` on the actions overlay
 									     below, makes the actions reserve exactly 0px at rest.
+									     ⭐ BESIDE THE TIME, NEVER OVER IT: the overlay is anchored to the
+									     LEFT edge of this column (`right-full`), so the exact clock and
+									     the age stay readable while the pointer is on the row; the
+									     time is what a reader hovers a deploy row to read.
 									     ⭐ NO PATCH (AD round 9, item 1): round 6 painted the
 									     overlay with its own `bg-surface` fill so the clock/ago
 									     text underneath would never show through — which drew a
@@ -2330,7 +2334,7 @@
 									     row's own hover colour like every other control on it. -->
 														<div class="relative hidden shrink-0 text-right sm:block">
 															<div
-																class="t-meta text-fg-muted tabular-nums transition-opacity lg:group-focus-within:opacity-0 lg:group-hover:opacity-0"
+																class="t-meta text-fg-muted tabular-nums"
 																title={formatDate(entry.timestamp)}
 															>
 																{clockTime(entry.timestamp)}
@@ -2340,7 +2344,7 @@
 										     Who did it is a fact ABOUT the deploy and belongs with
 										     the other facts about it, not stacked under a timestamp. -->
 															<div
-																class="t-meta text-fg-subtle mt-0.5 flex items-center justify-end gap-1 transition-opacity lg:group-focus-within:opacity-0 lg:group-hover:opacity-0"
+																class="t-meta text-fg-subtle mt-0.5 flex items-center justify-end gap-1"
 															>
 																<span>{formatTimeAgoCompact(entry.timestamp, $now)} ago</span>
 															</div>
@@ -2367,7 +2371,7 @@
 										     first, both clickable, both doing the same thing. -->
 															{#if !isCurrent && !isExpanded}
 																<div
-																	class="pointer-events-none absolute inset-y-0 right-0 z-10 hidden items-center justify-end gap-2 opacity-0 transition-opacity lg:flex lg:group-hover:pointer-events-auto lg:group-hover:opacity-100 lg:focus-within:pointer-events-auto lg:focus-within:opacity-100"
+																	class="pointer-events-none absolute inset-y-0 right-full z-10 mr-4 hidden items-center justify-end gap-2 opacity-0 transition-opacity lg:flex lg:group-hover:pointer-events-auto lg:group-hover:opacity-100 lg:focus-within:pointer-events-auto lg:focus-within:opacity-100"
 																>
 																	{#if entry.bakeStatus === 'Succeeded'}
 																		<button
