@@ -81,6 +81,7 @@
 	import FactList, { type Fact } from './FactList.svelte';
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
+	import { tick } from 'svelte';
 	import ConnectGithubAction from './ConnectGithubAction.svelte';
 	import { resolveGateName } from '$lib/view-models/gate-name';
 	import { gateLabel, gateLabelText, promotionSourceOf, labelPart, causeText, type Cause } from '$lib/view-models/gate-label';
@@ -597,6 +598,7 @@
 	 * it permanently spinning.
 	 */
 	let deploying = $state(false);
+	let confirmBtnEl = $state<HTMLButtonElement | null>(null);
 	/** A failed confirm prints its reason INSIDE the open dialog (a toast hides behind the sheet and its backdrop); cleared when the dialog opens or the request is sent again. */
 	let deployError = $state('');
 
@@ -2348,7 +2350,8 @@
 					);
 				}
 				const reason = [errorData.details, errorData.error, errorData.message].find((v) => typeof v === 'string' && v.trim());
-				throw new Error(reason ? `Failed to change version: ${reason}` : 'Failed to change version');
+				const failed = direction === 'rollback' ? 'Failed to roll back' : 'Failed to change version';
+				throw new Error(reason ? `${failed}: ${reason}` : failed);
 			}
 			notifySuccess(
 				pinVersionToggle
@@ -2361,8 +2364,13 @@
 			open = false;
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Failed to deploy version';
-			if (open) deployError = message;
-			else onError(message);
+			if (open) {
+				deployError = message;
+				deploying = false;
+				// The pressed button was disabled while the request ran, so focus fell to <body>: put it back inside the dialog.
+				await tick();
+				confirmBtnEl?.focus();
+			} else onError(message);
 			announce(message, 'assertive');
 		} finally {
 			// On success `open = false` already unmounts this dialog, so this is
@@ -3076,7 +3084,6 @@
 								type="button"
 								class="btn btn-ghost btn-sm btn-icon hit-44 -my-1 -mr-2 shrink-0"
 								aria-label="Close"
-								disabled={deploying}
 								onclick={() => (open = false)}
 							>
 								<CloseOutline class="h-4 w-4" aria-hidden="true" />
@@ -3851,6 +3858,7 @@
 					<button
 						type="button"
 						class="btn btn-sm {confirmBtnClass} max-sm:min-h-11 max-sm:min-w-0 max-sm:flex-1 max-sm:basis-0"
+						bind:this={confirmBtnEl}
 						disabled={confirmDisabled}
 						onclick={handleDeploy}
 						aria-label={deploying ? undefined : deployButtonLabel}

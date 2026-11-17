@@ -42,6 +42,8 @@
 	 * tint; how careful to be stays in the confirm LEVEL (typed in prod), not in the colour.
 	 */
 	import { Modal } from 'flowbite-svelte';
+	import { tick } from 'svelte';
+	import StatusSpinner from './StatusSpinner.svelte';
 	import { ExclamationCircleSolid, PlaySolid } from 'flowbite-svelte-icons';
 	import { DIALOG_ERROR_CLASS, retryFailureText } from '$lib/view-models/failure-text';
 	import { modalFocusReturn } from '$lib/a11y.svelte';
@@ -78,6 +80,7 @@
 	let typed = $state('');
 	let pending = $state(false);
 	let failure = $state('');
+	let confirmBtnEl = $state<HTMLButtonElement | null>(null);
 	async function confirm() {
 		pending = true;
 		failure = '';
@@ -86,8 +89,13 @@
 			open = false;
 		} catch (e) {
 			const message = retryFailureText(e);
-			if (open) failure = message;
-			else onClosedFailure?.(message);
+			if (open) {
+				failure = message;
+				pending = false;
+				// The pressed button was disabled while the request ran, so focus fell to <body>: put it back inside the dialog.
+				await tick();
+				confirmBtnEl?.focus();
+			} else onClosedFailure?.(message);
 		} finally {
 			pending = false;
 		}
@@ -185,11 +193,17 @@
 		<button
 			type="button"
 			class="btn btn-primary btn-sm"
+			bind:this={confirmBtnEl}
 			disabled={blocked}
 			onclick={confirm}
 		>
-			<PlaySolid class="h-4 w-4 shrink-0" />
-			<span class="truncate">{label}</span>
+			{#if pending}
+				<StatusSpinner size="4" color="white" />
+				<span class="truncate">Retrying…</span>
+			{:else}
+				<PlaySolid class="h-4 w-4 shrink-0" />
+				<span class="truncate">{label}</span>
+			{/if}
 		</button>
 	</div>
 </Modal>

@@ -880,6 +880,8 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 		await waitFor(() => expect(screen.getByText('Rolling back…')).toBeInTheDocument());
 		// Cancel stays available while in flight: a failure after the dialog is closed is reported as a toast
 		expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled();
+		// the header X is the same dismiss as Cancel, so it agrees with it
+		expect(screen.getByRole('button', { name: 'Close' })).not.toBeDisabled();
 		expect(document.querySelector('.animate-spin')).not.toBeNull();
 
 		// A second click while pending must not fire a second request -- both
@@ -892,6 +894,28 @@ describe('operator walk, 2026-09-03 — B3/P5/P6/cosmetic', () => {
 
 		resolveDeploy(new Response(JSON.stringify({}), { status: 200 }));
 		await waitFor(() => expect(successMessage).not.toBeNull());
+	});
+
+	test('a failed Roll back reads "Failed to roll back: <reason>" and keeps focus inside the dialog', async () => {
+		fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input.toString();
+			if (url.startsWith('/api/rollouts?namespace=')) {
+				return new Response(JSON.stringify(NAMESPACE_LIST_RESPONSE), { status: 200 });
+			}
+			if (url.includes('/change-version')) {
+				return new Response(JSON.stringify({ details: 'denied' }), { status: 500 });
+			}
+			return new Response(JSON.stringify({}), { status: 200 });
+		});
+		renderModal({ rollout: devRollbackRollout(), initialSelectedVersion: 'old' });
+		const confirmBtn = await screen.findByRole('button', { name: /^Roll back$/i });
+		await fireEvent.input(screen.getByPlaceholderText(NOTE_PLACEHOLDER), { target: { value: 'why' } });
+		confirmBtn.focus();
+		await fireEvent.click(confirmBtn);
+		await waitFor(() => expect(document.querySelector('[data-deploy-error]')).not.toBeNull());
+		expect(document.querySelector('[data-deploy-error]')!.textContent).toBe('Failed to roll back: denied');
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Roll back$/i })));
+		expect(document.activeElement).not.toBe(document.body);
 	});
 
 	// ⭐ SUPERSEDED, round 3 (coordinator, whole-product consistency review).

@@ -131,3 +131,27 @@ describe('a failed Retry prints as the dialog callout', () => {
 		expect(box.querySelector('[data-retry-error]')!.textContent).toBe('Failed to retry: denied');
 	});
 });
+
+/** The confirm says what is happening while the request runs, and a failure leaves focus inside the dialog. */
+describe('Retry in flight and after a failure', () => {
+	test('in flight: spinner and "Retrying…"; failed: focus back on the primary, not <body>', async () => {
+		let reject: (e: Error) => void = () => {};
+		render(RetryConfirmModal, {
+			open: true,
+			intent: intent({ direction: 'retry', production: false }),
+			consequences: [],
+			tag: '1.4.0',
+			onConfirm: () => new Promise<void>((_, rej) => (reject = rej))
+		});
+		const d = document.querySelector('dialog')!;
+		const primary = () => [...d.querySelectorAll('button')].find((b) => b.className.includes('btn-primary'))!;
+		primary().focus();
+		await fireEvent.click(primary());
+		await waitFor(() => expect(primary().textContent!.trim()).toBe('Retrying…'));
+		expect(primary().querySelector('.animate-spin')).not.toBeNull();
+		reject(new Error('Failed to retry: denied'));
+		await waitFor(() => expect(d.querySelector('[data-dialog-error]')).not.toBeNull());
+		await waitFor(() => expect(document.activeElement).toBe(primary()));
+		expect(primary().textContent!.trim()).toBe('Retry');
+	});
+});
