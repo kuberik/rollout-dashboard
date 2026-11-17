@@ -3,8 +3,11 @@ import { describe, test, expect, vi, afterEach, beforeAll } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { render, waitFor, fireEvent } from '@testing-library/svelte';
 
+/** how many times a dialog was opened (jsdom keeps a closed dialog's element, so counting open ones cannot tell) */
+const opened = { n: 0 };
 if (typeof HTMLDialogElement !== 'undefined' && !HTMLDialogElement.prototype.showModal) {
 	HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+		opened.n++;
 		this.setAttribute('open', '');
 	};
 	HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
@@ -56,7 +59,7 @@ function openOverview(app = 'orders-hub', query = '?action=change-version') {
 		vi.fn(async (input: any, init?: any) => {
 			const url = String(typeof input === 'string' ? input : (input?.url ?? input));
 			if ((init?.method ?? 'GET') === 'POST' && /\/change-version$/.test(url)) {
-				await new Promise((r) => setTimeout(r, 400));
+				await new Promise((r) => setTimeout(r, 900));
 				return new Response(changeStatus === 200 ? '{}' : '{"details":"boom"}', { status: changeStatus, headers: { 'Content-Type': 'application/json' } });
 			}
 			const r = respond((init?.method ?? 'GET') as string, url.replace(/^https?:\/\/[^/]+/, ''));
@@ -150,14 +153,29 @@ describe('rollout page: the header after a Change version submit', () => {
 	test('closing the dialog in flight hands focus back to Change version, which stays focusable', async () => {
 		changeStatus = 500;
 		await deploy(true, true);
-		await new Promise((r) => setTimeout(r, 100));
+		await new Promise((r) => setTimeout(r, 50));
 		expect(document.activeElement, 'focus is on the opener while the request still runs').toBe(opener());
 		expect(opener().disabled).toBe(false);
-		// pressing the busy button again opens nothing
+		// pressing the busy button again opens nothing (the request is still running)
 		const before = dlgs().length;
 		await fireEvent.click(opener());
-		await new Promise((r) => setTimeout(r, 300));
+		await new Promise((r) => setTimeout(r, 600));
+		expect(failureToasts.items.length, 'the request has not answered yet').toBe(0);
 		expect(dlgs().length).toBe(before);
+	}, 40_000);
+});
+
+describe('rollout page: Change version while a deploy is still being picked up', () => {
+	test('pressing the busy button after a successful deploy opens nothing', async () => {
+		changeStatus = 200;
+		await deploy(false, true);
+		await waitFor(() => expect(toastVisibility.count).toBe(1), { timeout: 8000 });
+		const opener = document.querySelector<HTMLButtonElement>('#status-change-version-btn')!;
+		expect(opener.getAttribute('aria-disabled')).toBe('true');
+		const before = opened.n;
+		await fireEvent.click(opener);
+		await new Promise((r) => setTimeout(r, 1200));
+		expect(opened.n, 'no dialog was opened').toBe(before);
 	}, 40_000);
 });
 
