@@ -1323,4 +1323,31 @@
 			width: 0.875rem;
 		}
 	}
+	/* PHONE: ONE LEADING MARK, EIGHT PIXELS BETWEEN FACTS, SIXTEEN BEFORE THE DECISION (PR #178 review, owner 2026-11-17: "the second row has an icon too and also feels crammed").
+	   The title's 24px disc is the only leading mark. The check line's class glyph (bug / trend / exclamation) is hidden here: the banner's check line is always danger, its class is said by the figure caption or the check name, and failing vs recovered is said in words by the title and the sentence ("Recovered at 06:57"). The recovered ring lives in Details (FailureDetails), not in this row, so it is unchanged. The change line's author avatar is hidden too so a wrapped author row starts with text; the name (or "you") stays.
+	   Rhythm on the 4px scale: title -> body 8, body row -> body row 8 (the message body's own column already uses gap-2; the change line's mt-1 becomes 8 and its wrap gap 4), body -> Details 8, Details -> actions 16. Type, colours, banner padding, disc and buttons are untouched. */
+	@container (max-width: 639.98px) {
+		.ap-message-row {
+			margin-top: 0.5rem;
+		}
+		.ap-message-row > :global(:first-child) {
+			margin-top: 0;
+		}
+		.ap-message-row > :global(.ap-change:not(:first-child)) {
+			margin-top: 0.5rem;
+		}
+		.ap-change > span {
+			row-gap: 0.25rem;
+		}
+		.ap-message-row :global(.check-glyph),
+		.ap-change [data-ap-author] > :global(:first-child) {
+			display: none;
+		}
+		.ap-grid .ap-disclosure-cell {
+			margin-top: 0.5rem;
+		}
+		.ap-grid .ap-actions-cell {
+			margin-top: 1rem;
+		}
+	}
 </style>
