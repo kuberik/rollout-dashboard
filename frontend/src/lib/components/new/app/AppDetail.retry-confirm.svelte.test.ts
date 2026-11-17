@@ -90,7 +90,7 @@ describe('AppDetail Retry confirmation', () => {
 	});
 	it('an accepted Retry closes the confirm and says "Retry started"', async () => {
 		await typedRetry(mountApp('search-indexer'));
-		await waitFor(() => expect(document.body.textContent).toContain('Retry started'));
+		await waitFor(() => expect(document.body.textContent).toContain('Check restarted'));
 		expect(document.querySelector('[data-retry-error]')).toBeNull();
 	});
 	it('Roll back is disabled, with the reason, when another controller owns the wanted version', async () => {

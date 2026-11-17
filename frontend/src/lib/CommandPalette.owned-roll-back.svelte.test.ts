@@ -131,6 +131,18 @@ describe('palette Roll back and approval hint', { timeout: 20_000 }, () => {
 		await fireEvent.mouseEnter(rows[1]);
 		await waitFor(() => expect(tabHint()).toBe(false));
 	});
+	test('typed search: "Tab action" follows the highlighted row the same way', async () => {
+		render(WithQueryClient, { props: { component: CommandPalette as never, props: props() } });
+		const input = document.body.querySelector('input') as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: 'telemetry-indexer' } });
+		await waitFor(() => expect(document.body.querySelector('[data-blocked-kind="held"]')).not.toBeNull());
+		await fireEvent.mouseEnter(document.body.querySelector('[data-blocked-kind="held"]')!.closest('[role="option"]')!);
+		await waitFor(() => expect(tabHint()).toBe(false));
+		await fireEvent.input(input, { target: { value: 'checkout-worker' } });
+		await waitFor(() => expect(document.body.querySelector('[data-blocked-kind="failed"]')).not.toBeNull());
+		await fireEvent.mouseEnter(document.body.querySelector('[data-blocked-kind="failed"]')!.closest('[role="option"]')!);
+		await waitFor(() => expect(tabHint()).toBe(true));
+	});
 	test('the footer does not offer "Tab action" on a failing row whose Roll back is disabled (another controller owns the pin)', async () => {
 		render(WithQueryClient, { props: { component: CommandPalette as never, props: owned('flux-controller') } });
 		await fireEvent.mouseEnter(needsYouRows()[0]);
