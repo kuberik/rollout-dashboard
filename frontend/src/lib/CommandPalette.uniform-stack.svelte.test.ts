@@ -81,3 +81,25 @@ describe('a Needs-you group uses one arrangement', { timeout: 60_000 }, () => {
 		expect(src).toMatch(/data-meta-line[^>]*group-data-\[stack-all=true\]\/gl:basis-full/);
 	});
 });
+
+describe('a typed-search group of blocked rows uses one arrangement too', { timeout: 60_000 }, () => {
+	const typedGroups = () => [...document.body.querySelectorAll<HTMLElement>('.group\\/gl')].filter((g) => g.querySelector('[data-blocked-kind]') && !g.parentElement?.textContent?.trim().startsWith('Needs you'));
+	test('one row that needs two lines makes every row of the typed group use two', async () => {
+		reactivePage.url = new URL('http://localhost/');
+		draw();
+		const input = document.body.querySelector('input') as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: 'a' } });
+		await new Promise((r) => setTimeout(r, 300));
+		const g = typedGroups().find((x) => x.querySelectorAll('[data-blocked-kind]').length > 1);
+		expect(g).toBeTruthy();
+		const last = [...g!.querySelectorAll('[data-blocked-kind] a.tap-link')].pop()!.textContent!;
+		cleanup();
+		stubTop(last);
+		draw();
+		await fireEvent.input(document.body.querySelector('input') as HTMLInputElement, { target: { value: 'a' } });
+		await new Promise((r) => setTimeout(r, 300));
+		await tick();
+		const g2 = typedGroups().find((x) => x.querySelectorAll('[data-blocked-kind]').length > 1);
+		expect(g2?.getAttribute('data-stack-all')).toBe('true');
+	});
+});
