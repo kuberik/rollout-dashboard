@@ -82,7 +82,7 @@ describe('auto-rollback view-model', () => {
 	});
 });
 
-describe('entryRollbackNote: verdicts follow what the controller decided (R1-QA-1)', () => {
+describe('entryRollbackNote: verdicts follow what the controller decided', () => {
 	const failure = { source: 'RolloutTest ns/smoke', kind: 'TestFailed', reason: 'RolloutTestFailed', rollsBack: true, why: 'CheckRollbackOn' };
 	const failed = (over: Record<string, unknown> = {}) =>
 		({ id: 7, version: { tag: 'b7' }, bakeStatus: 'Failed', deployKind: 'Automatic', failedHealthChecks: [{ name: 'k', namespace: 'ns', class: 'kustomization', failures: [failure] }], ...over }) as never;
