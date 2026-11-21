@@ -392,3 +392,13 @@ func (c *Client) expandHelmReleases(ctx context.Context, resources []ManagedReso
 	}
 	return out
 }
+
+// slimInventoryHelmRelease slims a HelmRelease found in a Flux inventory (a
+// Kustomization's, or a HelmRelease's own children) the same way as the
+// rollout payload: the object may live in a namespace the viewer can't read
+// and is fetched with the service-account client, so spec.values never ships.
+func slimInventoryHelmRelease(rs *ManagedResourceStatus) {
+	if rs.Object != nil && isHelmReleaseGVKString(rs.GroupVersionKind) {
+		rs.Object = slimHelmRelease(rs.Object)
+	}
+}

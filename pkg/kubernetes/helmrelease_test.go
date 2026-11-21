@@ -202,7 +202,7 @@ func TestGetHelmReleaseManagedResources_NoInventoryGivesHint(t *testing.T) {
 }
 
 func TestGetKustomizationManagedResources_ExpandsHelmRelease(t *testing.T) {
-	hr := helmRelease("shop", "cart", nil, nil, map[string]interface{}{
+	hr := helmRelease("shop", "cart", nil, map[string]interface{}{"values": map[string]interface{}{"password": "hunter2"}}, map[string]interface{}{
 		"inventory": inventory("shop_cart_apps_Deployment"),
 	})
 	dep := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: "shop", Name: "cart"}}
@@ -228,6 +228,10 @@ func TestGetKustomizationManagedResources_ExpandsHelmRelease(t *testing.T) {
 	}
 	if res[1].GroupVersionKind != "apps/v1/Deployment" || res[1].Name != "cart" || res[1].HelmRelease != "shop/cart" {
 		t.Fatalf("second entry should be the expanded Deployment tagged shop/cart: %+v", res[1])
+	}
+	// the HelmRelease may come from a namespace the viewer can't read: its values never ship (R2-DASH-2)
+	if _, found, _ := unstructured.NestedFieldNoCopy(res[0].Object.Object, "spec", "values"); found {
+		t.Fatalf("spec.values must be stripped on the Kustomization inventory path: %v", res[0].Object.Object["spec"])
 	}
 }
 

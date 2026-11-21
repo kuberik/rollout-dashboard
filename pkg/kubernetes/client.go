@@ -1140,6 +1140,7 @@ func (c *Client) managedResourcesFromInventory(ctx context.Context, entries []in
 						continue
 					}
 					rs := managedResourceStatusFromObject(obj, gvkStr, entry.objMeta.Name, entry.objMeta.Namespace)
+					slimInventoryHelmRelease(&rs)
 					results[entry.idx] = &rs
 				}
 				return nil
@@ -1165,6 +1166,7 @@ func (c *Client) managedResourcesFromInventory(ctx context.Context, entries []in
 					continue
 				}
 				rs := managedResourceStatusFromObject(obj, gvkStr, entry.objMeta.Name, entry.objMeta.Namespace)
+				slimInventoryHelmRelease(&rs)
 				results[entry.idx] = &rs
 			}
 			return nil

@@ -194,7 +194,7 @@
 	import { rolloutPath, rolloutMatchesEnvironment, SOURCE_CLUSTER_ANNOTATION } from '$lib/source-dashboard';
 	import { DEPLOY_PARAM, deployKey } from '$lib/history-deeplink';
 	import { formatTimeUntil } from '$lib/api/schedules';
-	import { createQuery, createQueries } from '@tanstack/svelte-query';
+	import { createQuery, createQueries, useQueryClient } from '@tanstack/svelte-query';
 	import {
 		rolloutQueryOptions,
 		rolloutsListQueryOptions,
@@ -1054,20 +1054,25 @@
 	// (namespace, cluster, name) instead of namespace alone, and so this page
 	// never serves another cluster's cached managed-resources for a
 	// same-named rollout.
-	// what each HelmRelease's fetch said besides the list (backend hint, or the failure); set by the query below
-	let helmNotes = $state<Record<string, HelmNote>>({});
+	// what each HelmRelease's fetch said besides the list (backend hint, or the failure). The managed-resources
+	// query writes it into its own cache entry: the managed-resources data stays a plain kustomization -> list map
+	// (events.ts patches it in place), and a client-side revisit reads the cached notes with the cached list.
+	const queryClient = useQueryClient();
+	const managedResourcesNames = $derived([
+		...kustomizations.map((k) => k.metadata?.name),
+		...helmReleases.map((h) => helmKey(h.metadata?.namespace || namespace, h.metadata?.name as string))
+	]);
+	const helmNotesKey = $derived(['helm-notes', namespace, name, cluster, managedResourcesNames]);
+	const helmNotesQuery = createQuery(() => ({
+		queryKey: helmNotesKey,
+		queryFn: () => queryClient.getQueryData<Record<string, HelmNote>>(helmNotesKey) ?? {},
+		enabled: false,
+		staleTime: Infinity
+	}));
+	const helmNotes = $derived<Record<string, HelmNote>>(helmNotesQuery.data ?? {});
 	const managedResourcesQuery = createQuery(() => ({
-		queryKey: [
-			'managed-resources',
-			namespace,
-			name,
-			cluster,
-			[
-				...kustomizations.map((k) => k.metadata?.name),
-				...helmReleases.map((h) => helmKey(h.metadata?.namespace || namespace, h.metadata?.name as string))
-			]
-		],
-		queryFn: async () => {
+		queryKey: ['managed-resources', namespace, name, cluster, managedResourcesNames],
+		queryFn: async ({ queryKey }) => {
 			const result: Record<string, ManagedResourceStatus[]> = {};
 			const notes: Record<string, HelmNote> = {};
 			// HelmReleases: one fetch each, beside the Kustomizations' under their own key (see helmKey)
@@ -1105,7 +1110,7 @@
 					}),
 				...helmFetches
 			]);
-			helmNotes = notes;
+			queryClient.setQueryData(['helm-notes', ...queryKey.slice(1)], notes);
 			return result;
 		},
 		enabled: kustomizations.length > 0 || helmReleases.length > 0,
