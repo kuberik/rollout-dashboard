@@ -20,7 +20,7 @@
 	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
 	import { chainWaitLabel, skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
 	import { clusterErrorsFor } from '$lib/view-models/cluster-errors';
-	import { helmKey, withoutExpandedHelm, hasHelm, HELM_POLL_CEILING_MS } from '$lib/view-models/helm';
+	import { helmKey, withoutExpandedHelm, type HelmNote, hasHelm, HELM_POLL_CEILING_MS } from '$lib/view-models/helm';
 	import { sourceTreeUrl } from '$lib/source-url';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import { MediaQuery } from 'svelte/reactivity';
@@ -1054,6 +1054,8 @@
 	// (namespace, cluster, name) instead of namespace alone, and so this page
 	// never serves another cluster's cached managed-resources for a
 	// same-named rollout.
+	// what each HelmRelease's fetch said besides the list (backend hint, or the failure); set by the query below
+	let helmNotes = $state<Record<string, HelmNote>>({});
 	const managedResourcesQuery = createQuery(() => ({
 		queryKey: [
 			'managed-resources',
@@ -1067,6 +1069,7 @@
 		],
 		queryFn: async () => {
 			const result: Record<string, ManagedResourceStatus[]> = {};
+			const notes: Record<string, HelmNote> = {};
 			// HelmReleases: one fetch each, beside the Kustomizations' under their own key (see helmKey)
 			const helmFetches = helmReleases
 				.filter((h) => Boolean(h.metadata?.name))
@@ -1076,9 +1079,13 @@
 					const res = await fetch(
 						apiPath(cluster, `/helmreleases/${hNamespace}/${hName}/managed-resources`)
 					);
+					const key = helmKey(hNamespace, hName);
 					if (res.ok) {
 						const data = await res.json();
-						result[helmKey(hNamespace, hName)] = data.managedResources || [];
+						result[key] = data.managedResources || [];
+						if (data.hint) notes[key] = { hint: data.hint };
+					} else {
+						notes[key] = { error: `Couldn't load what this HelmRelease manages (${res.status}).` };
 					}
 				});
 			await Promise.all([
@@ -1098,6 +1105,7 @@
 					}),
 				...helmFetches
 			]);
+			helmNotes = notes;
 			return result;
 		},
 		enabled: kustomizations.length > 0 || helmReleases.length > 0,
@@ -4878,6 +4886,7 @@
 								<ResourcesCard
 									{kustomizations}
 									{helmReleases}
+									{helmNotes}
 									{ociRepositories}
 									{filteredManagedResources}
 									{cluster}

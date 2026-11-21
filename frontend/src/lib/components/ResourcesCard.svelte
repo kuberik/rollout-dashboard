@@ -3,7 +3,7 @@
 <script lang="ts">
 	import type { Kustomization, HelmRelease, OCIRepository, ManagedResourceStatus } from '../../types';
 	import Chip from './Chip.svelte';
-	import { helmView, helmKey, isHelmKey, type HelmView, type HelmWord } from '$lib/view-models/helm';
+	import { helmView, helmKey, isHelmKey, helmEmptyLine, type HelmNote, type HelmView, type HelmWord } from '$lib/view-models/helm';
 	import StatusSpinner from './StatusSpinner.svelte';
 	import Card from './Card.svelte';
 	import DeploymentChildren from './DeploymentChildren.svelte';
@@ -31,6 +31,7 @@
 	let {
 		kustomizations,
 		helmReleases = [],
+		helmNotes = {},
 		ociRepositories,
 		filteredManagedResources,
 		cluster
@@ -38,6 +39,8 @@
 		kustomizations: Kustomization[];
 		/** the rollout's HelmReleases; their resources sit in `filteredManagedResources` under `helmKey(namespace, name)` */
 		helmReleases?: HelmRelease[];
+		/** per HelmRelease key: the backend hint, or why its managed-resources fetch failed */
+		helmNotes?: Record<string, HelmNote>;
 		ociRepositories: OCIRepository[];
 		filteredManagedResources: Record<string, ManagedResourceStatus[]>;
 		// Spoke URL when this rollout lives on a remote cluster — passed through
@@ -568,8 +571,8 @@
 					{/if}
 				</div>
 				{#if g.resources.length === 0}
-					<p class="border-t border-line-subtle px-4 py-3 t-meta text-fg-subtle" data-testid="helm-group-empty">
-						Not reporting resources yet.
+					<p class="border-t border-line-subtle px-4 py-3 t-meta {helmNotes[g.key]?.error ? 'text-danger' : 'text-fg-subtle'}" data-testid="helm-group-empty">
+						{helmEmptyLine(helmNotes[g.key])}
 					</p>
 				{:else}
 					<div class="divide-y divide-line-subtle border-t border-line-subtle">

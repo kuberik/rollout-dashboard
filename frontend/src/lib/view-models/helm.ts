@@ -78,3 +78,11 @@ export function withoutExpandedHelm(resources: ManagedResourceStatus[]): Managed
  */
 export const HELM_POLL_CEILING_MS = 15_000;
 export const hasHelm = (data: { helmReleases?: { items?: unknown[] } } | undefined): boolean => (data?.helmReleases?.items?.length ?? 0) > 0;
+
+/** what the per-HelmRelease managed-resources fetch said besides the list: the backend's `hint`, or why the fetch failed */
+export type HelmNote = { hint?: string; error?: string };
+
+/** the one quiet line for a group with nothing to list: the error, else the backend's hint, else "not reporting yet" */
+export function helmEmptyLine(note?: HelmNote): string {
+	return note?.error || note?.hint || 'Not reporting resources yet.';
+}

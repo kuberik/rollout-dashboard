@@ -10,6 +10,7 @@
  * the demo story. Same topology mechanism as the release-switch apps (one namespace per site), so it reuses their builders.
  *
  * OPT-IN: dev-mock-api.ts runs `install()` only under `MOCK_FIXTURES=helm`; the demo build and the normal bundle never import it.
+ * Staging stands in for a Flux older than 2.8: its managed-resources answer carries the backend `hint` and no resources.
  * Rollout pages: /rollouts/dev/hello-helm-dev/hello-helm, /rollouts/staging/hello-helm-staging/hello-helm, /rollouts/prod/hello-helm-prod-eu-west-1/hello-helm.
  */
 import { SOURCE_CLUSTER, hcAgo } from './mock-data';
@@ -106,8 +107,13 @@ function resources(p: Place): Obj {
 		lastModified: hcAgo(60),
 		object: { apiVersion: 'v1', kind: 'Service', metadata: { name: HELM.app, namespace: p.ns } }
 	};
+	// staging plays an older Flux (< 2.8): no status.inventory, so the backend lists nothing and says why
+	const oldFlux = p.tier === 'staging';
 	return {
-		managedResources: [dep, svc],
+		managedResources: oldFlux ? [] : [dep, svc],
+		...(oldFlux
+			? { hint: 'This HelmRelease reports no status.inventory. helm-controller records the objects it manages there from Flux 2.8; on an older Flux the resources are not listed.' }
+			: {}),
 		release: {
 			chartName: CHART,
 			chartVersion: CHART_VERSION,

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { helmView, helmWordOf, helmKey, isHelmKey, withoutExpandedHelm, hasHelm } from './helm';
+import { describe, it, expect, test } from 'vitest';
+import { helmView, helmWordOf, helmKey, isHelmKey, withoutExpandedHelm, hasHelm, helmEmptyLine } from './helm';
 import type { HelmRelease, ManagedResourceStatus } from '../../types';
 
 const hr = (status: Record<string, unknown>, spec: Record<string, unknown> = {}, generation = 3): HelmRelease => ({
@@ -62,5 +62,17 @@ describe('managed-resources record', () => {
 		expect(hasHelm(undefined)).toBe(false);
 		expect(hasHelm({ helmReleases: { items: [] } })).toBe(false);
 		expect(hasHelm({ helmReleases: { items: [{}] } })).toBe(true);
+	});
+});
+
+describe('helmEmptyLine', () => {
+	test('no note: the plain not-reporting line', () => {
+		expect(helmEmptyLine()).toBe('Not reporting resources yet.');
+	});
+	test('a hint replaces it', () => {
+		expect(helmEmptyLine({ hint: 'reports no status.inventory' })).toBe('reports no status.inventory');
+	});
+	test('an error replaces it', () => {
+		expect(helmEmptyLine({ error: "Couldn't load what this HelmRelease manages (403)." })).toContain('(403)');
 	});
 });
