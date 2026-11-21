@@ -10,6 +10,7 @@
  * (`failedBakeHeld`). A failed build is held for every Rollout (not only opted-in ones), so the hold does not read the spec.
  */
 import type { Rollout } from '../../types';
+import { classOf } from './health-failures';
 
 type Status = NonNullable<Rollout['status']>;
 export type HistoryEntry = NonNullable<Status['history']>[number];
@@ -109,7 +110,7 @@ export function verdictRows(entry: HistoryEntry | null | undefined): VerdictRow[
 			const { type, ref } = splitSource(f.source);
 			rows.push({
 				key: `${c.namespace}/${c.name}/${f.source}/${i}`,
-				cls: c.class ?? '',
+				cls: classOf({ spec: { class: c.class } } as never),
 				type,
 				ref,
 				kind: f.kind,
