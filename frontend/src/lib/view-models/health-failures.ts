@@ -15,13 +15,14 @@ import { recoveredSentence } from '$lib/components/new/state-words';
 import { displayTimeZone } from '$lib/timezone.svelte';
 
 export type CheckVerdict = 'failing' | 'pending' | 'recovered' | 'passing';
-/** the check's class decides the row's glyph and the identity's type: a kustomization names a resource, a prometheus alert an alertname */
-export type CheckClass = 'kustomization' | 'datadog' | 'prometheus' | 'incidents' | 'other';
+/** the check's class decides the row's glyph and the identity's type: a kustomization or a helmrelease names a resource, a prometheus alert an alertname */
+export type CheckClass = 'kustomization' | 'helmrelease' | 'datadog' | 'prometheus' | 'incidents' | 'other';
 
 export function classOf(hc: Pick<HealthCheck, 'spec'> | null | undefined): CheckClass {
 	const c = (hc?.spec?.class ?? '').toLowerCase();
 	if (c.includes('incident')) return 'incidents';
 	if (c.includes('kustomization')) return 'kustomization';
+	if (c.includes('helmrelease')) return 'helmrelease';
 	if (c.includes('prometheus')) return 'prometheus';
 	if (c.includes('datadog')) return 'datadog';
 	return 'other';

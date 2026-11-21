@@ -20,7 +20,7 @@
 
 	const ink = $derived(row.state === 'failing' ? 'text-danger' : row.state === 'pending' ? 'text-progress' : 'text-fg-subtle');
 	/* identifiers (a resource, an alertname) are code; a datadog monitor's name is a sentence */
-	const code = $derived(row.cls === 'kustomization' || row.cls === 'prometheus');
+	const code = $derived(row.cls === 'kustomization' || row.cls === 'helmrelease' || row.cls === 'prometheus');
 	/* a resource name ("orders/orders-worker") breaks only after a "/", never at a hyphen; one segment never wraps (it ellipsises, the title has the whole name) */
 	const segments = $derived(code ? checkNameSegments(row.name) : null);
 </script>

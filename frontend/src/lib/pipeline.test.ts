@@ -26,3 +26,15 @@ it('A1: of two copies of one KruiseRollout the one with the newer canaryStatus.l
 	expect(freshestKruise(fresh, old)).toBe(fresh);
 	expect(freshestKruise(old, undefined)).toBe(old);
 });
+
+import { kruiseRolloutsForRollout } from './pipeline';
+it('a KruiseRollout in a HelmRelease inventory is found through the HelmRelease annotations, and only for the annotated rollout', () => {
+	const r = { metadata: { name: 'shop', namespace: 'ns' } } as any;
+	const crKr = { metadata: { name: 'shop-canary', namespace: 'ns' } } as any;
+	const hr = (annotations: Record<string, string>) =>
+		({ metadata: { name: 'shop', namespace: 'ns', annotations }, status: { inventory: { entries: [{ id: 'ns_shop-canary_rollouts.kruise.io_Rollout', v: 'v1beta1' }] } } }) as any;
+	expect(kruiseRolloutsForRollout(r, [], [crKr], [hr({ 'rollout.kuberik.com/values.image.tag.from': 'shop' })])).toEqual([crKr]);
+	expect(kruiseRolloutsForRollout(r, [], [crKr], [hr({ 'rollout.kuberik.com/chart-version.from': 'shop' })])).toEqual([crKr]);
+	expect(kruiseRolloutsForRollout(r, [], [crKr], [hr({ 'rollout.kuberik.com/values.image.tag.from': 'other' })])).toEqual([]);
+	expect(kruiseRolloutsForRollout(r, [], [crKr], [])).toEqual([]);
+});

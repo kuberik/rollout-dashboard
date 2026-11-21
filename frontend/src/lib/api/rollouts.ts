@@ -11,12 +11,15 @@ import type {
     Environment,
     RolloutTest,
     KruiseRollout,
+    HelmRelease,
     RolloutDependency
 } from '../../types';
 
 export type RolloutResponse = {
     rollout: Rollout | null;
     kustomizations?: { items: Kustomization[] };
+    /** The rollout's HelmReleases (annotation, chartRef or Kustomization-inventory association); `items` is empty on a cluster without the CRD. */
+    helmReleases?: { items: HelmRelease[] };
     ociRepositories?: { items: OCIRepository[] };
     rolloutGates?: { items: RolloutGate[] };
     environment?: Environment;
