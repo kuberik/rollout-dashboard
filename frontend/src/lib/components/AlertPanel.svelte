@@ -926,7 +926,7 @@
 									{@render footnoteBody()}
 								</div>
 							{:else if footnote}
-								<p class="t-meta mt-1 break-words {palette.footnote}">{footnote}</p>
+								<p class="t-meta mt-1 max-w-[80ch] break-words {palette.footnote}">{footnote}</p>
 							{/if}
 						</details>
 					</div>

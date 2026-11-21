@@ -53,6 +53,9 @@ export function managerName(manager: string | undefined): string {
 	return m ? `Rollout ${m[1]}` : manager;
 }
 
+/** a field path wraps only at its "." separators on a phone (a zero-width space after each dot inside a word), never mid-segment (design R1-DES-1) */
+export const breakAtDots = (s: string): string => s.replace(/\.(?=[A-Za-z0-9_])/g, '.\u200B');
+
 export function readyIssue(conditions: readonly Cond[] | null | undefined, o: { held?: boolean } = {}): ReadyIssue | null {
 	const c = conditions?.find((x) => x.type === 'Ready');
 	if (!c || c.status !== 'False') return null;

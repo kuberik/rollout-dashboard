@@ -110,7 +110,7 @@
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
-	import { readyIssue } from '$lib/view-models/ready-refusal';
+	import { readyIssue, breakAtDots } from '$lib/view-models/ready-refusal';
 	import FactList from '$lib/components/FactList.svelte';
 	import NotFound from '$lib/components/NotFound.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -3378,7 +3378,7 @@
 					open={!!readyBanner}
 					severity="error"
 					title={readyBanner?.title ?? 'Deploy refused'}
-					message={readyBanner?.line}
+					message={readyBanner ? breakAtDots(readyBanner.line) : undefined}
 					footnote={readyBanner?.detail ?? undefined}
 					dataTour="ready-banner"
 				/>

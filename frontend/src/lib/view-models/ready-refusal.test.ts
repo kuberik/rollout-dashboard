@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { managerName, readyIssue } from './ready-refusal';
+import { breakAtDots, managerName, readyIssue } from './ready-refusal';
 
 const ready = (reason: string, message: string, status = 'False') => [
 	{ type: 'DeploymentBlocked', status: 'False', reason: 'HealthChecksHealthy', message: '' },
@@ -79,5 +79,11 @@ describe('readyIssue: which Ready=False reasons the banner speaks for', () => {
 		expect(readyIssue(ready('Progressing', '', 'Unknown'))).toBeNull();
 		expect(readyIssue([])).toBeNull();
 		expect(readyIssue(undefined)).toBeNull();
+	});
+});
+
+describe('breakAtDots', () => {
+	test('a path gets a break opportunity after each inner dot, a sentence-ending dot none', () => {
+		expect(breakAtDots('on spec.values.image.tag, also set by gitops-demo.')).toBe('on spec.​values.​image.​tag, also set by gitops-demo.');
 	});
 });
