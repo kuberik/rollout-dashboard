@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rollout } from '../../types';
-import { autoRollbackView, deployKindLabel, failedBakeHeld, notRolledBackHeadline, splitSource, verdictRows, whyWords } from './auto-rollback';
+import { autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, splitSource, verdictRows, whyWords } from './auto-rollback';
 
 const v = (tag: string) => ({ tag, version: `1.${tag.slice(-1)}.0`, revision: 'a'.repeat(40), created: '2026-11-21T10:00:00Z' });
 const failed = {
@@ -79,5 +79,49 @@ describe('auto-rollback view-model', () => {
 	it('reads the hold from candidates[].failedBake', () => {
 		expect(failedBakeHeld(rolledBack(), 'r4')).toBe(true);
 		expect(failedBakeHeld(rolledBack(), 'r9')).toBe(false);
+	});
+});
+
+describe('entryRollbackNote: verdicts follow what the controller decided (R1-QA-1)', () => {
+	const failure = { source: 'RolloutTest ns/smoke', kind: 'TestFailed', reason: 'RolloutTestFailed', rollsBack: true, why: 'CheckRollbackOn' };
+	const failed = (over: Record<string, unknown> = {}) =>
+		({ id: 7, version: { tag: 'b7' }, bakeStatus: 'Failed', deployKind: 'Automatic', failedHealthChecks: [{ name: 'k', namespace: 'ns', class: 'kustomization', failures: [failure] }], ...over }) as never;
+	const ok = (over: Record<string, unknown> = {}) => ({ id: 6, version: { tag: 'b6' }, bakeStatus: 'Succeeded', deployKind: 'Automatic', ...over }) as never;
+	const ro = (enabled: boolean | undefined, history: unknown[], conditions: unknown[] = []) =>
+		({ spec: enabled === undefined ? {} : { autoRollback: { enabled } }, status: { history, conditions } }) as unknown as Rollout;
+
+	it('rolled back: only when a later AutoRollback entry names this entry', () => {
+		const e = failed();
+		const r = ro(true, [ok({ id: 8, deployKind: 'AutoRollback', rollbackOf: 7 }), e, ok()]);
+		expect(entryRolledBack(r, e)).toBe(true);
+		expect(entryRollbackNote(r, e)).toEqual({ ran: true, note: 'Rolled back automatically' });
+	});
+	it('rollout not opted in: never "rolls back"', () => {
+		const e = failed();
+		expect(entryRollbackNote(ro(undefined, [e, ok()]), e)).toEqual({ ran: false, note: 'Not rolled back: automatic rollback is off for this rollout' });
+		expect(entryRollbackNote(ro(false, [e, ok()]), e).ran).toBe(false);
+	});
+	it('a rollback of another entry does not count for this one', () => {
+		const e = failed({ id: 5 });
+		const r = ro(true, [ok({ id: 8, deployKind: 'AutoRollback', rollbackOf: 7 }), failed(), e]);
+		expect(entryRolledBack(r, e)).toBe(false);
+	});
+	it.each([
+		['ManualIntent', 'Not rolled back automatically: a deploy was already requested by hand'],
+		['NoTarget', 'Not rolled back: no earlier build passed its bake'],
+		['DeployError', 'Not rolled back: the rollback deploy could not be written']
+	])('skipped as %s: the condition reason is the note, verdicts are conditional', (reason, note) => {
+		const e = failed();
+		const r = ro(true, [e, ok()], [{ type: 'AutoRollback', status: 'False', reason, message: '' }]);
+		expect(entryRollbackNote(r, e)).toEqual({ ran: false, note });
+	});
+	it('deployed by hand, or before deploy kinds were recorded', () => {
+		expect(entryRollbackNote(ro(true, [failed({ deployKind: 'ForceDeploy' })]), failed({ deployKind: 'ForceDeploy' })).note).toBe('Not rolled back automatically: deployed by hand');
+		const old = failed({ deployKind: undefined });
+		expect(entryRollbackNote(ro(true, [old]), old)).toEqual({ ran: false, note: 'Not rolled back: deployed before rollback decisions were recorded' });
+	});
+	it('an older failed entry that was not rolled back reads plainly', () => {
+		const e = failed({ id: 3 });
+		expect(entryRollbackNote(ro(true, [ok({ id: 9 }), e]), e)).toEqual({ ran: false, note: 'Not rolled back' });
 	});
 });
