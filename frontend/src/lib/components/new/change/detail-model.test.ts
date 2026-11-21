@@ -358,3 +358,17 @@ describe('the Summary card inks one recovered failure in one ink', () => {
 		expect(src).not.toContain("how.failed ? 'text-danger'");
 	});
 });
+
+import { historyEvKey } from './detail-model';
+describe('historyEvKey (two entries in one second)', () => {
+	const href = '/rollouts/dev/hello-multi-dev/hello-multi-app';
+	it('keys ids 25 and 26, which share 2026-11-21T14:18:11Z, apart', () => {
+		expect(historyEvKey({ href, idx: 3, id: 25 })).not.toBe(historyEvKey({ href, idx: 2, id: 26 }));
+	});
+	it('keys a failed deploy and its auto rollback (ids 27/28, 14:23:02Z) apart', () => {
+		expect(historyEvKey({ href, idx: 1, id: 27 })).not.toBe(historyEvKey({ href, idx: 0, id: 28 }));
+	});
+	it('falls back to the position without an id', () => {
+		expect(historyEvKey({ href, idx: 1 })).not.toBe(historyEvKey({ href, idx: 0 }));
+	});
+});

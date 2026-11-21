@@ -57,6 +57,14 @@ export function createLogsStreamUrl(
 
 // Create an async iterable that yields log lines from EventSource
 // Helper class to decouple event source (Push) from generator (Pull)
+/**
+ * Worker promises are rejected with "Stream closed" when the stream is torn down (navigating away
+ * aborts the query). That is the normal end of a stream, not an error, so it must not reach the console.
+ */
+export function isReportableStreamError(closed: boolean) {
+	return !closed;
+}
+
 class PromiseQueue<T> {
 	private queue: T[] = [];
 	private resolvers: ((value: T) => void)[] = [];
@@ -161,7 +169,7 @@ async function* createLogsStream(
 				buffer.push(...parsed);
 			}
 		} catch (e) {
-			console.error('[Logs Stream] Batch parse error:', e);
+			if (isReportableStreamError(!shouldContinue)) console.error('[Logs Stream] Batch parse error:', e);
 		}
 		// Push whatever is in the parsed buffer to the queue
 		if (buffer.length > 0) {
@@ -223,7 +231,7 @@ async function* createLogsStream(
 						});
 						if (onPodsUpdate) onPodsUpdate(pods);
 					} catch (e) {
-						console.error(e);
+						if (isReportableStreamError(!shouldContinue)) console.error(e);
 					}
 				} else if (event === 'log') {
 					logCount++;

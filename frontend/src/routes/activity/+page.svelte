@@ -276,9 +276,13 @@
 				}
 				entries.push({
 					key: entryKey({
+						cluster: sourceClusterName(rollout) || '',
 						rolloutNamespace: rollout.metadata?.namespace || '',
 						rolloutName: rollout.metadata?.name || '',
-						timestamp: h.timestamp
+						timestamp: h.timestamp,
+						// No id on an old controller's entry: its position is
+						// unique within this rollout's history.
+						historyId: h.id ?? `i${i}`
 					}),
 					rolloutName: rollout.metadata?.name || '',
 					rolloutNamespace: rollout.metadata?.namespace || '',
@@ -729,7 +733,7 @@
 			const clock = formatClockTime(e.timestamp);
 			if (isFailed(e)) {
 				out.push({
-					key: entryKey(e),
+					key: e.key,
 					tsMs: new Date(e.timestamp).getTime(),
 					// ⭐ THE APP NAMES ITSELF ON THE AXIS (round 6 review,
 					// 2026-10-09): a sha means nothing at a glance — the app
@@ -755,7 +759,7 @@
 				});
 			} else if (isRolledBack(e)) {
 				out.push({
-					key: entryKey(e),
+					key: e.key,
 					tsMs: new Date(e.timestamp).getTime(),
 					label: e.displayName,
 					tone: 'rolledBack',
@@ -894,7 +898,7 @@
 	 */
 	function toGroupable(entry: ActivityEntry): GroupableEntry {
 		return {
-			key: entryKey(entry),
+			key: entry.key,
 			rolloutName: entry.rolloutName,
 			rolloutNamespace: entry.rolloutNamespace,
 			displayName: entry.displayName,
@@ -914,7 +918,7 @@
 	function releaseGroupsFor(dayGroup: DayGroup): ActivityGroup<ActivityEntry>[] {
 		return groupActivityEntries(dayGroup.entries.map(toGroupable)).map((g) => ({
 			...g,
-			members: g.members.map((m) => dayGroup.entries.find((e) => entryKey(e) === m.key)!)
+			members: g.members.map((m) => dayGroup.entries.find((e) => e.key === m.key)!)
 		}));
 	}
 
@@ -1568,7 +1572,7 @@
 							const place = e.envLabel ? ` in ${e.envLabel}` : '';
 							const ago = formatTimeAgoCompact(e.timestamp, $now);
 							return {
-								key: entryKey(e),
+								key: e.key,
 								app: e.displayName,
 								meta: `${place} · ${ago} ago`,
 								sha: shortenVersion(e.version),

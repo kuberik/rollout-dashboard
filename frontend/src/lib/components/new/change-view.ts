@@ -5,6 +5,7 @@
  *   "where are my changes right now"         -> On the way
  *   "when did they land"                     -> Landed
  */
+import { findRolloutByPath } from '$lib/rollout-identity';
 import { shortRevision } from '$lib/version-utils';
 import { newestFirst, latest } from '$lib/instant';
 import type { TChange, TierKey, HeldCause, TRow, HomeState, ApprovalTarget } from './data';
@@ -234,7 +235,7 @@ type RawH = { version: { revision?: string; tag?: string; version?: string }; ti
 const RAWS = () => source().rollouts as unknown as { rollouts: { metadata: { name: string; namespace: string }; status: { history?: RawH[] } }[] }['rollouts'];
 const histOf = (href: string): RawH[] => {
 	const p = href.split('/').filter(Boolean);
-	return p[0] === 'rollouts' ? (RAWS().find((r) => r.metadata.namespace === p[2] && r.metadata.name === p[3])?.status.history ?? []) : [];
+	return p[0] === 'rollouts' ? (findRolloutByPath(RAWS(), href)?.status.history ?? []) : [];
 };
 /** the clock the History tab prints ("Oct 31, 22:19"), in the display zone */
 export const clock = (ts: string | null | undefined, withDay = true): string => {

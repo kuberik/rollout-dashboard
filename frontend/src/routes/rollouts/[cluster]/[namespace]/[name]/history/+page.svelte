@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { groupByDay } from '$lib/history-day-groups';
+	import { rolloutIdentity } from '$lib/rollout-identity';
 	import { siteOf } from '$lib/view-models/sites-waves';
 	import { headDeployedAt } from '$lib/view-models/head-age';
 	import { toneInk } from '$lib/view-models/state-tone';
@@ -117,6 +119,7 @@
 	import { historyApprovalFact, approvalReplacesActor } from '$lib/view-models/history-approval';
 	import { fetchGithubStatus, githubStatusQueryKey } from '$lib/api/github';
 	import { commitQueryOptions } from '$lib/api/commit';
+	import { distinctRevisions, rowsFromDistinct } from '$lib/history-commit-rows';
 	import { pollWhenHealthy, staleTimeWhenHealthy } from '$lib/api/errors';
 	import { pageTitle } from '$lib/page-title';
 	import { buildTitle } from '$lib/view-models/build-title';
@@ -482,7 +485,8 @@
 			const others = nsRollouts
 				.filter((r) => r.metadata?.name !== name)
 				.map((r) => ({
-					id: `${r.metadata?.namespace}/${r.metadata?.name}`,
+					/* the cluster is part of the id: the same namespace/name on another cluster is another lane (the hover and selection find lanes by id) */
+					id: rolloutIdentity(r),
 					name: r.metadata?.name ?? 'unknown',
 					history: r.status?.history ?? [],
 					isCurrent: false
@@ -609,16 +613,9 @@
 	const groupedVisible = $derived.by(() => {
 		const todayKey = dayKeyOf(new Date($now.getTime()).toISOString());
 		const yesterdayKey = dayKeyOf(new Date($now.getTime() - 86_400_000).toISOString());
-		const groups: { key: string; label: string; total: number; items: typeof visibleHistory }[] =
-			[];
-		for (const item of visibleHistory) {
-			const key = dayKeyOf(item.e.timestamp);
-			const last = groups[groups.length - 1];
-			if (last && last.key === key) {
-				last.items.push(item);
-				continue;
-			}
-			const label =
+		return groupByDay(visibleHistory, {
+			dayKeyOf: (item) => dayKeyOf(item.e.timestamp),
+			labelOf: (key) =>
 				key === todayKey
 					? 'Today'
 					: key === yesterdayKey
@@ -627,10 +624,9 @@
 								weekday: 'short',
 								month: 'short',
 								day: 'numeric'
-							});
-			groups.push({ key, label, total: dayTotals.get(key) ?? 1, items: [item] });
-		}
-		return groups;
+							}),
+			totalOf: (key) => dayTotals.get(key) ?? 1
+		});
 	});
 
 	// Stats (over all history, not filtered)
@@ -680,19 +676,25 @@
 		if (!rollout?.status?.source) return null;
 		return githubOwnerRepo(repoKeyFor(rollout, name));
 	});
-	const rowCommitQueries = createQueries(() => ({
-		queries: allHistory.map((entry) => ({
-			...commitQueryOptions({
-				owner: sourceOwnerRepo?.owner ?? '',
-				repo: sourceOwnerRepo?.repo ?? '',
-				sha: (entry.version?.revision as string | undefined) ?? '',
-				cluster,
-				enabled: githubConnected && !!sourceOwnerRepo && !!entry.version?.revision
-			})
-		})),
-		// See ChangeVersionModal `pickerTitleQueries`: svelte-query 6.0.12 throws when a top-level result array shrinks by 2+.
-		combine: (results) => ({ items: results.map((r) => ({ data: r.data })) })
-	}));
+	// One lookup per distinct revision: a rollback redeploys a revision already in the list, and
+	// two queries with one key make svelte-query warn "Duplicate Queries found" on every visit.
+	const rowCommitQueries = createQueries(() => {
+		const rowRevisions = allHistory.map((entry) => entry.version?.revision as string | undefined);
+		const revisions = distinctRevisions(rowRevisions);
+		return {
+			queries: revisions.map((sha) => ({
+				...commitQueryOptions({
+					owner: sourceOwnerRepo?.owner ?? '',
+					repo: sourceOwnerRepo?.repo ?? '',
+					sha,
+					cluster,
+					enabled: githubConnected && !!sourceOwnerRepo
+				})
+			})),
+			// See ChangeVersionModal `pickerTitleQueries`: svelte-query 6.0.12 throws when a top-level result array shrinks by 2+.
+			combine: (results) => ({ items: rowsFromDistinct(rowRevisions, revisions, results) })
+		};
+	});
 	const rowTitleByIndex = $derived.by(() => {
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- built and read inside this one derived
 		const map = new Map<number, string | null>();

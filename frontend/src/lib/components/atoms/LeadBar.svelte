@@ -52,7 +52,7 @@
 
 <svg class="lb {className}" width={width} height="8" viewBox="0 0 {width} 8" role="img" aria-label="reached prod in {fmt((hops.at(-1)?.end ?? t0) - t0)}" data-lead-bar>
 	{#each waits as w, i (i)}<line x1={w.a} x2={w.b} y1="4" y2="4" class="lb-wait"><title>{w.title}</title></line>{/each}
-	{#each runs as r (r.tier + r.start)}<rect x={r.a} y="1" width={r.w} height="6" rx="1.5" class="lb-run" class:last={r.last}><title>{r.title}</title></rect>{/each}
+	{#each runs as r, ri (r.tier + r.start + '#' + ri)}<rect x={r.a} y="1" width={r.w} height="6" rx="1.5" class="lb-run" class:last={r.last}><title>{r.title}</title></rect>{/each}
 	{#if end < width}<line x1={end} x2={width} y1="4" y2="4" class="lb-rest" />{/if}
 </svg>
 

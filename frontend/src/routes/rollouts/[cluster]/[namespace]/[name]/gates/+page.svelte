@@ -793,8 +793,10 @@
 		const byName = new Map<string, DownstreamRow>();
 		for (const c of provided) {
 			for (const d of c.dependents) {
-				const existing = byName.get(d.name);
-				byName.set(d.name, {
+				/* by the consumer's own page: two consumers that share a name in different namespaces/clusters are two rows */
+				const id = consumerHref(d) || d.name;
+				const existing = byName.get(id);
+				byName.set(id, {
 					name: d.name,
 					href: consumerHref(d),
 					running: !d.runningVaries && d.running ? d.running : (existing?.running ?? null),
@@ -2098,7 +2100,7 @@
 													>
 												</div>
 												<ul class="divide-line-subtle divide-y">
-													{#each reallyHeldHere as h (h.tag || h.build)}
+													{#each reallyHeldHere as h, hi (`${h.tag || h.build}#${hi}`)}
 														{@render hereHeldRow(h)}
 													{/each}
 												</ul>
@@ -2111,7 +2113,7 @@
 													>
 												</div>
 												<ul class="divide-line-subtle divide-y">
-													{#each chainOnlyHere as h (h.tag || h.build)}
+													{#each chainOnlyHere as h, hi (`${h.tag || h.build}#${hi}`)}
 														{@render hereHeldRow(h)}
 													{/each}
 												</ul>
@@ -2122,7 +2124,7 @@
 													<span class="t-meta text-fg-subtle tabular-nums">{skippedHere.length}</span>
 												</div>
 												<ul class="divide-line-subtle divide-y">
-													{#each skippedHere as h (h.tag || h.build)}
+													{#each skippedHere as h, hi (`${h.tag || h.build}#${hi}`)}
 														{@render hereHeldRow(h)}
 													{/each}
 												</ul>
@@ -2142,13 +2144,13 @@
 											{/if}
 										{:else if reallyHeldHere.length > 0}
 											<ul class="divide-line-subtle divide-y">
-												{#each reallyHeldHere as h (h.tag || h.build)}
+												{#each reallyHeldHere as h, hi (`${h.tag || h.build}#${hi}`)}
 													{@render hereHeldRow(h)}
 												{/each}
 											</ul>
 										{:else if chainOnlyHere.length > 0}
 											<ul class="divide-line-subtle divide-y">
-												{#each chainOnlyHere as h (h.tag || h.build)}
+												{#each chainOnlyHere as h, hi (`${h.tag || h.build}#${hi}`)}
 													{@render hereHeldRow(h)}
 												{/each}
 											</ul>
@@ -2333,7 +2335,7 @@
 									<p class="t-meta text-fg-subtle px-4 py-3">No other service waits on this app.</p>
 								{:else}
 									<ul class="divide-line-subtle divide-y">
-										{#each downstreamRows as d (d.name)}
+										{#each downstreamRows as d (d.href || d.name)}
 											<!-- Leading status column — `held` ink only on the
 										     mark itself when this row is adverse, since colour is the
 										     one thing that may vary with state here. -->
