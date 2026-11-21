@@ -1275,6 +1275,7 @@ lib/history-marks.ts	code	Redeployed the same release, ….
 lib/history-marks.ts	code	Rolled back
 lib/history-marks.ts	code	Rolled back … release…: … → ….
 lib/history-marks.ts	code	What … replaced is unknown — it is the oldest deploy the retained history (last …) still holds.
+lib/history-marks.ts	code	What … replaced is unknown — this entry is kept past the retention limit because the build is held.
 lib/MobileTabBar.svelte	aria-label	Main navigation
 lib/Navbar.svelte	title	Open app …
 lib/Navbar.svelte	code	Times shown in local time (…). Switch to UTC
@@ -2351,7 +2352,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	… rolle
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	… showing the last …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	· … ago
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	(of … total)
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	(retention limit)
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	(retention limit … )
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	All healthy
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Automatic deploys are paused until this pin is cleared.
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Choose "All" on the cadence strip above to see every deploy.
