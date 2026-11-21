@@ -613,6 +613,15 @@
 	 * story about one deploy.
 	 */
 	const rolledBack = $derived(detectRollback(rollout));
+	// The build whose hold the rolled-back banner releases ("Deploy anyway" there).
+	// Its Newer builds row drops its own button while the banner shows, so the one
+	// action has one place on the page.
+	const bannerHoldTag = $derived.by(() => {
+		if (!rolledBack) return null;
+		const v = autoRollbackView(rollout);
+		if (v?.state !== 'rolled-back') return null;
+		return failedBakeHeld(rollout, v.failed.version.tag) ? v.failed.version.tag : null;
+	});
 
 	/**
 	 * ⭐ THE ONE BLOCKING STORY, and it is the SAME function `/apps`,
@@ -4199,7 +4208,7 @@
 
 												{@const isOlderRow = candidateIndex > 0}
 												{#snippet deployBtn()}
-													{#if canModify}
+													{#if canModify && version !== bannerHoldTag}
 														<!-- ⭐ DEPLOY: ONLY THE NEWEST CARRIES IT AT REST (AD r3 #5). An older build's
 														     Deploy is hover/focus at >=512px of card (in the actions cluster that
 														     replaces the age, History §4.13), and on a narrow card appears after one
