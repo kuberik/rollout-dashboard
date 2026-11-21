@@ -108,6 +108,8 @@
 	import { ledgerSpine } from '$lib/ledger-spine';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
+	import AutoRollbackVerdicts from '$lib/components/AutoRollbackVerdicts.svelte';
+	import { autoRollbackView, failedBakeHeld } from '$lib/view-models/auto-rollback';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import { readyIssue, readyFacts, type ReadyIssue } from '$lib/view-models/ready-refusal';
@@ -3681,6 +3683,9 @@
 					{@const trig = latestEntry?.triggeredBy}
 					{@const author = trig?.kind === 'User' && trig?.name ? trig.name : null}
 					{@const rollbackAge = formatTimeAgoCompact(latestEntry.timestamp, $now)}
+					<!-- AUTO-ROLLBACK PREVIEW: when the CONTROLLER rolled this back (condition AutoRollback=True/RolledBack, history[0].deployKind AutoRollback) the same panel names the failed build, what triggered it, and the hold -->
+					{@const autoView = autoRollbackView(rollout)}
+					{@const autoRolled = autoView?.state === 'rolled-back' ? autoView : null}
 					<!--
 						⛔ NOT `warning`, AND NOT `pinned`. MEASURED ON THE PAGE,
 						NOT CHOSEN FROM THE ENUM.
@@ -3723,7 +3728,7 @@
 						-->
 						<p class="t-meta text-fg-subtle mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1">
 							<UndoOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
-							Rolled back {rollbackAge} ago{author ? ` · by ${author}` : ''}.
+							Rolled back {autoRolled ? 'automatically ' : ''}{rollbackAge} ago{author ? ` · by ${author}` : ''}.
 							<a href={rolloutPath(cluster, namespace, name, 'history')} class="nav-link">History</a
 							>
 						</p>
@@ -3798,6 +3803,31 @@
 							clearing the pin just reopened it.
 						-->
 						{#snippet rollbackMessage()}
+							{#if autoRolled}
+								{@const failedName = getDisplayVersion(autoRolled.failed.version)}
+								<p data-auto-rollback-sentence>
+									<span class="text-fg">{failedName}</span> failed its bake, so <span class="text-fg">{autoRolled.target}</span> is running again.{#if failedBakeHeld(rollout, autoRolled.failed.version.tag)}{' '}{failedName} stays held until someone deploys it by name.{/if}
+								</p>
+								<div class="mt-2"><AutoRollbackVerdicts rows={[...autoRolled.triggers, ...autoRolled.spared]} /></div>
+								{#if canModify && failedBakeHeld(rollout, autoRolled.failed.version.tag)}
+									<!-- the release for the hold: the same `Deploy anyway` the held build's row in Newer builds carries, here where the hold is stated -->
+									<div class="mt-3">
+										<button
+											type="button"
+											class="btn btn-secondary btn-sm"
+											data-release-hold
+											disabled={!isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout)}
+											onclick={() => {
+												const tag = autoRolled.failed.version.tag;
+												selectedVersion = tag;
+												isPinVersionMode = isOlderThanCurrent(tag) || isSelectedVersionCustom(tag);
+												deployExplanation = '';
+												requestChangeVersionModal();
+											}}>Deploy {failedName} anyway</button
+										>
+									</div>
+								{/if}
+							{:else}
 							<p>
 								{justClearedPin
 									? 'The pin has been cleared; automatic promotion is back on.'
@@ -3806,11 +3836,12 @@
 							{#if autoDeploy.paused && !justClearedPin}
 								<p class="mt-1 opacity-80">A deploy you start by hand still applies immediately.</p>
 							{/if}
+							{/if}
 						{/snippet}
 						<AlertPanel
 							severity="info"
 							icon={UndoOutline}
-							title="Rolled back"
+							title={autoRolled ? 'Rolled back automatically' : 'Rolled back'}
 							messageBody={rollbackMessage}
 							footnoteBody={rollbackDetail}
 						>
@@ -4119,7 +4150,7 @@
 											 (below) now checks `justFailed` FIRST, for the same
 											 reason. -->
 												{@const failedHere = failedHereVerdict(rollout, version)}
-												{@const justFailed = rowShowsFailed(failedHere)}
+												{@const justFailed = rowShowsFailed(failedHere) || failedBakeHeld(rollout, version)}
 												<!-- ⭐ ITEM 1 (coordinator, 2026-10-09): a row that passes every
 										     known gate and has not just failed is NOT thereby `Ready` —
 										     it is `Ready` only once `holdGraphKnown` says so. Scoped to
@@ -4313,7 +4344,9 @@
 															 for why the precedence flipped. -->
 																<span
 																	class="inline-flex min-w-0 items-center gap-1"
-																	title="The last deploy of this build on this rollout failed its checks. Nothing has re-checked it since; deploying again tries it fresh."
+																	title={failedBakeHeld(rollout, version)
+										? 'This build failed its bake here, so automatic deploys skip it. Deploy anyway names it and releases the hold.'
+										: 'The last deploy of this build on this rollout failed its checks. Nothing has re-checked it since; deploying again tries it fresh.'}
 																>
 																	<span class="t-meta text-danger shrink-0">failed here</span>
 																	{#if failedHere.kind === 'failed' && failedHere.rolledBackAt}
