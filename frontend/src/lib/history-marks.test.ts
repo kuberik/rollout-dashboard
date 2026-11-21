@@ -3,6 +3,7 @@ import {
 	deployActs,
 	rollbackCount,
 	historyAtLimit,
+	heldPastLimit,
 	isSystemDefaultNote,
 	systemNoteDescription
 } from './history-marks';
@@ -116,6 +117,21 @@ describe('deployActs', () => {
 			const r = rollout(['aa17645', '51b976a', '991829b'], { versionHistoryLimit: 5 });
 			expect(historyAtLimit(r)).toBe(false);
 			expect(deployActs(r)[2]).toBeNull();
+		});
+
+		it('does not read across entries kept past the limit for a hold', () => {
+			// Controller trimHistory keeps held failed builds past the limit:
+			// [T D T C T | B A] with limit 5. B did not replace A, and T at index 4
+			// did not replace B.
+			const r = rollout(['T', 'D', 'T', 'C', 'T', 'B', 'A'], { versionHistoryLimit: 5 });
+			expect(heldPastLimit(r)).toBe(2);
+			const acts = deployActs(r);
+			expect(acts[4]).toMatchObject({ kind: 'unknown' });
+			expect(acts[4]?.sentence).toContain('last 5');
+			expect(acts[5]).toMatchObject({ kind: 'unknown' });
+			expect(acts[5]?.sentence).toContain('held');
+			expect(acts[6]).toMatchObject({ kind: 'unknown' });
+			expect(heldPastLimit(rollout(['T', 'D'], { versionHistoryLimit: 5 }))).toBe(0);
 		});
 
 		it('falls back to the CRD default (10) when the limit is unset', () => {

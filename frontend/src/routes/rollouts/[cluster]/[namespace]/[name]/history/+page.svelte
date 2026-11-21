@@ -76,6 +76,7 @@
 	import {
 		deployActs,
 		historyAtLimit,
+		heldPastLimit,
 		isSystemDefaultNote,
 		systemNoteDescription
 	} from '$lib/history-marks';
@@ -753,6 +754,8 @@
 	 * "from" is unknown; here it gates whether the header has to say so.
 	 */
 	const atLimit = $derived(historyAtLimit(rollout));
+	/** entries kept past the limit because their build is held (auto-rollback); not part of "the last N" */
+	const heldKept = $derived(heldPastLimit(rollout));
 
 	/**
 	 * ⭐ THE CURRENT PIN STATE, IN THE HISTORY HEAD. (2026-09-03,
@@ -1251,7 +1254,8 @@
 	function diffHrefForIndex(index: number): string | undefined {
 		const history = rollout?.status?.history ?? [];
 		const entry = history[index];
-		if (!entry || index >= history.length - 1) return undefined;
+		// entries kept past the limit for a hold sit after a gap: no adjacent predecessor to diff against
+		if (!entry || index >= history.length - 1 - heldKept) return undefined;
 		return href(
 			`/rollouts/${cluster}/${rollout?.metadata?.namespace}/${rollout?.metadata?.name}/diff/${entry.version.tag}`
 		);
@@ -1586,16 +1590,16 @@
 					{:else}
 						<span
 							title={atLimit
-								? `Showing the last ${totalDeploys} deploys — the retention limit (spec.versionHistoryLimit). Earlier deploys have already been evicted.`
+								? `Showing the last ${totalDeploys - heldKept} deploys — the retention limit (spec.versionHistoryLimit). Earlier deploys have already been evicted.${heldKept > 0 ? ` ${heldKept} older failed ${heldKept === 1 ? 'build is' : 'builds are'} kept past the limit because ${heldKept === 1 ? 'it is' : 'they are'} held.` : ''}`
 								: undefined}
 						>
 							{#if atLimit}
 								showing the last
 							{/if}
-							<span class="text-fg tabular-nums">{totalDeploys}</span>
-							{totalDeploys === 1 ? 'deploy' : 'deploys'}
+							<span class="text-fg tabular-nums">{totalDeploys - heldKept}</span>
+							{totalDeploys - heldKept === 1 ? 'deploy' : 'deploys'}
 							{#if atLimit}
-								<span class="text-fg-subtle">(retention limit)</span>
+								<span class="text-fg-subtle">(retention limit{heldKept > 0 ? `, + ${heldKept} held` : ''})</span>
 							{/if}
 						</span>
 					{/if}
@@ -2467,7 +2471,7 @@
 															githubConnected &&
 															!!rollout?.status?.source &&
 															!!rollout.status.history &&
-															i + 1 < rollout.status.history.length}
+															i + 1 < rollout.status.history.length - heldKept}
 														{@const hasRangeDelta =
 															hasOlderSibling &&
 															!!baseRevision &&
