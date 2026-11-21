@@ -45,3 +45,17 @@ export function findRolloutByPath<T extends Annotated>(list: readonly T[], path:
 	const same = list.filter((r) => r.metadata?.namespace === w.namespace && r.metadata?.name === w.name);
 	return same.find((r) => sourceClusterName(r) === w.cluster) ?? same.find((r) => !sourceClusterName(r)) ?? same[0] ?? null;
 }
+
+/**
+ * The rollouts a set of `/rollouts/...` paths name, each found by `findRolloutByPath`, in list order
+ * without repeats. An un-annotated rollout (a single-cluster install, or the hub's own) matches by
+ * namespace and name alone, so this never waits on knowing the local cluster's name.
+ */
+export function rolloutsAtPaths<T extends Annotated>(list: readonly T[], paths: readonly string[]): T[] {
+	const hit = new Set<T>();
+	for (const p of paths) {
+		const r = findRolloutByPath(list, p);
+		if (r) hit.add(r);
+	}
+	return list.filter((r) => hit.has(r));
+}

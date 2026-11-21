@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findRolloutByPath, pathIdentity, rolloutIdentity, rolloutPathParts } from './rollout-identity';
+import { findRolloutByPath, rolloutsAtPaths, pathIdentity, rolloutIdentity, rolloutPathParts } from './rollout-identity';
 
 const r = (cluster: string, namespace: string, name: string) => ({
 	metadata: { namespace, name, annotations: cluster ? { 'rollout-dashboard.kuberik.com/source-cluster': cluster } : undefined }
@@ -33,5 +33,16 @@ describe('findRolloutByPath', () => {
 	it('is null for a non-rollout path', () => {
 		expect(findRolloutByPath(list, '/apps/api')).toBeNull();
 		expect(rolloutPathParts('/rollouts/dev/ns')).toBeNull();
+	});
+});
+
+describe('rolloutsAtPaths', () => {
+	it('matches an unstamped rollout (single-cluster install) by namespace and name, whatever the path cluster', () => {
+		const list = [r('', 'team', 'api'), r('', 'team', 'web'), r('', 'other', 'api')];
+		expect(rolloutsAtPaths(list, ['/rollouts/in-cluster/team/api', '/rollouts/in-cluster/team/web'])).toEqual([list[0], list[1]]);
+	});
+	it('keeps only the stamped rollout of the path cluster when two clusters share a name', () => {
+		const list = [r('prod', 'shared', 'api'), r('dev', 'shared', 'api')];
+		expect(rolloutsAtPaths(list, ['/rollouts/dev/shared/api'])).toEqual([list[1]]);
 	});
 });
