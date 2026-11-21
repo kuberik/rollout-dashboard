@@ -18,6 +18,8 @@
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
+	import AutoRollbackVerdicts from './AutoRollbackVerdicts.svelte';
+	import { autoRollbackView } from '$lib/view-models/auto-rollback';
 	import { poolOf, worstOf, bannerEvidence, failingNowList, failingSummary, checkView, failureSince as checksFailingSince, type SnapCheck } from '$lib/view-models/health-failures';
 
 	interface Props {
@@ -226,6 +228,9 @@
 	const evCheck = $derived(ev?.check);
 	const evMessage = $derived(ev?.message);
 	const failureAgo = $derived(failureSince ? formatTimeAgoCompact(failureSince, $now) : null);
+	/* AUTO-ROLLBACK PREVIEW: the controller's decision for this failed bake (condition AutoRollback=False): the sentence, then which failures would or would not roll back */
+	const autoView = $derived(autoRollbackView(rollout));
+	const notRolled = $derived(autoView?.state === 'not-rolled-back' ? autoView : null);
 	const retryFirst = $derived(allRecovered);
 	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
 	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback, ...(isDashboardManagingWantedVersion ? {} : { ...(canHover.current ? {} : { title: WANTED_VERSION_OWNED_REASON }), describedBy: 'failure-owned-reason' }) });
@@ -282,6 +287,12 @@
 	}}
 	note={rollbackShown && !canHover.current && !isDashboardManagingWantedVersion ? WANTED_VERSION_OWNED_REASON : undefined}
 >
+	{#snippet body()}
+		{#if notRolled}
+			<p class="min-w-0 font-medium text-fg" data-not-rolled-back={notRolled.reason}>{notRolled.headline}</p>
+			{#if notRolled.rows.length > 0}<AutoRollbackVerdicts rows={notRolled.rows} would={notRolled.reason !== 'NotATrigger'} />{/if}
+		{/if}
+	{/snippet}
 	{#snippet footnoteBody()}
 		{#if evidence}
 			<FailureDetails {pool} />

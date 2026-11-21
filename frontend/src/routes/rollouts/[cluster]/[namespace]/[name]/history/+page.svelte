@@ -9,6 +9,7 @@
 	import { behindWhenSettled, fleetSettled } from '$lib/view-models/behind';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
+	import { deployKindLabel } from '$lib/view-models/auto-rollback';
 	import FailureSourceRow from '$lib/components/FailureSourceRow.svelte';
 	import { historyPool, failureSince } from '$lib/view-models/health-failures';
 	import { deployWindowStart } from '$lib/view-models/health-witness';
@@ -1881,6 +1882,8 @@
 												{@const note = deployNote(entry.message, entry.triggeredBy)}
 												<!-- ⭐ SKIPPED RULES (bypass-only): parsed from the controller's own message. Who set the skip is NOT recorded, so this fact names no one. -->
 												{@const skipped = skippedFact(skippedRulesOf(entry.message), skipLabels)}
+												{@const kindLabel = deployKindLabel(entry.deployKind)}
+												{@const rolledBackAuto = entry.bakeStatus === 'Failed' && entry.id != null && allHistory.some((e) => e.deployKind === 'AutoRollback' && e.rollbackOf === entry.id)}
 												{@const who = entry.triggeredBy}
 												{@const actor = who ? actorFrom(who) : null}
 												{@const approved = historyApprovalFact(entry.approval, byVerified)}
@@ -2181,7 +2184,7 @@
 																				title={act.sentence}
 																			>
 																				<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-																				Rolled back from
+																				{entry.deployKind === 'AutoRollback' ? 'Rolled back automatically from' : 'Rolled back from'}
 																				<span class="t-code-sm text-fg-muted">{act.from}</span>
 																			</span>
 																		{:else if act && act.kind === 'forward' && act.by > 1}
@@ -2223,6 +2226,16 @@
 												     after it. -->
 																			<span class="text-fg-muted" title={act.sentence}>
 																				{act.sentence.replace(/\.$/, '')}
+																			</span>
+																		{/if}
+																		{#if kindLabel && !(entry.deployKind === 'AutoRollback' && act && act.kind === 'rollback')}
+																			<!-- HOW the build was deployed (`deployKind`): the controller's own word for a rollback, a force deploy, a pin; ordinary automatic deploys say nothing -->
+																			<span class="text-fg-muted" data-history-deploy-kind>{kindLabel}</span>
+																		{/if}
+																		{#if rolledBackAuto}
+																			<span class="text-fg-muted inline-flex items-center gap-1" data-history-rolled-back-auto title="The controller put the previous build back after this one failed its bake.">
+																				<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
+																				Rolled back automatically
 																			</span>
 																		{/if}
 																		{#if skipped}

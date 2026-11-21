@@ -78,6 +78,11 @@ export async function mockApiPlugin(): Promise<Plugin> {
 		(await import('./src/lib/demo/health-failures-fixtures')).install(true, fixtureFlags.includes('release-switch'));
 		resetDemoState();
 	}
+	/** `MOCK_SCENARIO=auto-rollback` (or `MOCK_FIXTURES=auto-rollback`) adds cart-service, catalog-sync and payments-gateway: an automatic rollback, a failed bake that is not rolled back, a force-deployed failure (auto-rollback-fixtures.ts). */
+	if (process.env.MOCK_SCENARIO === 'auto-rollback' || fixtureFlags.includes('auto-rollback')) {
+		(await import('./src/lib/demo/auto-rollback-fixtures')).install(true);
+		resetDemoState();
+	}
 	const homeFixture = loadHomeFixture();
 	/**
 	 * ⭐ SCENARIO PER REQUEST (r39). `MOCK_SCENARIO=home-incident|home-calm|home-quiet` is the default; the `kuberik_scenario` cookie (set by
