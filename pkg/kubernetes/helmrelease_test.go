@@ -230,3 +230,21 @@ func TestGetKustomizationManagedResources_ExpandsHelmRelease(t *testing.T) {
 		t.Fatalf("second entry should be the expanded Deployment tagged shop/cart: %+v", res[1])
 	}
 }
+
+func TestSlimHelmRelease_StripsValuesKeepsValuesFrom(t *testing.T) {
+	hr := helmRelease("other", "hr", nil, map[string]interface{}{
+		"values":     map[string]interface{}{"password": "hunter2"},
+		"valuesFrom": []interface{}{map[string]interface{}{"kind": "Secret", "name": "creds"}},
+		"chart":      map[string]interface{}{"spec": map[string]interface{}{"chart": "x"}},
+	}, nil)
+	out := slimHelmRelease(hr)
+	if _, found, _ := unstructured.NestedFieldNoCopy(out.Object, "spec", "values"); found {
+		t.Fatalf("spec.values must be stripped, got %v", out.Object["spec"])
+	}
+	if _, found, _ := unstructured.NestedFieldNoCopy(out.Object, "spec", "valuesFrom"); !found {
+		t.Fatal("spec.valuesFrom (references only) should be kept")
+	}
+	if _, found, _ := unstructured.NestedFieldNoCopy(hr.Object, "spec", "values"); !found {
+		t.Fatal("the input must not be mutated")
+	}
+}

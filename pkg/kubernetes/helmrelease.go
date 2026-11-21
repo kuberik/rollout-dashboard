@@ -218,6 +218,9 @@ func (c *Client) ResolveHelmReleasesForRollout(ctx context.Context, all *unstruc
 func slimHelmRelease(in *unstructured.Unstructured) *unstructured.Unstructured {
 	out := in.DeepCopy()
 	unstructured.RemoveNestedField(out.Object, "metadata", "managedFields")
+	// spec.values can carry secrets or private config and the UI never reads it; a HelmRelease read from another
+	// namespace with the service-account client must not ship it. spec.valuesFrom is references only and stays.
+	unstructured.RemoveNestedField(out.Object, "spec", "values")
 	anns := out.GetAnnotations()
 	if _, ok := anns[lastAppliedConfigAnnotation]; ok {
 		delete(anns, lastAppliedConfigAnnotation)
