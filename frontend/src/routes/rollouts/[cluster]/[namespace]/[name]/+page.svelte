@@ -110,6 +110,7 @@
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import { readyIssue } from '$lib/view-models/ready-refusal';
 	import FactList from '$lib/components/FactList.svelte';
 	import NotFound from '$lib/components/NotFound.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -705,6 +706,16 @@
 			contractHolds: contractHoldsIn
 		})
 	);
+	/**
+	 * THE READY=FALSE BANNER (owner 2026-11-21, "Add it to the banner"): the controller's refusal or error, by reason and message
+	 * (`view-models/ready-refusal.ts`). It ranks FIRST in the banner stack, above held/pinned, failing and rolled back: it is the one
+	 * statement that the controller cannot act at all, and every other banner's way forward (wait for the gate, approve, retry, clear
+	 * the pin) runs into the same refusal until Git is fixed. It never folds the others (each is an independent fact with its own
+	 * action); reasons another banner already states (BakeTime* -> failure, NoReleases -> release source, NoReleaseCandidates while
+	 * held -> held) render nothing here.
+	 */
+	const readyBanner = $derived(readyIssue(rollout?.status?.conditions, { held: !!(hereCard?.held ?? blockStory.blocked) || !!blockStory.pinnedTo }));
+
 	// The gates the held banner names, frozen while it collapses out: its
 	// action slot is a snippet of THIS page, so without this it would read
 	// `0 rules` for the length of the fade. (See `AlertPanel`'s `open`.)
@@ -3362,6 +3373,15 @@
 				{#if myClusterErrors.length}
 					<PartialDataNotice class="mb-4" errors={myClusterErrors} subject="this rollout" onRetry={() => fleetListQuery.refetch()} isRetrying={fleetListQuery.isFetching} />
 				{/if}
+				<!-- ══ READY=FALSE (deploy refused / not ready) ══ — first in the stack; see `readyBanner`. `open`, not `{#if}`: it collapses out when the next deploy succeeds. -->
+				<AlertPanel
+					open={!!readyBanner}
+					severity="error"
+					title={readyBanner?.title ?? 'Deploy refused'}
+					message={readyBanner?.line}
+					footnote={readyBanner?.detail ?? undefined}
+					dataTour="ready-banner"
+				/>
 				{#if blockStory.pinnedTo}
 					<!--
 						⛔ THIS WAS `{#if pinnedTo && !rolledBack} … {:else if
