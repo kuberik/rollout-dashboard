@@ -1292,6 +1292,35 @@ lib/view-models/auto-deploy.ts	code	Nothing moves off … until the pin is clear
 lib/view-models/auto-deploy.ts	code	the last deploy failed its checks
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there.
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there.
+lib/view-models/auto-rollback.ts	code	a check that cannot run never rolls back
+lib/view-models/auto-rollback.ts	code	Apply failed
+lib/view-models/auto-rollback.ts	code	apply failures
+lib/view-models/auto-rollback.ts	code	Automatic rollback
+lib/view-models/auto-rollback.ts	code	Check error
+lib/view-models/auto-rollback.ts	code	check errors
+lib/view-models/auto-rollback.ts	code	does not roll back
+lib/view-models/auto-rollback.ts	code	Force deployed
+lib/view-models/auto-rollback.ts	code	Not ready
+lib/view-models/auto-rollback.ts	code	Not rolled back automatically
+lib/view-models/auto-rollback.ts	code	Not rolled back automatically: a deploy was already requested by hand
+lib/view-models/auto-rollback.ts	code	Not rolled back automatically: deployed by hand
+lib/view-models/auto-rollback.ts	code	Not rolled back: … failed for a reason that does not roll back
+lib/view-models/auto-rollback.ts	code	Not rolled back: … failed, and it does not roll back
+lib/view-models/auto-rollback.ts	code	Not rolled back: no earlier build passed its bake
+lib/view-models/auto-rollback.ts	code	Not rolled back: none of the … failures roll back
+lib/view-models/auto-rollback.ts	code	Not rolled back: the rollback deploy could not be written
+lib/view-models/auto-rollback.ts	code	opted in with rollout.kuberik.com/rollback: true
+lib/view-models/auto-rollback.ts	code	opted out with rollout.kuberik.com/rollback: false
+lib/view-models/auto-rollback.ts	code	resources that are not ready
+lib/view-models/auto-rollback.ts	code	rolls back
+lib/view-models/auto-rollback.ts	code	Rules bypassed
+lib/view-models/auto-rollback.ts	code	Test failed
+lib/view-models/auto-rollback.ts	code	test failures
+lib/view-models/auto-rollback.ts	code	the check does not roll back on …
+lib/view-models/auto-rollback.ts	code	the check rolls back on …
+lib/view-models/auto-rollback.ts	code	these failures
+lib/view-models/auto-rollback.ts	code	this build
+lib/view-models/auto-rollback.ts	code	unclassified failures
 lib/view-models/banner.ts	code	… … in …${place ?
 lib/view-models/blocking-story.ts	code	— it is on
 lib/view-models/blocking-story.ts	code	, not 1
@@ -2065,16 +2094,19 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Clearing the pin 
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Commit message and author need GitHub. …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Couldn't check dependency holds
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Custom build
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Deploy anyway
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Deploy requested — starting
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	deployed … ago
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Deployment pipeline
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	External links
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	failed here
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	failed its bake, so
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to check for new versions
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to continue rollout
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to continue rollout: …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Held by rules
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Holding … rollout … — … … … .
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	is running again. … … … stays held until someone deploys it by name. …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Loading releases…
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Lockstep is set on … only
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Newer builds
@@ -2093,14 +2125,12 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Ready to deploy
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Recovery mode
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Retry started
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Roll back
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Rolled back
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	rolled back …
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Rolled back … ago … .
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Rolled back … … ago … .
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Rollout continued
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Running here
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Running here
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	See gates
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	The last deploy of this build on this rollout failed its checks. Nothing has re-checked it since; deploying again tries it fresh.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	The running build is not in this rollout's release list, so no rule here vouches for it.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This clears on its own once the check passes.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This clears on its own.
@@ -2205,7 +2235,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Recorded 
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Roll back
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	aria-label	Roll back to this build
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	rolled back
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Rolled back from
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Rolled back automatically
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Same build as …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Show … earlier deploy …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Show all other rollouts in this namespace
@@ -2213,6 +2243,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Show sib
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Skipped … … , … …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Skipped … release …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Started …, checks finished ….
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	The controller put the previous build back after this one failed its bake.
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	headline	This rollout does not exist
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Triggered by
 routes/rollouts/[cluster]/[namespace]/[name]/logs/+page.svelte	text	… pod …

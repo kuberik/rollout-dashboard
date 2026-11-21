@@ -11,7 +11,8 @@
 	import { behindWhenSettled, fleetSettled } from '$lib/view-models/behind';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
-	import { deployKindLabel } from '$lib/view-models/auto-rollback';
+	import { deployKindLabel, verdictRows } from '$lib/view-models/auto-rollback';
+	import AutoRollbackVerdicts from '$lib/components/AutoRollbackVerdicts.svelte';
 	import FailureSourceRow from '$lib/components/FailureSourceRow.svelte';
 	import { historyPool, failureSince } from '$lib/view-models/health-failures';
 	import { deployWindowStart } from '$lib/view-models/health-witness';
@@ -2924,6 +2925,13 @@
 																				<span>{entry.bakeStatusMessage}</span>
 																			</div>
 																		{/if}
+																	{/if}
+																	{#if entry.bakeStatus === 'Failed' && verdictRows(entry).length > 0}
+																		<!-- AUTO-ROLLBACK PREVIEW: which failed sources roll back, and why (the controller's verdicts, kept on the entry) -->
+																		<div class="flex flex-col gap-1.5" data-history-verdicts>
+																			<span class="t-meta text-fg-subtle">Rollback</span>
+																			<AutoRollbackVerdicts rows={verdictRows(entry)} would={entry.deployKind === 'ForceDeploy' || entry.deployKind === 'Pin'} />
+																		</div>
 																	{/if}
 																	<!-- ⭐ DROPPED: "Checked for Xm" (AD round 2, same "drop
 												     whatever the row already says" rule). A second,
