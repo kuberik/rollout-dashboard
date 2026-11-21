@@ -33,3 +33,20 @@ type RollbackCheck = (ns: string, name: string, tag: string) => { breaks: Obj[];
 let rollbackCheck: RollbackCheck | null = null;
 export const setExtraRollbackCheck = (f: RollbackCheck | null): void => void (rollbackCheck = f);
 export const extraRollbackCheck = (ns: string, name: string, tag: string): { breaks: Obj[]; hiddenConsumers?: number } | undefined => rollbackCheck?.(ns, name, tag);
+/**
+ * opt-in HelmRelease answers (`MOCK_FIXTURES=helm`, helm-fixtures.ts): the rollout detail's `helmReleases`, a HelmRelease's
+ * managed-resources response, a Deployment's children and the rollout's health checks. Each returns undefined for a rollout the
+ * fixture does not own, so every other route answers as before.
+ */
+type HelmHooks = {
+	detail: (ns: string, name: string) => Obj | undefined;
+	resources: (ns: string, name: string) => Obj | undefined;
+	children: (ns: string, name: string) => Obj | undefined;
+	healthChecks: (ns: string, name: string) => Obj | undefined;
+};
+let helmHooks: HelmHooks | null = null;
+export const setExtraHelm = (h: HelmHooks | null): void => void (helmHooks = h);
+export const extraHelmDetail = (ns: string, name: string): Obj | undefined => helmHooks?.detail(ns, name);
+export const extraHelmResources = (ns: string, name: string): Obj | undefined => helmHooks?.resources(ns, name);
+export const extraHelmChildren = (ns: string, name: string): Obj | undefined => helmHooks?.children(ns, name);
+export const extraHelmHealthChecks = (ns: string, name: string): Obj | undefined => helmHooks?.healthChecks(ns, name);

@@ -86,7 +86,7 @@ import {
 	type DepsStep
 } from './deps-story';
 import { mkHwEnvironment } from './mock-promote';
-import { extraHealthChecks, extraFleetHealthChecks, extraRollbackCheck } from './extra-fixtures';
+import { extraHealthChecks, extraFleetHealthChecks, extraRollbackCheck, extraHelmDetail, extraHelmResources, extraHelmChildren, extraHelmHealthChecks } from './extra-fixtures';
 import { WAVES_STEPS, wavesStoryStep, type WavesStep } from './waves-story';
 
 /** the detail response, in the served shape and stamped with its source cluster like the list items */
@@ -726,7 +726,12 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 				const detail = deriveGenericDetail(listRollout, findListEnvironment(rNs));
 				return json(sliceDetailRollout2({ ...detail, rolloutGates: { items: bypassGateObjects(rNs, rName) } }));
 			}
-			if (listRollout) return json(sliceDetailRollout2(deriveGenericDetail(listRollout, findListEnvironment(rNs))));
+			if (listRollout) {
+				const generic = deriveGenericDetail(listRollout, findListEnvironment(rNs));
+				// opt-in MOCK_FIXTURES=helm: a HelmRelease app has no Kustomization
+				const helm = extraHelmDetail(rNs, rName);
+				return json(sliceDetailRollout2(helm ? { ...generic, kustomizations: { items: [] }, ...helm } : generic));
+			}
 		}
 	}
 
@@ -938,6 +943,8 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 	{
 		const m = reqPath.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)\/health-checks$/);
 		if (m) {
+			const hh = extraHelmHealthChecks(m[1], m[2]); // opt-in MOCK_FIXTURES=helm
+			if (hh) return json(hh);
 			const hf = extraHealthChecks(m[1], m[2]); // opt-in MOCK_SCENARIO=health-failures
 			if (hf) return json(hf);
 			if (hasFixture(m[1], m[2])) return json(getHealthChecks(m[1], m[2]));
@@ -1588,6 +1595,20 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 					}
 				};
 			}
+		}
+	}
+
+	// GET /api/helmreleases/:namespace/:name/managed-resources — opt-in `MOCK_FIXTURES=helm` (helm-fixtures.ts)
+	{
+		const m = reqPath.match(/^\/api\/helmreleases\/([^/]+)\/([^/]+)\/managed-resources$/);
+		if (m) {
+			const hr = extraHelmResources(m[1], m[2]);
+			if (hr) return json(hr);
+		}
+		const c = reqPath.match(/^\/api\/namespaces\/([^/]+)\/deployments\/([^/]+)\/children$/);
+		if (c) {
+			const ch = extraHelmChildren(c[1], c[2]);
+			if (ch) return json(ch);
 		}
 	}
 

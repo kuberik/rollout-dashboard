@@ -93,6 +93,11 @@ export async function mockApiPlugin(): Promise<Plugin> {
 		(await import('./src/lib/demo/rollback-deps-fixtures')).install(true);
 		resetDemoState();
 	}
+	/** `MOCK_FIXTURES=helm` adds `hello-helm`: HelmReleases in dev, staging and production, one mid-upgrade (helm-fixtures.ts). */
+	if (fixtureFlags.includes('helm')) {
+		(await import('./src/lib/demo/helm-fixtures')).install();
+		resetDemoState();
+	}
 	const homeFixture = loadHomeFixture();
 	/**
 	 * ⭐ SCENARIO PER REQUEST (r39). `MOCK_SCENARIO=home-incident|home-calm|home-quiet` is the default; the `kuberik_scenario` cookie (set by
