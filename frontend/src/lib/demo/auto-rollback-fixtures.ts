@@ -10,6 +10,8 @@
  *                         also failed but opted out. 2.3.0 runs again; 2.4.0 is held (candidates[].failedBake).
  *   catalog-sync      (b) failed bake, NOT rolled back: only the opted-out catalog-flaky-ui-test failed (NotATrigger).
  *   payments-gateway  (c) force-deployed build failed: not rolled back automatically (ManualDeploy), Roll back is the primary action.
+ *   search-indexer    (d) NOT opted in (no spec.autoRollback): an automatic build failed on a test the check would roll back
+ *                         on; nothing rolled back, so History reads "would roll back", never "rolls back".
  *
  * Every time is relative to the read (`restamp`), so a capture at any moment reads the same ages.
  */
@@ -32,7 +34,8 @@ const fixtureOf = (app: string, prefix: string, last: number, at: number): Fixtu
 const CART = fixtureOf('cart-service', 'ar1', 4, 3);
 const CATALOG = fixtureOf('catalog-sync', 'ar2', 5, 4);
 const PAYMENTS = fixtureOf('payments-gateway', 'ar3', 4, 4);
-const FIXTURES = [CART, CATALOG, PAYMENTS];
+const SEARCH = fixtureOf('search-indexer', 'ar4', 4, 4);
+const FIXTURES = [CART, CATALOG, PAYMENTS, SEARCH];
 export const AUTO_ROLLBACK_APPS = FIXTURES.map((f) => f.app);
 
 const verOf = (f: Fixture, n: number) => {
@@ -47,8 +50,43 @@ const ok = (f: Fixture, id: number, n: number, m: number): Obj => ({ id, version
 function shape(f: Fixture, r: Obj): Obj {
 	const m = r.metadata as { namespace: string; name: string };
 	if (m.namespace !== NS(f.app)) return r;
-	const spec = { ...(r.spec as Obj), autoRollback: { enabled: true }, healthCheckSelector: { matchLabels: { app: f.app } } };
 	const st = r.status as Obj;
+	if (f === SEARCH) {
+		return {
+			...r,
+			spec: { ...(r.spec as Obj), healthCheckSelector: { matchLabels: { app: f.app } } },
+			status: {
+				...st,
+				history: [
+					{
+						id: 4,
+						version: verOf(f, 4),
+						timestamp: ago(30),
+						bakeStatus: 'Failed',
+						bakeStartTime: ago(28),
+						bakeEndTime: ago(17),
+						bakeStatusMessage: '1 test failed',
+						deployKind: 'Automatic',
+						triggeredBy: SYSTEM,
+						failedHealthChecks: [
+							{
+								name: KUST(f.app),
+								namespace: NS(f.app),
+								class: 'kustomization',
+								message: '1 test failed',
+								rollbackOn: ['ApplyFailed', 'NotReady', 'TestFailed', 'Unclassified'],
+								failures: [{ source: `RolloutTest ${NS(f.app)}/search-smoke-test`, kind: 'TestFailed', reason: 'RolloutTestFailed', message: 'GET /search?q=boots returned 503', rollsBack: true, why: 'CheckRollbackOn' }]
+							}
+						]
+					},
+					ok(f, 3, 3, 250),
+					ok(f, 2, 2, 530),
+					ok(f, 1, 1, 950)
+				]
+			}
+		};
+	}
+	const spec = { ...(r.spec as Obj), autoRollback: { enabled: true }, healthCheckSelector: { matchLabels: { app: f.app } } };
 	if (f === CART) {
 		const tag = (n: number) => f.releases[n - 1].tag;
 		const failedChecks = [
@@ -160,7 +198,7 @@ function shape(f: Fixture, r: Obj): Obj {
 const rollouts = (): Obj[] => FIXTURES.flatMap((f) => rolloutsOf(f).map((r) => shape(f, r as Obj)));
 
 /** the head deployed N minutes before THIS read: every history time shifts by the same amount */
-const HEAD_AGE: Record<string, number> = { 'cart-service': 6, 'catalog-sync': 24, 'payments-gateway': 18 };
+const HEAD_AGE: Record<string, number> = { 'cart-service': 6, 'catalog-sync': 24, 'payments-gateway': 18, 'search-indexer': 30 };
 function restamp(r: Obj): void {
 	const m = r.metadata as { namespace?: string; name?: string } | undefined;
 	const want = m?.name && m.namespace === NS(m.name) ? HEAD_AGE[m.name] : undefined;
@@ -189,7 +227,7 @@ export function install(on = true): void {
 		setExtraFixtures('auto-rollback', null);
 		return;
 	}
-	for (const f of [CATALOG, PAYMENTS, CART]) keepFailed(NS(f.app), f.app, true);
+	for (const f of [CATALOG, PAYMENTS, SEARCH, CART]) keepFailed(NS(f.app), f.app, true);
 	setExtraFixtures('auto-rollback', { environments: () => FIXTURES.flatMap(environmentsOf), rollouts, restamp });
 	registerExtraApps(GH, MERGE);
 }

@@ -199,3 +199,28 @@ export function autoRollbackView(r: Rollout | null | undefined): AutoRollbackVie
 export function failedBakeHeld(r: Rollout | null | undefined, tag: string): boolean {
 	return !!r?.status?.candidates?.find((c) => c.tag === tag)?.failedBake;
 }
+
+/**
+ * Did the controller actually roll this failed entry back? Only when a later history entry is an automatic rollback whose
+ * `rollbackOf` names this entry. Every other failed entry (rollout not opted in, deployed by hand, skipped as ManualIntent,
+ * NoTarget, DeployError, or recorded before deploy kinds existed) was NOT rolled back, so its verdicts read conditionally.
+ */
+export function entryRolledBack(r: Rollout | null | undefined, entry: HistoryEntry | null | undefined): boolean {
+	if (entry?.id == null) return false;
+	return (r?.status?.history ?? []).some((e) => e.deployKind === 'AutoRollback' && e.rollbackOf != null && e.rollbackOf === entry.id);
+}
+
+/**
+ * The one line above a failed entry's verdict rows in History: what the controller did with this failure.
+ * `ran` is true only when it rolled back; otherwise a failure that "rolls back" is drawn as "would roll back" in muted ink.
+ */
+export function entryRollbackNote(r: Rollout | null | undefined, entry: HistoryEntry): { ran: boolean; note: string } {
+	if (entryRolledBack(r, entry)) return { ran: true, note: 'Rolled back automatically' };
+	if (!r?.spec?.autoRollback?.enabled) return { ran: false, note: 'Not rolled back: automatic rollback is off for this rollout' };
+	if (deployedByHand(entry.deployKind)) return { ran: false, note: 'Not rolled back automatically: deployed by hand' };
+	if (!entry.deployKind) return { ran: false, note: 'Not rolled back: deployed before rollback decisions were recorded' };
+	const head = r.status?.history?.[0];
+	const c = cond(r);
+	if (head === entry && c?.status === 'False' && c.reason) return { ran: false, note: notRolledBackHeadline(c.reason, entry, verdictRows(entry)) };
+	return { ran: false, note: 'Not rolled back' };
+}

@@ -16,17 +16,18 @@
 	import CheckGlyph from './CheckGlyph.svelte';
 	import { shortRef, type VerdictRow } from '$lib/view-models/auto-rollback';
 
-	/** `would`: the rollback did not run (a build deployed by hand, no target): a failure that rolls back reads "would roll back" */
+	/** `would`: no rollback ran for these failures (not opted in, deployed by hand, skipped): a failure that rolls back reads
+	 *  "would roll back" in muted ink, never in danger, so a reader never takes it for a rollback that happened */
 	let { rows, would = false }: { rows: VerdictRow[]; would?: boolean } = $props();
 </script>
 
 <ul class="flex min-w-0 flex-col gap-2" data-testid="verdict-rows">
 	{#each rows as r (r.key)}
 		<li class="grid grid-cols-[14px_minmax(0,1fr)] items-baseline gap-x-2 gap-y-0.5" data-testid="verdict-row" data-rolls-back={r.rollsBack}>
-			<CheckGlyph cls={r.cls} class="{r.rollsBack ? 'text-danger' : 'text-fg-subtle'} h-3.5 w-3.5 translate-y-0.5" />
+			<CheckGlyph cls={r.cls} class="{r.rollsBack && !would ? 'text-danger' : 'text-fg-subtle'} h-3.5 w-3.5 translate-y-0.5" />
 			<span class="flex min-w-0 flex-wrap items-baseline gap-x-2" title={r.type ? `${r.type} ${r.ref}` : r.ref}>
 				<span class="t-code-sm min-w-0 text-fg [overflow-wrap:anywhere]">{shortRef(r.ref)}</span>
-				<span class="t-meta whitespace-nowrap {r.rollsBack ? 'text-danger' : 'text-fg-muted'}" data-testid="verdict-word">{would && r.rollsBack ? 'would roll back' : r.word}</span>
+				<span class="t-meta whitespace-nowrap {r.rollsBack && !would ? 'text-danger' : 'text-fg-muted'}" data-testid="verdict-word">{would && r.rollsBack ? 'would roll back' : r.word}</span>
 			</span>
 			<span class="col-start-2 t-meta text-fg-muted [overflow-wrap:anywhere]">{r.why}</span>
 			{#if r.message}<span class="col-start-2 t-meta text-fg-subtle [overflow-wrap:anywhere]">{r.message}</span>{/if}
