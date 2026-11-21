@@ -192,6 +192,6 @@
 	.ap-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 	.ap-lead { list-style: none; margin: 0; padding: 0; display: flex; min-width: 0; }
 	.ap-lead > :global(li) { flex: 1 1 0; }
-	.ap-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); grid-auto-rows: auto; align-items: start; min-width: 0; }
+	.ap-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); grid-auto-rows: auto; align-items: stretch; min-width: 0; }
 	@media (max-width: 639.98px) { .ap-grid { gap: 12px; } .ap-stack { gap: 12px; } }
 </style>
