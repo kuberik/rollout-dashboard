@@ -613,15 +613,6 @@
 	 * story about one deploy.
 	 */
 	const rolledBack = $derived(detectRollback(rollout));
-	// The build whose hold the rolled-back banner releases ("Deploy anyway" there).
-	// Its Newer builds row drops its own button while the banner shows, so the one
-	// action has one place on the page.
-	const bannerHoldTag = $derived.by(() => {
-		if (!rolledBack) return null;
-		const v = autoRollbackView(rollout);
-		if (v?.state !== 'rolled-back') return null;
-		return failedBakeHeld(rollout, v.failed.version.tag) ? v.failed.version.tag : null;
-	});
 
 	/**
 	 * ⭐ THE ONE BLOCKING STORY, and it is the SAME function `/apps`,
@@ -788,6 +779,17 @@
 			blockStory.gates.some((g) => g.kind === 'dependency') &&
 			!rollbackIsStale
 	);
+
+	// The build whose hold the rolled-back banner releases ("Deploy anyway" there).
+	// Its Newer builds row drops its own button while the banner shows, so the one
+	// action has one place on the page. Only while the full banner draws that button:
+	// a stale rollback (one-line note) or one folded into the gate banner has none.
+	const bannerHoldTag = $derived.by(() => {
+		if (!rolledBack || rollbackIsStale || rollbackFoldedIntoGateBanner) return null;
+		const v = autoRollbackView(rollout);
+		if (v?.state !== 'rolled-back') return null;
+		return failedBakeHeld(rollout, v.failed.version.tag) ? v.failed.version.tag : null;
+	});
 
 	/**
 	 * ⭐ THE PROVIDER FACT, ON THE PROVIDER'S OWN OVERVIEW. (2026-09-02)
