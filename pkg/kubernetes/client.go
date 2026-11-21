@@ -843,6 +843,10 @@ type ManagedResourceStatus struct {
 	Message          string                     `json:"message"`
 	LastModified     time.Time                  `json:"lastModified"`
 	Object           *unstructured.Unstructured `json:"object"`
+	// HelmRelease is "<namespace>/<name>" of the HelmRelease this resource
+	// was expanded from, set only on entries a Kustomization's managed
+	// resources gained by expanding a HelmRelease in its inventory.
+	HelmRelease string `json:"helmRelease,omitempty"`
 }
 
 // managedResourceStatusFromObject computes the ManagedResourceStatus fields
@@ -1058,6 +1062,29 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 	entries := kustomization.Status.Inventory.Entries
 	fmt.Printf("Kustomization %s/%s inventory has %d entries\n", namespace, name, len(entries))
 
+	refs := make([]inventoryRef, 0, len(entries))
+	for _, e := range entries {
+		refs = append(refs, inventoryRef{ID: e.ID, Version: e.Version})
+	}
+	managedResources, err := c.managedResourcesFromInventory(ctx, refs)
+	if err != nil {
+		return nil, err
+	}
+	return c.expandHelmReleases(ctx, managedResources), nil
+}
+
+// inventoryRef is one Flux inventory entry (status.inventory.entries[]),
+// identical for a Kustomization and a HelmRelease: an object ID
+// ("<ns>_<name>_<group>_<kind>") and the API version it was applied with.
+type inventoryRef struct {
+	ID      string
+	Version string
+}
+
+// managedResourcesFromInventory resolves Flux inventory entries to their live
+// objects with a status word each. It is the one implementation behind both
+// GetKustomizationManagedResources and GetHelmReleaseManagedResources.
+func (c *Client) managedResourcesFromInventory(ctx context.Context, entries []inventoryRef) ([]ManagedResourceStatus, error) {
 	// Fixed-size slot per entry — each goroutine writes its own index, no mutex needed.
 	// nil slot means parse failed and entry was skipped.
 	results := make([]*ManagedResourceStatus, len(entries))
