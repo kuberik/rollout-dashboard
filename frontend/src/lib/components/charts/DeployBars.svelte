@@ -38,12 +38,13 @@
 		type DeployMarker
 	} from '$lib/view-models/deploy-bars';
 	import { formatClockTime } from '$lib/display-time';
+	import { uniqueKeyed } from '$lib/unique-keys';
 	import './chart-marks.css';
 
 	let {
 		buckets: allBuckets,
 		previous: allPrevious = null,
-		markers = [],
+		markers: allMarkers = [],
 		startMs = undefined,
 		endMs = undefined,
 		height = undefined,
@@ -82,6 +83,8 @@
 		class?: string;
 	} = $props();
 
+	/** A caller's keys name an entry, not a second: two markers that share one still both draw (a keyed each would throw on the repeat). */
+	const markers = $derived(uniqueKeyed(allMarkers));
 	let width = $state(0);
 	const W = $derived(Math.max(240, width));
 	const narrow = $derived(width > 0 && width < 640);

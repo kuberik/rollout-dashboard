@@ -19,6 +19,16 @@ describe('DeployBars', () => {
 		expect(container.querySelector('.db-now')).not.toBeNull();
 		expect(container.textContent).toContain('Now');
 	});
+	it('survives markers that share a key (each_key_duplicate used to blank the chart)', () => {
+		const { container } = setup({
+			markers: [
+				{ key: 'dup', tsMs: 10 * H, label: 'a', tone: 'failed', title: 'a failed' },
+				{ key: 'dup', tsMs: 10 * H, label: 'b', tone: 'rolledBack', title: 'b rolled back' }
+			]
+		});
+		expect(container.querySelectorAll('rect.db-bar')).toHaveLength(3);
+		expect(container.querySelectorAll('.db-marker')).toHaveLength(2);
+	});
 	it('draws ghost bars only for a previous window', () => {
 		const prev = bucketize([3 * H, 3.1 * H], 0, 24 * H, 24);
 		const { container } = setup({ previous: prev });
@@ -140,5 +150,19 @@ describe('DeployBars clipped outlier with a failure', () => {
 		const dot = container.querySelector('circle.db-onseries')!;
 		expect(t.textContent).toBe('60');
 		expect(Number(t.getAttribute('y'))).toBeLessThan(Number(dot.getAttribute('cy')) - 6);
+	});
+});
+
+describe('DeployBars duplicate marker keys (nav console errors)', () => {
+	it('draws both markers when two share a key (a failed deploy and its rollback in one second)', () => {
+		const same = { key: 'hello-multi-dev/hello-multi-app/2026-11-21T14:23:02Z', tsMs: 10 * H, label: 'hello-multi-app', font: 'sans' as const, title: 't' };
+		const { container } = setup({
+			markers: [
+				{ ...same, tone: 'failed', href: '/rollouts/dev/hello-multi-dev/hello-multi-app/history' },
+				{ ...same, tone: 'rolledBack', href: '/rollouts/dev/hello-multi-dev/hello-multi-app/history' }
+			]
+		});
+		expect(container.querySelectorAll('g.db-marker')).toHaveLength(2);
+		expect(container.querySelectorAll('a.db-link')).toHaveLength(2);
 	});
 });

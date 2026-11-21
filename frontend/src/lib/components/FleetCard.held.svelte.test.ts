@@ -39,3 +39,12 @@ describe('Home fleet words a failure by the rule', () => {
 		expect(w('b').className).not.toContain('text-fg-muted');
 	});
 });
+
+describe('Home fleet: two places of one tier with no region (the same app in two namespaces)', () => {
+	test('both chips draw (a keyed each would throw on the repeated tier+place)', () => {
+		render(FleetCard, {
+			props: { trouble: [{ key: 'a', app: 'api', failing: false, mark: 'held', word: 'Held', href: '/x', places: [{ tier: 'staging', place: '' }, { tier: 'staging', place: '' }] }], deploys: [] }
+		});
+		expect(document.querySelectorAll('[data-fleet-row="trouble"] [data-chip], [data-fleet-row="trouble"] .flex.shrink-0 > *').length).toBeGreaterThanOrEqual(2);
+	});
+});

@@ -23,6 +23,12 @@ describe('app-model on the demo apps', () => {
 		expect(r[0].places).toEqual(['us-east', 'us-west']);
 		expect(r[0].held.length).toBe(5);
 	});
+	it('the same gate listed twice (one name in two namespaces) still gets distinct row keys', () => {
+		const g = gatesOf('invoice-api', 'incident');
+		const keys = holdRows([...g, ...g], P).map((x) => x.key);
+		expect(new Set(keys).size).toBe(keys.length);
+		expect(keys.length).toBeGreaterThan(g.length);
+	});
 	it('the health hold of a recovered place says what still blocks: the failed rollout needs a retry or a new build', () => {
 		const health = (recoveredAt: (h: string) => boolean) => holdRows(gatesOf('invoice-api', 'incident'), P, null, '', new Set(), null, recoveredAt).find((x) => x.kind === 'health')!;
 		const rec = health(() => true);

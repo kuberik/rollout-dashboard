@@ -7,6 +7,7 @@
  * allowance (allowedVersions stays inside rawOf). `deployTargets` derives it: the newest build a place still lacks that
  * runs HEALTHY in the tier upstream of it, for a place no approval or rule holds.
  */
+import { uniqueKeyed } from '$lib/unique-keys';
 import { newestFirst } from '$lib/instant';
 import { startOfDayMs } from '$lib/display-time';
 import { approvalWord, failedWord, severity } from '../state-words';
@@ -298,7 +299,8 @@ export function holdRows(
 	/* a bake whose clock is stopped by a not-Healthy check holds nothing back but IS a hold the page names: the same word the place row and the strip say */
 	for (const p of places.filter((x) => x.state === 'checking' && x.bakePaused && !pins.has(x.place)))
 		rows.push({ key: `paused:${p.place}`, kind: 'paused', name: `${app ? `${app} ` : ''}${p.place}: bake paused, waiting on a health check`, holding: true, places: [p.place], held: [], sentence: 'The bake clock restarts when the check is Healthy again', href: p.href });
-	return rows.sort((a, b) => Number(b.holding) - Number(a.holding));
+	/* a gate name or a place label that exists in two namespaces yields the same key twice: the card's keyed each must not throw on it */
+	return uniqueKeyed(rows.sort((a, b) => Number(b.holding) - Number(a.holding)));
 }
 
 /** the place order of the rows: urgency first, then the promotion order (dev → prod), then the name */

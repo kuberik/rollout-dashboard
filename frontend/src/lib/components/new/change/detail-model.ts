@@ -6,6 +6,7 @@
  * v2 r4: ONE count per page (`countsOf`), every place's state/build/age is the TAB's current deploy (`currentAt`), a place the change does
  * not reach is listed as "not affected", the History spine keeps every place's current deploy and waiting events read in the tab's own age.
  */
+import { findRolloutByPath } from '$lib/rollout-identity';
 import { shortRevision } from '$lib/version-utils';
 import { inScope } from '../derivation-scope';
 import { oldestFirst, newestFirst, earliest, latest, isLater, isNotEarlier } from '$lib/instant';
@@ -31,9 +32,10 @@ type RawH = { version: RawV; timestamp: string; bakeEndTime?: string; bakeStatus
 type RawR = { metadata: { name: string; namespace: string }; status: { history?: RawH[] } };
 const RAWS = (): RawR[] => source().rollouts as unknown as RawR[];
 const rawOf = (href: string): RawR | null => {
-	const p = href.split('/').filter(Boolean);
-	return p[0] === 'rollouts' ? (RAWS().find((r) => r.metadata.namespace === p[2] && r.metadata.name === p[3]) ?? null) : null;
+	return findRolloutByPath(RAWS(), href);
 };
+/** One event's key: the rollout it ran in plus the history entry's `id` (else its position), so a failed deploy and the rollback that lands in its second are two events, as are two places of one tier. */
+export const historyEvKey = (h: { href: string; idx: number; id?: number }): string => [h.href, h.id ?? 'i' + h.idx].join('#');
 /** CE1: the instant of the place's CURRENT deploy, as the tab's header prints it ("15m ago"): the newest history entry */
 export const currentAt = (href: string): string | null => rawOf(href)?.status.history?.[0]?.timestamp ?? null;
 /** canonical `/changes/<slug>` for a short `<repo>/pull/<n>` address (CE8): the owner the Changes list links to, else null */
@@ -340,8 +342,8 @@ function statOf(c: TChange, scenario: HomeState): { add: number; del: number; fi
 }
 
 /** changedetail-12 CD1: the cause the rollout tab prints for a rollback ("Rolled back: duplicate invoice numbers" -> "duplicate invoice numbers") */
-const causeOf = (href: string, at: string): string | null => {
-	const m = rawOf(href)?.status.history?.find((x) => x.timestamp === at)?.message;
+const causeOf = (href: string, idx: number): string | null => {
+	const m = rawOf(href)?.status.history?.[idx]?.message;
 	return m ? m.replace(/^Rolled back:\s*/i, '') : null;
 };
 /* ═══ History (S7): the PR's life on a spine, oldest first ═══ */
@@ -384,18 +386,18 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 	   every other place tells only how it first got the change, not each routine release that followed */
 	const storied = new Set(hist.filter((h) => h.kind === 'rollback').map((h) => h.href));
 	/* CE4: the tab prints a rollback as "Rolled back from a11c303" on the row of the build it went back TO; the deploy it undid is that row's `from`, not an event of its own (the page's clock cannot date it the way the tab's served History does) */
-	const fromOf = new Map<string, { build: string; at: string }>();
+	/* entries are told apart by their position in the rollout's history, never by their second: two deploys (or a failure and its rollback) can share one */
+	const fromOf = new Map<string, { build: string; idx: number }>();
 	for (const h of hist) if (h.kind === 'rollback') {
 		const rh = rawOf(h.href)?.status.history ?? [];
-		const i = rh.findIndex((x) => x.timestamp === h.at);
-		const prev = i >= 0 ? rh[i + 1] : undefined;
-		if (prev) fromOf.set(`${h.href}|${h.at}`, { build: shortBuild(prev.version.version ?? prev.version.tag ?? prev.version.revision) ?? '', at: prev.timestamp });
+		const prev = rh[h.idx + 1];
+		if (prev) fromOf.set(`${h.href}|${h.idx}`, { build: shortBuild(prev.version.version ?? prev.version.tag ?? prev.version.revision) ?? '', idx: h.idx + 1 });
 	}
-	const undone = new Set([...fromOf.entries()].map(([k, v]) => `${k.split('|')[0]}|${v.at}`));
+	const undone = new Set([...fromOf.entries()].map(([k, v]) => `${k.split('|')[0]}|${v.idx}`));
 	for (const h of hist) {
-		if (undone.has(`${h.href}|${h.at}`)) continue;
+		if (undone.has(`${h.href}|${h.idx}`)) continue;
 		/* CE4: a place's CURRENT deploy is always an event (the History must agree with the place's tab), even while it is still deploying or checking */
-		const cur = currentAt(h.href) === h.at;
+		const cur = h.idx === 0;
 		const moving = cur && h.outcome !== 'Succeeded' && h.outcome !== 'Failed';
 		if (!moving && (h.outcome === 'InProgress' || h.outcome === 'Deploying')) continue;
 		if (!incident && h.kind === 'rollback') continue;
@@ -422,7 +424,7 @@ export function spineOf(c: TChange, scenario: HomeState, places: Place[]): Ev[] 
 		const words = newerFail ? 'Newer build failed' : failed ? 'Failed' : kind === 'rollback' ? 'Rolled back to' : 'Deployed';
 		/* changedetail-9 CE4: the change's own failure is ONE instant on the page: the place row's (the tab banner's), not the deploy's start */
 		const at = failed && !newerFail && pl?.kind === 'failed' && cur && pl.at ? pl.at : h.at;
-		out.push({ key: `${h.href}|${h.at}`, kind, app: h.app, build: h.build, place: h.place, places: tier ? [{ label: h.place, tier, href: h.href }] : [], tier, at, who: h.who, words, href: `${h.href}/history`, ...(newerFail ? { newer: true } : {}), ...(kind === 'rollback' && fromOf.get(`${h.href}|${h.at}`) ? { from: fromOf.get(`${h.href}|${h.at}`)!.build } : {}), ...(kind === 'rollback' && causeOf(h.href, h.at) ? { cause: causeOf(h.href, h.at)! } : {}) });
+		out.push({ key: historyEvKey(h), kind, app: h.app, build: h.build, place: h.place, places: tier ? [{ label: h.place, tier, href: h.href }] : [], tier, at, who: h.who, words, href: `${h.href}/history`, ...(newerFail ? { newer: true } : {}), ...(kind === 'rollback' && fromOf.get(`${h.href}|${h.idx}`) ? { from: fromOf.get(`${h.href}|${h.idx}`)!.build } : {}), ...(kind === 'rollback' && causeOf(h.href, h.idx) ? { cause: causeOf(h.href, h.idx)! } : {}) });
 	}
 	for (const [gk, g] of groups) {
 		const mv = g.items.find((x) => x.moving && !x.checking) ?? g.items.find((x) => x.moving);

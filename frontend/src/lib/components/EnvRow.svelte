@@ -203,7 +203,7 @@
 			{@render wordOf(c)}
 			{#if c.region}<span class="env-region t-meta text-fg-subtle">{c.region}</span>{/if}
 			{#if c.beads?.length}
-				<span class="pointer-events-auto flex min-w-0 items-center gap-1 pl-1">{#each c.beads as b (b.state + b.refs.join() + b.count)}<ChangeDot bead={b} />{/each}</span>
+				<span class="pointer-events-auto flex min-w-0 items-center gap-1 pl-1">{#each c.beads as b, bi (b.state + b.refs.join() + b.count + '#' + bi)}<ChangeDot bead={b} />{/each}</span>
 			{:else if c.fact}
 				<span class="env-fact {c.factKind === 'detail' ? 'env-detail' : 'env-lag'} t-meta tabular-nums text-fg-subtle">{c.fact}</span>
 			{/if}

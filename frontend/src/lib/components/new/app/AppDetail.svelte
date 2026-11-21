@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { pathIdentity, rolloutIdentity } from '$lib/rollout-identity';
 	import { tick, untrack } from 'svelte';
 	import { reportFailure } from '$lib/stores/failure-toasts.svelte';
 	import { rolloutFailureTarget } from '$lib/view-models/failure-target';
@@ -368,10 +369,12 @@
 	/* ── the live rollouts: ONLY for the rail's histories and the Deploy dialog ── */
 	const query = createQuery(() => rolloutsListQueryOptions({ options: { staleTime: 10_000, refetchInterval: 15_000 } }));
 	const clusterQuery = createQuery(() => clusterInfoQueryOptions());
-	const keyOf = (h: string) => { const p = h.split('/').filter(Boolean); return `${p[2]}/${p[3]}`; };
+	/* the same name in the same namespace of two clusters is two rollouts: identity carries the cluster (a Deploy or Retry aimed at the other one is the defect) */
+	const keyOf = pathIdentity;
+	const identityOf = (r: Rollout) => rolloutIdentity(r, clusterQuery.data?.name || '');
 	const live = $derived.by<Rollout[]>(() => {
 		const keys = new Set((item?.placeList ?? []).map((p) => keyOf(p.href)));
-		return (query.data?.rollouts?.items ?? []).filter((r) => keys.has(`${r.metadata?.namespace}/${r.metadata?.name}`));
+		return (query.data?.rollouts?.items ?? []).filter((r) => keys.has(identityOf(r)));
 	});
 	const environments = $derived(query.data?.environments?.items ?? []);
 	/* Retry asks exactly as the rollout Overview's failure panel does: the one shared rule (view-models/retry-confirm.ts), `none` fires on click, otherwise RetryConfirmModal */
@@ -381,7 +384,7 @@
 		const r = confirmRetryFor;
 		if (!r) return null;
 		const k = keyOf(r.href);
-		return live.find((x) => `${x.metadata?.namespace}/${x.metadata?.name}` === k) ?? null;
+		return live.find((x) => identityOf(x) === k) ?? null;
 	});
 	const retryCluster = $derived(retryRollout ? environments.find((e) => rolloutMatchesEnvironment(retryRollout, e)) : undefined);
 	const retryDecision = $derived(retryConfirm(retryRollout, retryCluster?.spec?.environment ?? null, confirmRetryFor ? liveHealthChecks(confirmRetryFor.href) : [], (retryRollout?.status?.history?.[0]?.failedHealthChecks ?? []) as { name: string; namespace?: string }[], retryCluster ? siteOf(retryCluster) : null));
@@ -406,7 +409,7 @@
 	let modalCluster = $state<string | undefined>(undefined);
 	function openDeploy(pl: PlaceHold, buildId: string) {
 		const key = keyOf(pl.href);
-		const r = live.find((x) => `${x.metadata?.namespace}/${x.metadata?.name}` === key);
+		const r = live.find((x) => identityOf(x) === key);
 		if (!r) return;
 		const cand = (releaseCandidates(r) ?? []).find((c) => c.tag === buildId || shortBuild(c.version ?? c.tag ?? '') === buildId);
 		modalRollout = r;

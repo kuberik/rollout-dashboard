@@ -99,6 +99,7 @@
 	import { historyAtLimit } from '$lib/history-marks';
 	import type { Rollout, Environment } from '../../../types';
 	import { pageTitle } from '$lib/page-title';
+	import { rolloutIdentity } from '$lib/rollout-identity';
 
 	const namespace = $derived(page.params.name as string);
 
@@ -537,7 +538,7 @@
 				class="min-w-0"
 			>
 				<ul class="divide-y divide-line-subtle">
-					{#each visibleApps as a (a.rollout.metadata?.name)}
+					{#each visibleApps as a (rolloutIdentity(a.rollout))}
 						{@const latest = a.rollout.status?.history?.[0]}
 						{@const status = latest?.bakeStatus || 'None'}
 						{@const ver = latest?.version ? getDisplayVersion(latest.version) : null}

@@ -33,6 +33,7 @@
  *  8 step names                              -> stepsOf(): 'Started', 'Stage N', 'Check' exactly as the tab (DeploymentPipelineCard.shortLabel)
  *  9 failure reason                          -> failureReason(): check name + message + the bake phrase, from the rollout's own history
  */
+import { findRolloutByPath } from '$lib/rollout-identity';
 import { bakeHeldMs, bakePaused } from '$lib/bake-hold';
 import { oldestFirst, newestFirst, earliest, isNotEarlier } from '$lib/instant';
 import { availableReleases, releaseCandidates, noReleasesOf } from '$lib/releases/registry.svelte';
@@ -103,7 +104,7 @@ export const builtAgo = (iso: string | null | undefined): string => (iso ? build
 export const ARRIVALS_WINDOW = '12h';
 
 /* ═══ raw fixture access (the tab is served from this same data) ═══ */
-type RawEntry = { bakeHoldStartTime?: string; bakeHeldDuration?: string; message?: string; triggeredBy?: { kind?: string; name?: string }; bakeStartTime?: string; bakeEndTime?: string; version: { revision?: string; tag?: string; version?: string }; timestamp: string; bakeStatus?: string; bakeStatusMessage?: string; failedHealthChecks?: { name: string; message?: string }[] };
+type RawEntry = { id?: number; bakeHoldStartTime?: string; bakeHeldDuration?: string; message?: string; triggeredBy?: { kind?: string; name?: string }; bakeStartTime?: string; bakeEndTime?: string; version: { revision?: string; tag?: string; version?: string }; timestamp: string; bakeStatus?: string; bakeStatusMessage?: string; failedHealthChecks?: { name: string; message?: string }[] };
 type RawRollout = { metadata: { name: string; namespace: string }; spec?: { wantedVersion?: string; bakeTime?: string }; status: { source?: string; history?: RawEntry[]; gates?: { name: string; kind?: GateKind; displayName?: string; passing?: boolean; allowedVersions?: string[] | null; message?: string }[]; wantedVersion?: string; currentVersion?: string } };
 const raws = (): RawRollout[] => source().rollouts as unknown as RawRollout[];
 const hrefParts = (href: string) => { const p = href.split('/').filter(Boolean); return p[0] === 'rollouts' ? { cluster: p[1], ns: p[2], name: p[3] } : null; };
@@ -120,7 +121,7 @@ export const legacyPolicyAt = (href: string): string | null => {
 };
 /** an app none of whose rollouts has releases (by rollout name): its changes cannot be promoted */
 export const noReleasesApp = (app: string): NoReleases | undefined => { const rs = raws().filter((r) => r.metadata.name === app); const ns = rs.map((r) => noReleasesOf(r as unknown as Rollout)); return rs.length > 0 && ns.every(Boolean) ? ns[0]! : undefined; };
-const rawOf = (href: string) => { approvalRev(); const h = hrefParts(href); return h ? raws().find((r) => r.metadata.namespace === h.ns && r.metadata.name === h.name) ?? null : null; };
+const rawOf = (href: string) => { approvalRev(); return hrefParts(href) ? findRolloutByPath(raws(), href) : null; };
 
 /** Why Roll back is refused on the rollout behind `href` (a rollout path, a query allowed): another controller owns its wanted version. The ONE reason every Roll back entry point (cards, banners, tiles, the palette) disables with; null when the dashboard may pin. */
 export const rollbackOwnedReason = (href: string | null | undefined): string | null => {
@@ -1715,7 +1716,7 @@ export function changeCommits(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 't
 	return { commits, builds: [...by.values()] };
 }
 /** (ii) Every deploy that carried the change, one row per place and deploy, rollbacks and redeploys included, with the tab's own timestamps, oldest first. */
-type HistoryOfChange = { app: string; place: string; build: string; at: string; kind: 'deploy' | 'rollback' | 'redeploy'; who: string; outcome: string; href: string }[];
+type HistoryOfChange = { app: string; place: string; build: string; at: string; /** the entry's position in its rollout's `status.history` (newest first): the identity two entries of one second do not share */ idx: number; /** `status.history[].id`, unique per rollout, when the controller wrote one */ id?: number; kind: 'deploy' | 'rollback' | 'redeploy'; who: string; outcome: string; href: string }[];
 export function historyOfChange(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'title'>, state: HomeState = 'incident'): HistoryOfChange {
 	return scoped(`hoc|${state}|${c.repo}|${c.mergedAt}|${c.title}|${c.apps.join(',')}`, () => historyOfChangeRaw(c, state));
 }
@@ -1729,7 +1730,7 @@ function historyOfChangeRaw(c: Pick<TChange, 'repo' | 'apps' | 'mergedAt' | 'tit
 		(raw.status.history ?? []).forEach((h, i) => {
 			if (!contained.includes(shortRevision(h.version.revision ?? h.version.tag ?? ''))) return;
 			const k = acts[i]?.kind;
-			out.push({ app, place: placeLabel({ tier: tierOfEnv(e), regions: [e.label] }), build: shortBuild(h.version.version ?? h.version.tag ?? h.version.revision) ?? '', at: h.timestamp, kind: k === 'rollback' ? 'rollback' : k === 'redeploy' ? 'redeploy' : 'deploy', who: h.triggeredBy?.kind === 'User' && h.triggeredBy.name ? RD.pretty(h.triggeredBy.name) ?? 'Automatic' : 'Automatic', outcome: h.bakeStatus ?? 'Succeeded', href: e.href });
+			out.push({ app, place: placeLabel({ tier: tierOfEnv(e), regions: [e.label] }), build: shortBuild(h.version.version ?? h.version.tag ?? h.version.revision) ?? '', at: h.timestamp, idx: i, ...(h.id != null ? { id: h.id } : {}), kind: k === 'rollback' ? 'rollback' : k === 'redeploy' ? 'redeploy' : 'deploy', who: h.triggeredBy?.kind === 'User' && h.triggeredBy.name ? RD.pretty(h.triggeredBy.name) ?? 'Automatic' : 'Automatic', outcome: h.bakeStatus ?? 'Succeeded', href: e.href });
 		});
 	}
 	return out.sort((x, y) => oldestFirst(x.at, y.at));

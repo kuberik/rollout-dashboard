@@ -384,6 +384,10 @@ export type PrCell = {
 
 /** One matched `status.history` entry — see `PrCell.historyMatches`. */
 export type PrHistoryMatch = {
+	/** `status.history[].id`, unique per rollout; two entries can share a second, so this (not `timestamp`) is the entry's identity */
+	id?: number;
+	/** position in the rollout's `status.history` (newest first) */
+	index: number;
 	revision: string | null;
 	displayVersion: string;
 	timestamp: string;
@@ -832,6 +836,8 @@ function buildCell(
 		const rev = h.version?.revision;
 		if (rev && set.has(rev)) {
 			out.push({
+				...(h.id != null ? { id: h.id } : {}),
+				index: i,
 				revision: rev,
 				displayVersion: getDisplayVersion(h.version),
 				timestamp: h.timestamp,
@@ -2090,6 +2096,10 @@ export type ChangeHistoryRow = {
 	act: DeployAct;
 };
 
+/** A history row's key: the rollout plus the entry's `id` (else its position) — never its second-precision timestamp. */
+export const historyRowKey = (c: { cluster?: string; namespace: string; rolloutName: string }, m: { id?: number; index: number }): string =>
+	[c.cluster ?? '', c.namespace, c.rolloutName].join('/') + '#' + (m.id ?? 'i' + m.index);
+
 /**
  * Flattens every service's every cell's `historyMatches` into one
  * newest-first feed — the change page's own "everywhere this build ever
@@ -2106,7 +2116,7 @@ export function buildChangeHistory(
 		for (const c of service.cells) {
 			for (const match of c.historyMatches ?? []) {
 				rows.push({
-					key: `${c.cluster}/${c.namespace}/${c.rolloutName}/${match.timestamp}/${match.revision ?? ''}`,
+					key: historyRowKey(c, match),
 					appName: service.appName,
 					envName: c.envName,
 					theme: c.theme,

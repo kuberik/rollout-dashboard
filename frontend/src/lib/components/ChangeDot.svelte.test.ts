@@ -36,3 +36,10 @@ describe('ChangeDot recovered', () => {
 		expect(label(true)).toMatch(/failed$/);
 	});
 });
+
+describe('ChangeDot refs', () => {
+	test('two changes with the same #ref (two repos, PR #12 each) both print', () => {
+		const c = render(ChangeDot, { props: { bead: beadOf([{ ref: '#12', state: 'healthy' }, { ref: '#12', state: 'healthy' }]) } }).container;
+		expect(c.querySelectorAll('[data-bead] > span')).toHaveLength(2);
+	});
+});
