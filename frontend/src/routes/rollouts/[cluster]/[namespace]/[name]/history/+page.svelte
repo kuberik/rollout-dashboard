@@ -760,6 +760,8 @@
 	const atLimit = $derived(historyAtLimit(rollout));
 	/** entries kept past the limit because their build is held (auto-rollback); not part of "the last N" */
 	const heldKept = $derived(heldPastLimit(rollout));
+	/** the contiguous window: a diff never pairs an entry with a kept hold past the gap */
+	const diffWindow = $derived((rollout?.status?.history ?? []).slice(0, (rollout?.status?.history?.length ?? 0) - heldKept));
 
 	/**
 	 * ⭐ THE CURRENT PIN STATE, IN THE HISTORY HEAD. (2026-09-03,
@@ -2364,7 +2366,7 @@
 																			{cluster}
 																			namespace={rollout?.metadata?.namespace ?? ''}
 																			name={rollout?.metadata?.name ?? ''}
-																			history={rollout?.status?.history ?? []}
+																			history={diffWindow}
 																			index={i}
 																			{atLimit}
 																			compact
@@ -3029,7 +3031,7 @@
 																	{cluster}
 																	namespace={rollout?.metadata?.namespace ?? ''}
 																	name={rollout?.metadata?.name ?? ''}
-																	history={rollout?.status?.history ?? []}
+																	history={diffWindow}
 																	index={i}
 																	{atLimit}
 																/>
