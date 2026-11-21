@@ -29,7 +29,7 @@ export function deployKindLabel(kind: string | undefined | null): string | null 
 		case 'Pin':
 			return 'Pinned';
 		case 'GateBypass':
-			return 'Gates bypassed';
+			return 'Rules bypassed';
 		case 'Unblock':
 			return 'Unblocked';
 		default:

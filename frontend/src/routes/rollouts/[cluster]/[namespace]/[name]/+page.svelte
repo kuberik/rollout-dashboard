@@ -3789,7 +3789,8 @@
 												isPinVersionMode = isOlderThanCurrent(tag) || isSelectedVersionCustom(tag);
 												deployExplanation = '';
 												requestChangeVersionModal();
-											}}>Deploy {failedName} anyway</button
+											}}
+											aria-label={`Deploy ${failedName} anyway`}>Deploy anyway</button
 										>
 									</div>
 								{/if}

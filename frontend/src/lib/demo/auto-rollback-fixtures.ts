@@ -89,6 +89,7 @@ function shape(f: Fixture, r: Obj): Obj {
 			spec,
 			status: {
 				...st,
+				candidates: [{ tag: f.releases[4].tag, gated: true, created: f.releases[4].created, firstSeen: f.releases[4].created }],
 				conditions: [cond('AutoRollback', 'False', 'NotATrigger', `Not rolled back: RolloutTest ${NS(f.app)}/catalog-flaky-ui-test failed and opted out (rollout.kuberik.com/rollback: false)`)],
 				history: [
 					{
