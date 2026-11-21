@@ -110,7 +110,7 @@
 		showReadyInGroup = next;
 	}
 
-	const helmChip: Record<HelmWord, 'ready' | 'deploying' | 'issue'> = { Ready: 'ready', Pending: 'deploying', Failed: 'issue' };
+	const helmChip: Record<Exclude<HelmWord, 'Pending'>, 'ready' | 'issue'> = { Ready: 'ready', Failed: 'issue' };
 
 	/**
 	 * ⛔ A RAW camelCase ENUM WAS REACHING THE SCREEN. (2026-08-31)
@@ -545,7 +545,12 @@
 							<CubeSolid class="h-4 w-4 text-fg-subtle" aria-hidden="true" />
 						</span>
 						<span class="t-code-sm min-w-0 flex-1 truncate text-fg" title="{g.view.name} (HelmRelease)">{g.view.name}</span>
-						<Chip role={helmChip[g.view.word]} label={g.view.word} dot={false} />
+						{#if g.view.word === 'Pending'}
+							<!-- the same amber outlined chip as a reconciling resource row above, so one card spells pending one way -->
+							<span class="chip t-label shrink-0 border-progress-line text-progress">{g.view.word}</span>
+						{:else}
+							<Chip role={helmChip[g.view.word]} label={g.view.word} dot={false} />
+						{/if}
 					</div>
 					<div class="mt-0.5 flex flex-wrap items-baseline gap-x-2 pl-7 t-meta text-fg-muted" data-testid="helm-group-meta">
 						{#if g.view.chart}
