@@ -21,5 +21,11 @@ describe('AutoRollbackVerdicts', () => {
 	test('when the rollback did not run, a failure that rolls back says "would roll back"', () => {
 		const { container } = render(AutoRollbackVerdicts, { rows: [row({})], would: true });
 		expect(container.querySelector('[data-testid="verdict-word"]')?.textContent?.trim()).toBe('would roll back');
+		// never danger ink for a rollback that did not happen
+		expect(container.querySelector('[data-testid="verdict-word"]')?.classList.contains('text-danger')).toBe(false);
+	});
+	test('when the rollback ran, a failure that rolled back is danger ink', () => {
+		const { container } = render(AutoRollbackVerdicts, { rows: [row({})] });
+		expect(container.querySelector('[data-testid="verdict-word"]')?.classList.contains('text-danger')).toBe(true);
 	});
 });

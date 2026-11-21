@@ -1301,17 +1301,21 @@ lib/view-models/auto-rollback.ts	code	check errors
 lib/view-models/auto-rollback.ts	code	does not roll back
 lib/view-models/auto-rollback.ts	code	Force deployed
 lib/view-models/auto-rollback.ts	code	Not ready
+lib/view-models/auto-rollback.ts	code	Not rolled back
 lib/view-models/auto-rollback.ts	code	Not rolled back automatically
 lib/view-models/auto-rollback.ts	code	Not rolled back automatically: a deploy was already requested by hand
 lib/view-models/auto-rollback.ts	code	Not rolled back automatically: deployed by hand
 lib/view-models/auto-rollback.ts	code	Not rolled back: … failed for a reason that does not roll back
 lib/view-models/auto-rollback.ts	code	Not rolled back: … failed, and it does not roll back
+lib/view-models/auto-rollback.ts	code	Not rolled back: automatic rollback is off for this rollout
+lib/view-models/auto-rollback.ts	code	Not rolled back: deployed before rollback decisions were recorded
 lib/view-models/auto-rollback.ts	code	Not rolled back: no earlier build passed its bake
 lib/view-models/auto-rollback.ts	code	Not rolled back: none of the … failures roll back
 lib/view-models/auto-rollback.ts	code	Not rolled back: the rollback deploy could not be written
 lib/view-models/auto-rollback.ts	code	opted in with rollout.kuberik.com/rollback: true
 lib/view-models/auto-rollback.ts	code	opted out with rollout.kuberik.com/rollback: false
 lib/view-models/auto-rollback.ts	code	resources that are not ready
+lib/view-models/auto-rollback.ts	code	Rolled back automatically
 lib/view-models/auto-rollback.ts	code	rolls back
 lib/view-models/auto-rollback.ts	code	Rules bypassed
 lib/view-models/auto-rollback.ts	code	Test failed
