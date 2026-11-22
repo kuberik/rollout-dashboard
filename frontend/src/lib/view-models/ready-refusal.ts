@@ -4,11 +4,18 @@
  *   Deploy refused · HelmReleaseFieldConflict on spec.values.image.tag, also set by gitops-demo
  * Before this the refusal was visible only through `kubectl describe`; the page showed "Held" or nothing.
  *
- * Which reasons it speaks for: EVERY Ready=False reason, except the ones another banner on the page already
- * states, so one fact is printed once:
- *   BakeTimeFailed, BakeTimeRetrying  -> FailurePanel (the failing / failed banner)
- *   NoReleases (+ the legacy RolloutSucceeded/"No releases available" shape) -> ReleaseSourceNotice
- *   NoReleaseCandidates while a gate holds -> the held banner (the hold IS why nothing is a candidate)
+ * Which reasons it speaks for: EVERY Ready=False reason, except the ones another surface on the rollout page already
+ * states, so one fact is printed once (`OWNED_ELSEWHERE`; pinned by ready-refusal.test.ts and
+ * ready-banner-page.svelte.test.ts):
+ *   BakeTimeFailed         -> FailurePanel (the failing / failed banner; history[0].bakeStatus is Failed)
+ *   BakeTimeRetrying       -> nothing to say: the retry someone just asked for; the deploy's own progress shows it
+ *   ReleaseSourceRequired  -> ReleaseSourceNotice ("No release source"; the controller writes this reason on BOTH
+ *                             ReleasesUpdated and Ready, rollout-controller rollout_slices.go blockOnRelease)
+ *   NoReleases (+ the legacy RolloutSucceeded/"No releases available" shape) -> the builds card's "No releases yet"
+ *                             (catalogue.ts noReleasesFrom, kind 'empty'); not a banner, ReleaseSourceNotice is for no source
+ *   NoReleaseCandidates while a gate holds or a pin is set -> the held / pinned banner (that IS why nothing is a candidate)
+ * ReleaseCatalogueUnavailable (the release-controller CRDs are not installed) has no other surface, so this banner
+ * states it ("Not ready").
  *
  * Kinds: a write the controller refused to make (a field conflict, an annotation it cannot apply) is
  * "Deploy refused"; any other reason (RolloutFailed, GateListFailed, HealthCheckListFailed, a reason a newer
@@ -27,15 +34,17 @@ export type ReadyIssue = {
 	reason: string;
 	/** the banner's headline */
 	title: string;
-	/** the printed consequence line */
+	/** the printed consequence line, as plain text (copy, aria, tests) */
 	line: string;
+	/** a field conflict's path and who else sets it, so the page can mark up the path's break points (`pathParts`); null otherwise */
+	conflict: { path: string; by: string } | null;
 	/** the controller's full message, disclosed; null when `line` already is the whole message */
 	detail: string | null;
 	since: string | null;
 };
 
-/** reasons another banner on the rollout page already states */
-const OWNED_ELSEWHERE = new Set(['BakeTimeFailed', 'BakeTimeRetrying', 'NoReleases']);
+/** reasons another surface on the rollout page already states (see the table above) */
+export const OWNED_ELSEWHERE: ReadonlySet<string> = new Set(['BakeTimeFailed', 'BakeTimeRetrying', 'ReleaseSourceRequired', 'NoReleases']);
 const LEGACY_NO_RELEASES = { reason: 'RolloutSucceeded', message: 'No releases available' };
 /** the controller's write refusals: rollout-controller `deployWriteIssue` reasons */
 const REFUSED = /(?:FieldConflict|InvalidAnnotation)$/;
@@ -53,8 +62,13 @@ export function managerName(manager: string | undefined): string {
 	return m ? `Rollout ${m[1]}` : manager;
 }
 
-/** a field path wraps only at its "." separators on a phone (a zero-width space after each dot inside a word), never mid-segment (design R1-DES-1) */
-export const breakAtDots = (s: string): string => s.replace(/\.(?=[A-Za-z0-9_])/g, '.\u200B');
+/**
+ * A field path split after each "." so the page can put a `<wbr>` there: the path wraps only at its separators on a
+ * phone, never mid-segment (design R1-DES-1), and a copied path is the plain path (R2-DES-1: break points are markup,
+ * never characters in the string, as in DependencyNode / EventsCard / FactList).
+ *   "spec.values.image.tag" -> ["spec.", "values.", "image.", "tag"]
+ */
+export const pathParts = (path: string): string[] => path.split(/(?<=\.)(?=[A-Za-z0-9_])/);
 
 export function readyIssue(conditions: readonly Cond[] | null | undefined, o: { held?: boolean } = {}): ReadyIssue | null {
 	const c = conditions?.find((x) => x.type === 'Ready');
@@ -71,9 +85,10 @@ export function readyIssue(conditions: readonly Cond[] | null | undefined, o: { 
 	const conflict = CONFLICT.exec(message);
 	if (conflict) {
 		const [, , , path, manager] = conflict;
-		return { kind: refused ? 'refused' : 'not-ready', reason, title, line: `${reason} on ${path}, also set by ${managerName(manager)}`, detail: message, since };
+		const by = managerName(manager);
+		return { kind: refused ? 'refused' : 'not-ready', reason, title, line: `${reason} on ${path}, also set by ${by}`, conflict: { path, by }, detail: message, since };
 	}
 	const body = message.replace(OBJECT_LEAD, '');
 	const line = body ? `${reason}: ${body}` : reason;
-	return { kind: refused ? 'refused' : 'not-ready', reason, title, line, detail: body !== message ? message : null, since };
+	return { kind: refused ? 'refused' : 'not-ready', reason, title, line, conflict: null, detail: body !== message ? message : null, since };
 }

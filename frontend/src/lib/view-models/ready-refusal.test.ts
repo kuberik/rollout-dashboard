@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { breakAtDots, managerName, readyIssue } from './ready-refusal';
+import { OWNED_ELSEWHERE, managerName, pathParts, readyIssue } from './ready-refusal';
 
 const ready = (reason: string, message: string, status = 'False') => [
 	{ type: 'DeploymentBlocked', status: 'False', reason: 'HealthChecksHealthy', message: '' },
@@ -19,6 +19,7 @@ describe('readyIssue: which Ready=False reasons the banner speaks for', () => {
 			reason: 'HelmReleaseFieldConflict',
 			title: 'Deploy refused',
 			line: 'HelmReleaseFieldConflict on spec.values.image.tag, also set by gitops-demo',
+			conflict: { path: 'spec.values.image.tag', by: 'gitops-demo' },
 			detail: HELM,
 			since: '2026-11-21T10:00:00Z'
 		});
@@ -67,6 +68,30 @@ describe('readyIssue: which Ready=False reasons the banner speaks for', () => {
 		expect(readyIssue(ready('RolloutSucceeded', 'No releases available'))).toBeNull();
 	});
 
+	/**
+	 * QA1-1: the suppression list is pinned to the surfaces that own each reason, one row per owner. A reason added to
+	 * or dropped from OWNED_ELSEWHERE without its owner changing fails here (and the page test proves the pairs on the page).
+	 */
+	test('the suppression list is exactly the reasons another surface owns', () => {
+		const owners: Record<string, string> = {
+			BakeTimeFailed: 'FailurePanel',
+			BakeTimeRetrying: 'the deploy progress (a retry in flight, not a problem)',
+			ReleaseSourceRequired: 'ReleaseSourceNotice',
+			NoReleases: 'the builds card "No releases yet"'
+		};
+		expect([...OWNED_ELSEWHERE].sort()).toEqual(Object.keys(owners).sort());
+	});
+
+	test('ReleaseSourceRequired (written on Ready AND ReleasesUpdated) is ReleaseSourceNotice\'s, never a second banner', () => {
+		const msg = 'spec.releaseSourceRef is not set, so this Rollout has no releases. Create a ReleaseSource for its artifact and reference it from spec.releaseSourceRef.';
+		expect(readyIssue([{ type: 'ReleasesUpdated', status: 'False', reason: 'ReleaseSourceRequired', message: msg }, ...ready('ReleaseSourceRequired', msg)])).toBeNull();
+	});
+
+	test('ReleaseCatalogueUnavailable has no other surface, so the banner states it', () => {
+		const msg = 'spec.releaseSourceRef is "hello", but the release-controller CRDs (ReleaseSource, ReleaseSlice) are not installed, so no releases are read; install release-controller and this Rollout will pick it up';
+		expect(readyIssue(ready('ReleaseCatalogueUnavailable', msg))).toMatchObject({ kind: 'not-ready', title: 'Not ready', line: `ReleaseCatalogueUnavailable: ${msg}`, conflict: null, detail: null });
+	});
+
 	test('NoReleaseCandidates defers to the held banner while held, and speaks when nothing holds', () => {
 		expect(readyIssue(ready('NoReleaseCandidates', 'No release candidates found'), { held: true })).toBeNull();
 		expect(readyIssue(ready('NoReleaseCandidates', 'No release candidates found'), { held: false })!.line).toBe(
@@ -82,8 +107,15 @@ describe('readyIssue: which Ready=False reasons the banner speaks for', () => {
 	});
 });
 
-describe('breakAtDots', () => {
-	test('a path gets a break opportunity after each inner dot, a sentence-ending dot none', () => {
-		expect(breakAtDots('on spec.values.image.tag, also set by gitops-demo.')).toBe('on spec.​values.​image.​tag, also set by gitops-demo.');
+describe('pathParts', () => {
+	test('a path splits after each dot; joined back it is the plain path (no hidden characters to copy)', () => {
+		expect(pathParts('spec.values.image.tag')).toEqual(['spec.', 'values.', 'image.', 'tag']);
+		expect(pathParts('spec.postBuild.substitute.ORDERS_TAG').join('')).toBe('spec.postBuild.substitute.ORDERS_TAG');
+		expect(pathParts('tag')).toEqual(['tag']);
+	});
+
+	test('no line or conflict field carries a zero-width character', () => {
+		const i = readyIssue(ready('HelmReleaseFieldConflict', HELM))!;
+		expect(/[\u200B\u200C\u200D\u2060]/.test(i.line + i.conflict!.path + i.conflict!.by)).toBe(false);
 	});
 });
