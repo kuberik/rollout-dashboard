@@ -132,7 +132,10 @@ metadata:
   annotations:
     rollout.kuberik.com/substitute.HELLO_WORLD_VERSION.from: "hello-world-app"
 spec:
-  postBuild: {}  # Do not set HELLO_WORLD_VERSION here; the rollout writes it.
+  postBuild:
+    substitute:
+      ENVIRONMENT: dev  # any non-rollout key; keeps Flux substitution on
+      # Do not set HELLO_WORLD_VERSION here; the rollout writes it.
 # In the manifests, use a default for the first reconcile: ${HELLO_WORLD_VERSION:=1.0.0}
 ```
 
