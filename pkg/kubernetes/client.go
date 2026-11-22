@@ -853,6 +853,7 @@ type ManagedResourceStatus struct {
 // (LastModified, kstatus Status/Message) shared by both the batched-LIST path
 // and the per-item GET fallback in GetKustomizationManagedResources.
 func managedResourceStatusFromObject(obj *unstructured.Unstructured, gvkStr, name, namespace string) ManagedResourceStatus {
+	obj = redactSecret(obj)
 	lastModified := time.Time{}
 	if managedFields := obj.GetManagedFields(); len(managedFields) > 0 {
 		for _, field := range managedFields {
@@ -898,6 +899,27 @@ func managedResourceStatusFromObject(obj *unstructured.Unstructured, gvkStr, nam
 		LastModified:     lastModified,
 		Object:           obj,
 	}
+}
+
+// redactSecret returns obj unchanged unless it is a core/v1 Secret, in which
+// case it returns a deep copy with data, stringData and the
+// last-applied-configuration annotation (which can carry the data) removed.
+// The type and metadata stay so the UI can show that the Secret exists. The
+// input is never mutated: it may be shared with the informer cache.
+func redactSecret(obj *unstructured.Unstructured) *unstructured.Unstructured {
+	if obj == nil || obj.GetKind() != "Secret" || obj.GroupVersionKind().Group != "" {
+		return obj
+	}
+	out := obj.DeepCopy()
+	unstructured.RemoveNestedField(out.Object, "data")
+	unstructured.RemoveNestedField(out.Object, "stringData")
+	if ann := out.GetAnnotations(); ann != nil {
+		if _, ok := ann["kubectl.kubernetes.io/last-applied-configuration"]; ok {
+			delete(ann, "kubectl.kubernetes.io/last-applied-configuration")
+			out.SetAnnotations(ann)
+		}
+	}
+	return out
 }
 
 // ManagedResourceStatusForDeployment computes the exact ManagedResourceStatus
