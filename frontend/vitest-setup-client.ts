@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
+import { mount, unmount } from 'svelte';
 
 // required for svelte5 + jsdom as jsdom does not support matchMedia
 Object.defineProperty(window, 'matchMedia', {
@@ -43,5 +44,20 @@ if (!('ResizeObserver' in globalThis)) {
 if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
 	Element.prototype.scrollIntoView = function scrollIntoView() {};
 }
+
+// Svelte (dev build, which is what vitest compiles) replaces
+// `Array.prototype.includes/indexOf/lastIndexOf` with versions that, on every
+// MISS, walk the whole array unwrapping `$state` proxies, to warn about
+// `state_proxy_equality_mismatch`. The view-models behind CommandPalette do
+// thousands of misses over fleet-sized arrays, so one render of the palette
+// cost 2-4s of pure patched-`includes` time and the eleven CommandPalette test
+// files ran 20-50s each (60s+ on a CI runner, which trips vitest's 60s worker
+// RPC limit: `Timeout calling "onTaskUpdate"`). The patch is installed once,
+// lazily, by `init_operations()` on first mount; mount a no-op component now to run it and restore the
+// native methods through svelte's own `__svelte_cleanup` hook. Only the dev
+// warning is lost; array semantics are unchanged. A palette render drops from
+// ~3s to ~0.3s.
+unmount(mount(() => {}, { target: document.createElement('div') }));
+(Array as unknown as { __svelte_cleanup?: () => void }).__svelte_cleanup?.();
 
 // add more mocks here if you need them
