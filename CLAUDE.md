@@ -132,9 +132,8 @@ metadata:
   annotations:
     rollout.kuberik.com/substitute.HELLO_WORLD_VERSION.from: "hello-world-app"
 spec:
-  postBuild:
-    substitute:
-      HELLO_WORLD_VERSION: "1.0.0"
+  postBuild: {}  # Do not set HELLO_WORLD_VERSION here; the rollout writes it.
+# In the manifests, use a default for the first reconcile: ${HELLO_WORLD_VERSION:=1.0.0}
 ```
 
 The dashboard finds kustomizations that reference a specific rollout.
