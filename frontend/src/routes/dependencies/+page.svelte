@@ -45,11 +45,16 @@
 	 */
 	import { createQuery } from '@tanstack/svelte-query';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
-	import { ShareNodesSolid, ServerOutline, ArrowRightOutline, ChevronDownOutline } from 'flowbite-svelte-icons';
+	import { ShareNodesSolid, ServerOutline, ArrowRightOutline } from 'flowbite-svelte-icons';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
+	import QueryBar from '$lib/components/filter/QueryBar.svelte';
+	import { isFiltered, type FilterQuery, queryString } from '$lib/components/filter/filter-model';
+	import { depEntries, depDefs, depText, parseDepFilter, depParams, keptColumns, narrowToSearch } from '$lib/components/dependencies-filter';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import ClusterMark from '$lib/components/ClusterMark.svelte';
 	import DependencyNetwork from '$lib/components/DependencyNetwork.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -146,18 +151,30 @@ import { heldHereGates } from '$lib/view-models/held';
 	);
 	const full = $derived(appCtx.providerNetwork);
 
-	// Multi-select chips, no `All` pill: an empty selection is every
-	// environment. Same convention as `/rollouts`.
-	let envFilters = $state<string[]>([]);
-	function toggleEnv(name: string) {
-		envFilters = envFilters.includes(name)
-			? envFilters.filter((x) => x !== name)
-			: [...envFilters, name];
+	// One query bar (shared filter/QueryBar): an empty query is every column; Environment and Namespace are two properties of it.
+	// The filter lives in the URL (?env=&ns=&q=); an address changed from outside is adopted, never the echo of the one this page wrote.
+	let f = $state<FilterQuery>(parseDepFilter(page.url.searchParams));
+	let written = page.url.search;
+	function setFilter(next: FilterQuery) {
+		f = next;
+		written = queryString(depParams(page.url.searchParams, next));
+		void goto(`${page.url.pathname}${written}${page.url.hash}`, { replaceState: true, keepFocus: true, noScroll: true });
 	}
-
-	const graph = $derived(filterByEnv(full, envFilters));
+	$effect(() => {
+		const cur = page.url.search;
+		if (cur === written) return;
+		written = cur;
+		f = parseDepFilter(page.url.searchParams);
+	});
+	const depRows = $derived(depEntries(full.nodes, (e) => envThemes.has(e)));
+	const depFacets = $derived(depDefs(full.envs, (e) => envLabel(e)));
+	const kept = $derived(keptColumns(depRows, f, depFacets));
+	const filtered = $derived(isFiltered(f));
+	/* a filter that keeps nothing is an empty graph, not "everything" (filterByEnv treats [] as no filter) */
+	const graph = $derived(narrowToSearch(filterByEnv(full, kept === null ? [] : kept.length ? kept : ['\u0000']), f.q));
 	const verdict = $derived(networkVerdict(graph));
-	const blocked = $derived(graph.blockedEdges);
+	/* the banner and the Held links rail are page facts: they read the whole graph, so a filter never removes them or moves the bar under them */
+	const blocked = $derived(full.blockedEdges);
 	const nodeById = $derived(new Map(full.nodes.map((n) => [n.id, n] as const)));
 
 	/** Environments the graph actually touches, in promotion order. */
@@ -179,9 +196,6 @@ import { heldHereGates } from '$lib/view-models/held';
 	 * environment, so it may not borrow that chip's identity mark.
 	 */
 	/* the namespace pills' fold (visual audit #20): closed, the filter row is one line */
-	let nsOpen = $state(false);
-	const realEnvs = $derived(graphEnvs.filter((e) => envThemes.has(e)));
-	const namespaceEnvs = $derived(graphEnvs.filter((e) => !envThemes.has(e)));
 
 	/**
 	 * ⛔ `clusters` LISTS ONLY THE DISCOVERED SPOKES — THE HUB IS IMPLICIT.
@@ -426,87 +440,11 @@ import { heldHereGates } from '$lib/view-models/held';
 		     step `.rail-grid` itself turns on). -->
 		{#snippet graphSection()}
 			{#if graphEnvs.length > 1}
-				<!-- ⭐ THE CHIPS FILTER WHICH COLUMNS RENDER. A node IS a
-				     (service, environment), so selecting `prod` leaves the prod
-				     column and the contract edges inside it — the promotion
-				     edges into it come from a column that is no longer on
-				     screen and are dropped with it. Multi-select, no `All`
-				     pill, no dropdown. -->
-				<!-- ⭐ THE `/rollouts` PILL DIALECT, NOT A WRAPPED 20PX `Chip`.
-				     (round 4 review, 2026-10-09) This was `Chip role="env"`
-				     in a button with its own ring/opacity "selected" — a
-				     20px control beside `/rollouts` and `/activity`'s 28px
-				     `.pill` env buttons, a different box on the same page as
-				     `/rollouts`' identical filter. One control, one height,
-				     one selected grammar (`.pill`'s own `aria-pressed`
-				     inverse fill): `.chip-env-dot` inline + the label text,
-				     the exact shape `RolloutGrid`'s env buttons already
-				     draw. -->
-				<div class="mb-4 flex flex-wrap items-center gap-1.5">
-					{#each realEnvs as env (env)}
-						{@const sel = envFilters.includes(env)}
-						{@const t = envThemes.get(env) ?? null}
-						<button
-							type="button"
-							onclick={() => toggleEnv(env)}
-							aria-pressed={sel}
-							aria-label={`Environment ${env}`}
-							class="env-filter hit-32"
-							><Chip role="env" theme={t} label={envLabel(env)} wide /></button
-						>
-					{/each}
-					{#if namespaceEnvs.length > 0}
-						<!-- ⭐ A SECOND, QUIETER GROUP — NOT THE SAME CHIP. (round 6
-						     review) These columns exist (a rollout with no
-						     `Environment` record still needs an axis to sit on),
-						     so the filter is real and useful; they are not
-						     environments, so they do not get the identity dot
-						     or the environment-theme styling. Same `.pill`
-						     control, same `aria-pressed` inverse-fill selected
-						     state — one filter LANGUAGE — just no borrowed
-						     identity mark. -->
-						<span class="mx-1 hidden h-4 w-px bg-line sm:inline-block" aria-hidden="true"></span>
-						<!-- THE NAMESPACE GROUP FOLDS (visual audit #20, 2026-11-13). Sixteen namespace pills wrapped the row to three lines (104px,
-						     taller than the banner above it). Folded, the row is the tier chips + one `Namespaces N` pill, one line; a selected
-						     namespace stays visible so the active filter is never hidden. An inline disclosure, not a dropdown or popover
-						     (list rules: multi-select chips, no dropdowns); opened, the pills wrap in place as before. -->
-						<button
-							type="button"
-							class="pill"
-							aria-expanded={nsOpen}
-							aria-controls="dep-ns-filters"
-							onclick={() => (nsOpen = !nsOpen)}
-							data-ns-fold
-							>Namespaces <span class="tabular-nums text-fg-subtle">{namespaceEnvs.length}</span><ChevronDownOutline
-								class="h-3 w-3 text-fg-subtle transition-transform {nsOpen ? 'rotate-180' : ''}"
-								aria-hidden="true"
-							/></button
-						>
-						<span id="dep-ns-filters" class="contents">
-							{#each namespaceEnvs as env (env)}
-								{@const sel = envFilters.includes(env)}
-								{#if nsOpen || sel}
-									<button
-										type="button"
-										onclick={() => toggleEnv(env)}
-										aria-pressed={sel}
-										aria-label={`Namespace ${env}`}
-										title="Not bound to an Environment — grouped by namespace"
-										class="pill"
-										>{env}</button
-									>
-								{/if}
-							{/each}
-						</span>
-					{/if}
-					{#if envFilters.length > 0}
-						<button
-							type="button"
-							onclick={() => (envFilters = [])}
-							class="t-meta ml-1 text-fg-subtle underline-offset-2 hover:text-fg hover:underline"
-							>clear</button
-						>
-					{/if}
+				<!-- THE QUERY BAR FILTERS WHICH COLUMNS RENDER. A node IS a (service, environment), so keeping `prod` leaves the prod column and the
+				     contract edges inside it; the promotion edges into it come from a column no longer on screen and are dropped with it.
+				     Environment = real tiers, Namespace = the fallback columns of rollouts no Environment binds (not environments, so a separate property). -->
+				<div class="mb-4" data-dep-filter>
+					<QueryBar rows={depRows} defs={depFacets} text={depText} query={f} onchange={setFilter} placeholder="Search or filter rollouts" placeholderShort="Search or filter" label="Search and filter the dependency graph" hints={{ env: 'prod, staging, dev …', ns: 'a namespace' }} />
 				</div>
 			{/if}
 
@@ -519,10 +457,11 @@ import { heldHereGates } from '$lib/view-models/held';
 			>
 				{#if graph.nodes.length === 0}
 					<p class="t-meta py-6 text-center text-fg-subtle">
-						No rollout in {envFilters.join(', ')} depends on another.
+						{filtered ? 'No rollout that depends on another matches this filter.' : 'No rollout depends on another.'}
+						{#if filtered}<button type="button" class="btn btn-secondary ml-2" onclick={() => setFilter({ q: '', clauses: [] })} data-filter-clear>Clear filters</button>{/if}
 					</p>
 				{:else}
-					<DependencyNetwork {graph} {themeOf} {heldRequirement} orderKey={envFilters.join(',')} />
+					<DependencyNetwork {graph} {themeOf} {heldRequirement} orderKey={(kept ?? []).join(',')} />
 				{/if}
 				{#if full.unlinkedRollouts > 0 || full.hasCycle}
 					<p class="t-meta mt-3 text-fg-subtle" data-graph-footnote>
@@ -570,7 +509,7 @@ import { heldHereGates } from '$lib/view-models/held';
 				icon={HeldGlyph}
 				iconClass="text-held"
 				title="Held links"
-				verdict={`${blocked.length} of ${graph.edges.length}`}
+				verdict={`${blocked.length} of ${full.edges.length}`}
 				verdictTone="held"
 				padded={false}
 			>

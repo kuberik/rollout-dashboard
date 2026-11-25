@@ -121,6 +121,8 @@ lib/CommandPalette.svelte	code	Toggle theme
 lib/CommandPalette.svelte	text	Try a sha, a PR link or an environment name.
 lib/CommandPalette.svelte	text	Your changes
 lib/CommandPalette.svelte	code	Your pull requests
+lib/components/activity-filter.ts	code	In flight
+lib/components/activity-filter.ts	code	Rolled back
 lib/components/activity/FeedRow.svelte	code	Show details
 lib/components/ActivityDayHeader.svelte	text	… … failed … … …
 lib/components/ActivityDayHeader.svelte	text	… deploy … …
@@ -409,6 +411,35 @@ lib/components/FailurePanel.svelte	code	Roll back
 lib/components/FailureSourceRow.svelte	text	&nbsp; …
 lib/components/FailureSourceRow.svelte	text	&nbsp;at failure
 lib/components/FailureToasts.svelte	text	+ … more failure …
+lib/components/filter/filter-model.ts	code	… values
+lib/components/filter/filter-model.ts	code	is any of
+lib/components/filter/filter-model.ts	code	is none of
+lib/components/filter/filter-model.ts	code	is not
+lib/components/filter/query-syntax.ts	code	…: needs a value
+lib/components/filter/query-syntax.ts	code	Conflicts with the earlier …: filter
+lib/components/filter/query-syntax.ts	code	No … named “…”
+lib/components/filter/query-syntax.ts	code	No filter “…”. Try ….
+lib/components/filter/QueryBar.svelte	code	… …px …
+lib/components/filter/QueryBar.svelte	label	… match
+lib/components/filter/QueryBar.svelte	text	… selected
+lib/components/filter/QueryBar.svelte	code	… values
+lib/components/filter/QueryBar.svelte	code	……: … — click to change
+lib/components/filter/QueryBar.svelte	aria-label	……: …. Change
+lib/components/filter/QueryBar.svelte	code	(max-width: 639px)
+lib/components/filter/QueryBar.svelte	code	(max-width: 639px), (pointer: coarse)
+lib/components/filter/QueryBar.svelte	code	[data-token], [data-filter-clear]
+lib/components/filter/QueryBar.svelte	text	&nbsp;is not
+lib/components/filter/QueryBar.svelte	title	Clear all
+lib/components/filter/QueryBar.svelte	aria-label	Clear search and filters
+lib/components/filter/QueryBar.svelte	aria-label	Filter …
+lib/components/filter/QueryBar.svelte	placeholder	Filter ……
+lib/components/filter/QueryBar.svelte	text	Filter by
+lib/components/filter/QueryBar.svelte	code	No … named “…”
+lib/components/filter/QueryBar.svelte	code	No … to pick
+lib/components/filter/QueryBar.svelte	aria-label	Remove … filter
+lib/components/filter/QueryBar.svelte	code	Search and filter
+lib/components/filter/QueryBar.svelte	code	Search or filter
+lib/components/filter/QueryBar.svelte	code	Tip: type …:… or -…:name
 lib/components/FleetCard.svelte	text	all apps
 lib/components/FleetCard.svelte	text	All healthy elsewhere
 lib/components/FleetCard.svelte	text	No deploys in the last 24 h
@@ -508,7 +539,6 @@ lib/components/LogsViewer.svelte	code	(${query.replace(/[.*+?^…()|[\]\\]/g, '\
 lib/components/LogsViewer.svelte	text	(of … total)
 lib/components/LogsViewer.svelte	text	All pods
 lib/components/LogsViewer.svelte	text	Clear filters
-lib/components/LogsViewer.svelte	aria-label	Clear search
 lib/components/LogsViewer.svelte	code	Connecting to pods…
 lib/components/LogsViewer.svelte	code	Connecting to test runs…
 lib/components/LogsViewer.svelte	code	Connection lost
@@ -516,9 +546,6 @@ lib/components/LogsViewer.svelte	text	Copy line
 lib/components/LogsViewer.svelte	code	debug lines
 lib/components/LogsViewer.svelte	code	Drag another window on the chart above, or Clear it to see every ….
 lib/components/LogsViewer.svelte	title	Failed to load logs
-lib/components/LogsViewer.svelte	aria-label	Filter by level
-lib/components/LogsViewer.svelte	aria-label	Filter by pod
-lib/components/LogsViewer.svelte	text	Filters …
 lib/components/LogsViewer.svelte	code	info lines
 lib/components/LogsViewer.svelte	title	Jump to latest
 lib/components/LogsViewer.svelte	code	last line …
@@ -530,7 +557,8 @@ lib/components/LogsViewer.svelte	text	No lines match the current filters
 lib/components/LogsViewer.svelte	text	No log lines yet
 lib/components/LogsViewer.svelte	code	No response from the pod log stream after 15s — it may be unavailable.
 lib/components/LogsViewer.svelte	text	No test output yet
-lib/components/LogsViewer.svelte	aria-label	Search logs
+lib/components/LogsViewer.svelte	label	Search logs
+lib/components/LogsViewer.svelte	placeholder	Search logs or filter by level
 lib/components/LogsViewer.svelte	text	Show … earlier lines
 lib/components/LogsViewer.svelte	text	Show all lines
 lib/components/LogsViewer.svelte	aria-label	Show fields
@@ -739,10 +767,13 @@ lib/components/new/Changes.svelte	text	Your changes show up here once released, 
 lib/components/new/ChangesPlumb.svelte	text	… services
 lib/components/new/ChangesPlumb.svelte	text	· none
 lib/components/new/ChangesPlumb.svelte	title	at this stop
-lib/components/new/ChangesPlumb.svelte	aria-label	Filter by repo
+lib/components/new/ChangesPlumb.svelte	text	Clear filters
 lib/components/new/ChangesPlumb.svelte	title	In flight
+lib/components/new/ChangesPlumb.svelte	text	No change in flight matches this filter.
 lib/components/new/ChangesPlumb.svelte	code	Not deployed yet
 lib/components/new/ChangesPlumb.svelte	text	Nothing has landed … yet.
+lib/components/new/ChangesPlumb.svelte	label	Search and filter changes
+lib/components/new/ChangesPlumb.svelte	placeholder	Search or filter changes
 lib/components/new/data.ts	code	… behind
 lib/components/new/data.ts	code	… build… held
 lib/components/new/data.ts	code	… checking …
@@ -954,6 +985,8 @@ lib/components/new/rollout-view.ts	code	Next: … waits for approval in ….
 lib/components/new/rollout-view.ts	code	Roll back
 lib/components/new/rollout-view.ts	code	Waiting for approval
 lib/components/new/rollout-view.ts	code	Your approval
+lib/components/new/rollouts-filter.ts	code	At rest
+lib/components/new/rollouts-filter.ts	code	In flight
 lib/components/new/rollouts-page.ts	code	… behind
 lib/components/new/rollouts-page.ts	code	… of … regions
 lib/components/new/rollouts-page.ts	code	… regions
@@ -964,16 +997,29 @@ lib/components/new/rollouts-page.ts	code	Held by
 lib/components/new/rollouts-page.ts	code	In flight
 lib/components/new/rollouts-page.ts	code	On the newest
 lib/components/new/rollouts-page.ts	code	Rolled back
-lib/components/new/Rollouts.svelte	text	… apps
+lib/components/new/Rollouts.svelte	text	… app …
 lib/components/new/Rollouts.svelte	code	… at rest
 lib/components/new/Rollouts.svelte	code	… held
 lib/components/new/Rollouts.svelte	text	… is itself waiting on …
 lib/components/new/Rollouts.svelte	code	… moving
 lib/components/new/Rollouts.svelte	code	… waiting
+lib/components/new/Rollouts.svelte	code	0 rollouts
 lib/components/new/Rollouts.svelte	title	All rollouts
 lib/components/new/Rollouts.svelte	text	At rest
+lib/components/new/Rollouts.svelte	text	Clear filters
+lib/components/new/Rollouts.svelte	text	No rollouts match
 lib/components/new/Rollouts.svelte	text	No rollouts yet
+lib/components/new/Rollouts.svelte	text	Nothing in the list fits this search and these filters.
+lib/components/new/Rollouts.svelte	aria-label	Recent deploys and cadence
 lib/components/new/Rollouts.svelte	text	Rollouts appear here as soon as one is deployed.
+lib/components/new/rollouts/RolloutFilters.svelte	code	In flight, Waiting, Held, At rest
+lib/components/new/rollouts/RolloutFilters.svelte	label	Search and filter rollouts
+lib/components/new/rollouts/RolloutFilters.svelte	placeholder	Search rollouts, or filter by state, environment, namespace
+lib/components/new/rollouts/RolloutsRail.svelte	aria-label	… deploys in the last … days
+lib/components/new/rollouts/RolloutsRail.svelte	text	All activity
+lib/components/new/rollouts/RolloutsRail.svelte	title	Deploy cadence
+lib/components/new/rollouts/RolloutsRail.svelte	text	last … days
+lib/components/new/rollouts/RolloutsRail.svelte	title	Recent deploys
 lib/components/new/Slipway.svelte	code	… animate-pulse
 lib/components/new/Slipway.svelte	code	…… ago
 lib/components/new/Slipway.svelte	code	…${n.hold && !n.holdC ?
@@ -1932,14 +1978,9 @@ routes/activity/+page.svelte	code	A deploy failed
 routes/activity/+page.svelte	code	all time
 routes/activity/+page.svelte	code	at least … deploy…
 routes/activity/+page.svelte	text	Clear “ … ”
-routes/activity/+page.svelte	text	Clear all
 routes/activity/+page.svelte	text	Clear all filters
 routes/activity/+page.svelte	aria-label	Deploy stats
-routes/activity/+page.svelte	code	Deploys still going out or still being checked
-routes/activity/+page.svelte	code	Deploys that did not finish cleanly
-routes/activity/+page.svelte	code	Deploys that moved a rollout to an OLDER build than it was already running
 routes/activity/+page.svelte	text	Every version a rollout puts live shows up here, newest first.
-routes/activity/+page.svelte	code	In flight
 routes/activity/+page.svelte	label	In flight
 routes/activity/+page.svelte	code	In the last hour
 routes/activity/+page.svelte	label	Median to prod
@@ -1947,10 +1988,10 @@ routes/activity/+page.svelte	text	Most active
 routes/activity/+page.svelte	text	Nothing has deployed yet
 routes/activity/+page.svelte	text	Open rollout ›
 routes/activity/+page.svelte	code	Press Failed below to see all ….
-routes/activity/+page.svelte	code	Rolled back
 routes/activity/+page.svelte	label	Rolled back
+routes/activity/+page.svelte	label	Search deploys
+routes/activity/+page.svelte	placeholder	Search deploys or filter
 routes/activity/+page.svelte	text	Show … more
-routes/activity/+page.svelte	text	Showing only:
 routes/activity/+page.svelte	title	Stop showing only …
 routes/activity/+page.svelte	code	the 30 days before
 routes/activity/+page.svelte	code	the 6 hours before
@@ -1981,17 +2022,18 @@ routes/dependencies/+page.svelte	code	… serves … here.
 routes/dependencies/+page.svelte	code	… takes nothing newer until … has deployed the next build ….
 routes/dependencies/+page.svelte	text	A link appears here when an
 routes/dependencies/+page.svelte	code	and picked it
+routes/dependencies/+page.svelte	text	Clear filters
 routes/dependencies/+page.svelte	title	Dependency graph
 routes/dependencies/+page.svelte	title	Held links
 routes/dependencies/+page.svelte	text	holds one environment until the one before it has deployed a build, or a
 routes/dependencies/+page.svelte	text	holds one rollout until another has served a contract version its release asks for.
 routes/dependencies/+page.svelte	code	in the earlier wave
 routes/dependencies/+page.svelte	code	Its next release needs ……. …
-routes/dependencies/+page.svelte	text	No rollout in … depends on another.
-routes/dependencies/+page.svelte	title	Not bound to an Environment — grouped by namespace
 routes/dependencies/+page.svelte	text	Nothing waits on anything
 routes/dependencies/+page.svelte	code	One rollout is held
 routes/dependencies/+page.svelte	text	Open ›
+routes/dependencies/+page.svelte	label	Search and filter the dependency graph
+routes/dependencies/+page.svelte	placeholder	Search or filter rollouts
 routes/dependencies/+page.svelte	text	Show held links
 routes/dependencies/+page.svelte	text	the graph contains a cycle
 routes/dependencies/+page.svelte	code	Waiting until ….
@@ -2192,6 +2234,8 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	All healt
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Automatic deploys are paused until this pin is cleared.
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Choose "All" on the cadence strip above to see every deploy.
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Commit …
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	label	Compare with other lanes
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	placeholder	Compare with other lanes
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	deploy …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	deployed by
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Deployment timeline
@@ -2208,8 +2252,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	rolled ba
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Rolled back from
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Same build as …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Show … earlier deploy …
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Show all other rollouts in this namespace
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Show sibling environments on the timeline
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Skipped … … , … …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Skipped … release …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Started …, checks finished ….

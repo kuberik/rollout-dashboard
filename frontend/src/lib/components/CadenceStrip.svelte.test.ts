@@ -226,9 +226,9 @@ describe('CadenceStrip', () => {
 		expect(onSelect).toHaveBeenCalled();
 	});
 
-	test('"Compare namespace" only renders when a toggle handler is given', () => {
+	test('no compare control renders without a compare snippet', () => {
 		render(CadenceStrip, { history, now: NOW });
-		expect(screen.queryByText('Compare namespace')).toBeNull();
+		expect(screen.queryByText('Compare')).toBeNull();
 	});
 
 	// AD round 7, item 4: "label every segment wider than its label. A

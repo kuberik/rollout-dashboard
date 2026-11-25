@@ -10,7 +10,7 @@
 	 * action (the actions live on the Attention cards above), so the strand can sit in a fixed 120px track instead of competing with a button.
 	 * ACTIVE rows are 48px (mark + state hue + MiniPipeline `neutral`, the mark carries the hue), QUIET rows (At rest) are 40px: no mark, no
 	 * chip colour, the name muted, a repeat of the previous app's name dimmed, the place as plain 12px text, the build in the code face.
-	 * PHONE (< 600px of the card): name · age on line 1, the sentence on line 2, the strand on line 3 (a quiet row drops its strand).
+	 * PHONE (< 600px of the card): name · age on line 1, the sentence on line 2, the strand on line 3 (every row keeps its strand; a dense row has none).
 	 */
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -40,7 +40,7 @@
 			{#if row}<Chip role="env" theme={envTheme(row.tier)} label={chip} wide />
 			{:else if rest?.place}<span class="lr-pl t-meta">{rest.place}</span>{/if}
 		</div>
-		<span class="lr-dr">{#if row}<MiniPipeline nodes={row.nodes} neutral label="{name} steps" />{/if}</span>
+		<span class="lr-dr">{#if row}<MiniPipeline nodes={row.nodes} neutral label="{name} steps" />{:else if rest?.nodes?.length}<MiniPipeline nodes={rest.nodes} neutral label="{name} steps" />{/if}</span>
 		<p class="lr-sn" class:wrap={!!row?.row.alsoApproval}>
 			{#if row}<span class="lr-ld" data-state-word><CauseText parts={row.lead} /></span>{#if pg?.words && !row.row.stillChecking}{" "}<span class="lr-left t-meta tabular-nums">{pg.words}</span>{" "}{/if}{row.rest}{:else if rest}{#if rest.codeFirst && rest.code}<span class="lr-code first t-code-sm">{rest.code}</span>{/if}{rest.sentence}{#if !rest.codeFirst && rest.code}<span class="lr-code t-code-sm">{rest.code}</span>{/if}{/if}
 		</p>
@@ -80,6 +80,18 @@
 	.lr.dn .lr-in { grid-template-columns: minmax(120px, 200px) minmax(0, 1fr) auto; }
 	.lr.dn .lr-mk, .lr.dn .lr-dr { display: none; }
 	/* the list card is the container: 2 columns of rows from 1700px of card, 3 from 3200 (the page's own grid, see Rollouts.svelte) */
+	/* MID (601-880px of card: /rollouts next to its rail at 1440): an active row's sentence takes its own line under name and strand, so a hold's gate name is not
+	   cut to 150px; a quiet row (one short sentence) and a dense row stay on one line */
+	@container (min-width: 601px) and (max-width: 880px) {
+		/* the strand keeps the quiet rows' track (col 3 of the one-line grid), so every row of the card has its strand at one x; the age stays far right */
+		.lr:not(.q):not(.dn) .lr-in { grid-template-columns: 16px minmax(13rem, 15rem) 120px minmax(0, 1fr) 2.5rem; row-gap: 2px; }
+		.lr:not(.q):not(.dn) .lr-mk { grid-row: 1 / 3; align-self: start; padding-top: 2px; }
+		.lr:not(.q):not(.dn) .lr-id { grid-column: 2; grid-row: 1; }
+		.lr:not(.q):not(.dn) .lr-dr { grid-column: 3; grid-row: 1; }
+		.lr:not(.q):not(.dn) .lr-age { grid-column: 5; grid-row: 1; }
+		.lr:not(.q):not(.dn) .lr-sn { grid-column: 2 / 6; grid-row: 2; }
+		.lr:not(.q):not(.dn) .lr-sn.wrap { white-space: normal; overflow: visible; text-overflow: clip; }
+	}
 	@container (max-width: 600px) {
 		.lr { padding: 0 12px; }
 		.lr-in { grid-template-columns: 16px minmax(0, 1fr) auto; row-gap: 4px; }
@@ -90,7 +102,6 @@
 		/* "· also needs your approval" is the second ask of a held row; on a phone it wraps, never an ellipsis */
 		.lr-sn.wrap { white-space: normal; overflow: visible; text-overflow: clip; }
 		.lr-dr { grid-column: 2 / 4; grid-row: 3; }
-		.lr.q .lr-dr { display: none; }
 		.lr.dn .lr-in { grid-template-columns: minmax(0, 1fr) auto; }
 		.lr.dn .lr-id { grid-column: 1; }
 		.lr.dn .lr-age { grid-column: 2; }
