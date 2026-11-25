@@ -471,3 +471,37 @@ export function ageOf(iso: string | null, now: Date): string | null {
 	if (h < 48) return `${h}h`;
 	return `${Math.round(h / 24)}d`;
 }
+
+/**
+ * THE HOLDS THAT ARE NOT ANOTHER DEPLOY (R2-DES-B-5). A held site whose reason is a person's or a rule's (an approval, a
+ * pin, a window) rather than a contract or the promotion order: the word the phone stop prints under it, and the kind the
+ * calm header counts. `null` for a dependency hold ("needs payments ~2.9.0", "waits for dev") and for nothing held.
+ */
+export function holdWord(reason: string | null): 'approval' | 'pinned' | 'held' | null {
+	if (!reason) return null;
+	if (/^(needs |waits for )/.test(reason)) return null;
+	if (/approv/i.test(reason)) return 'approval';
+	if (/\bpin/i.test(reason)) return 'pinned';
+	return 'held';
+}
+
+/**
+ * The calm header's second half: what IS held when no deploy holds another, counted in rollouts (sites):
+ * `{ n: 4, by: 'approvals or pins' }`, `{ n: 1, by: 'an approval' }`. `null` when nothing is held that way.
+ */
+export function otherHoldsPhrase(model: LaneModel): { n: number; by: string } | null {
+	let n = 0;
+	const kinds = new Set<'approval' | 'pinned' | 'held'>();
+	for (const c of model.cells.values())
+		for (const s of c.sites) {
+			const w = s.held ? holdWord(s.reason) : null;
+			if (!w) continue;
+			n++;
+			kinds.add(w);
+		}
+	if (!n) return null;
+	const one = { approval: 'an approval', pinned: 'a pin', held: 'a rule' } as const;
+	const many = { approval: 'approvals', pinned: 'pins', held: 'other rules' } as const;
+	const order = (['approval', 'pinned', 'held'] as const).filter((k) => kinds.has(k));
+	return { n, by: order.map((k) => (n === 1 ? one[k] : many[k])).join(' or ') };
+}

@@ -56,7 +56,7 @@
 	import { applyQuery } from '$lib/components/filter/filter-model';
 	import DependencyLanes, { lanesNaturalWidth } from '$lib/components/DependencyLanes.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
-	import { buildLanes, heldSinceByEdge, ageOf, freesByService, regionShare, NO_ENV, type LaneBlocker } from '$lib/view-models/dependency-lanes';
+	import { buildLanes, heldSinceByEdge, ageOf, freesByService, regionShare, otherHoldsPhrase, NO_ENV, type LaneBlocker } from '$lib/view-models/dependency-lanes';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import ClusterMark from '$lib/components/ClusterMark.svelte';
@@ -211,6 +211,8 @@ import { heldHereGates } from '$lib/view-models/held';
 	const topBlocker = $derived<LaneBlocker | null>(lanes.blockers[0] ?? null);
 	/** No held link and no held cell: the map says "Nothing is held" (REFS pattern 11); approvals alone say "No deploy holds another". */
 	const nothingHeld = $derived(lanes.heldLinks === 0 && [...lanes.cells.values()].every((c) => c.held === 0));
+	/** Calm with held cells (R2-DES-B-5): never "nothing held" beside held marks — name what IS held, counted from the data. */
+	const otherHolds = $derived(lanes.heldLinks === 0 ? otherHoldsPhrase(lanes) : null);
 	/** The map card's cap: the widest the matrix draws (cells at their max, gutters capped), so the rest goes to the rail. */
 	const mapMax = $derived(
 		lanesNaturalWidth(
@@ -495,7 +497,7 @@ import { heldHereGates } from '$lib/view-models/held';
 			<Card
 				icon={ShareNodesSolid}
 				title="Dependency map"
-				verdict={lanes.totalLinks === 0 ? 'no links' : lanes.heldLinks ? `${lanes.heldLinks} of ${lanes.totalLinks} links held` : nothingHeld ? 'Nothing is held' : 'No deploy holds another'}
+				verdict={lanes.totalLinks === 0 ? 'no links' : lanes.heldLinks ? `${lanes.heldLinks} of ${lanes.totalLinks} links held` : otherHolds ? `No dependency holds · ${otherHolds.n} held by ${otherHolds.by}` : nothingHeld ? 'Nothing is held' : 'No dependency holds'}
 				verdictTone={lanes.heldLinks ? 'held' : 'neutral'}
 			>
 				{#if lanes.rows.length === 0}
@@ -545,9 +547,10 @@ import { heldHereGates } from '$lib/view-models/held';
 							</Card>
 						{:else}
 							<!-- calm (REFS pattern 11): the same slot, no state ink, one line that says what would appear here -->
-							<Card icon={HeldGlyph} iconClass="text-fg-disabled" title="Unblocks the most" verdict="nothing held" padded={false}>
+							<Card icon={HeldGlyph} iconClass="text-fg-disabled" title="Unblocks the most" verdict={otherHolds ? 'no dependency holds' : 'nothing held'} padded={false}>
 								<p class="t-meta px-4 py-3 text-fg-muted" data-calm-rail>
-									No deploy is waiting on another. When a release holds others, the one that frees the most leads here.
+									No deploy is waiting on another.{#if otherHolds}{' '}{otherHolds.n} rollout{otherHolds.n === 1 ? ' is' : 's are'} held by {otherHolds.by} instead; the map marks each.{/if}
+									When a release holds others, the one that frees the most leads here.
 								</p>
 							</Card>
 						{/if}

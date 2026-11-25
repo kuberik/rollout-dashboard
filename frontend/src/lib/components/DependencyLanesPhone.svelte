@@ -24,7 +24,7 @@
 	import DependencyCellSheet from './DependencyCellSheet.svelte';	import ShareNodesSolid from 'flowbite-svelte-icons/ShareNodesSolid.svelte';
 	import { href } from '$lib/paths';
 	import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
-	import { NO_ENV, ageOf, regionShare, type LaneCell, type LaneLink, type LaneModel } from '$lib/view-models/dependency-lanes';
+	import { NO_ENV, ageOf, regionShare, holdWord, type LaneCell, type LaneLink, type LaneModel } from '$lib/view-models/dependency-lanes';
 	import { blockerTree, needPhrase, promotionPath, type TreeNode } from '$lib/view-models/dependency-lanes-phone';
 
 	let { model, focus = null }: { model: LaneModel; focus?: Set<string> | null } = $props();
@@ -161,13 +161,14 @@
 			{#each model.rows as row, ri (row.service)}
 				{@const path = promotionPath(model, row.service)}
 				{@const anyHeld = path.some((s) => s.cell.held)}
+				{@const worded = path.some((s) => s.cell.held && holdWord(s.cell.reason))}
 				{@const uses = [...new Set(model.links.filter((l) => l.kind === 'contract' && path.some((s) => s.cell.key === l.to)).map((l) => model.cells.get(l.from)?.service ?? ''))]}
 				<li class="px-4 py-2" class:border-t={ri > 0} class:border-line-subtle={ri > 0} class:group-start={ri > 0 && row.group !== model.rows[ri - 1].group} class:dim={focus && !path.some((s) => lit(s.cell))} data-map-row={row.service}>
 					<div class="flex min-w-0 items-baseline gap-2">
 						<a href={href(`/apps/${row.service}`)} class="t-ui max-w-[70%] shrink-0 truncate font-medium text-fg">{row.service}</a>
 						{#if row.provides.length}<span class="t-meta ml-auto min-w-0 truncate text-fg-subtle">serves {row.provides.join(', ')}</span>{:else if uses.length}<span class="t-meta ml-auto min-w-0 truncate text-fg-subtle">uses {uses.join(', ')}</span>{/if}
 					</div>
-					<div class="relative mt-1 h-10">
+					<div class="relative mt-1" class:h-10={!worded} class:h-14={worded}>
 						<svg class="absolute inset-x-0 top-0 overflow-visible" width={mapW} height="16" aria-hidden="true">
 							{#each path as s, i (s.cell.key)}
 								{#if i > 0}
@@ -181,7 +182,7 @@
 							{@const z = model.columns.findIndex((c) => c.key === s.col)}
 							<button
 								type="button"
-								class="stop absolute top-0 flex h-10 -translate-x-1/2 flex-col items-center"
+								class="stop absolute top-0 flex -translate-x-1/2 flex-col items-center" class:h-10={!worded} class:h-14={worded}
 								style="left: {colX(z)}px; width: {mapW / Math.max(1, n) - 4}px"
 								aria-haspopup="dialog"
 								aria-label="{row.service} in {colLabel(s.col)}{s.cell.reason ? `, held: ${s.cell.reason}` : ''}"
@@ -192,6 +193,11 @@
 								<span class="t-code-sm mt-0.5 max-w-full truncate {s.cell.held ? 'text-held' : 'text-fg-muted'}">
 									{s.cell.sites.length > 1 ? `${s.cell.sites.length} regions` : (s.cell.build ?? 'no build')}
 								</span>
+								<!-- a hold that is not another deploy says its word (R2-DES-B-5): the orange mark alone read as a dependency hold
+								     under a header saying none is. The word, not a new mark: "approval" / "pinned" is what the desktop cell says. -->
+								{#if s.cell.held && holdWord(s.cell.reason)}
+									<span class="t-meta leading-4 text-fg-subtle" data-hold-word>{holdWord(s.cell.reason)}</span>
+								{/if}
 							</button>
 						{/each}
 					</div>
