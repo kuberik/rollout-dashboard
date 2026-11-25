@@ -440,6 +440,49 @@
 		});
 	});
 
+	/**
+	 * PILL PLACEMENT (R2-DES-B-2, L13). A pill never overlaps another pill, a cell or a row label. Each pill is measured,
+	 * then placed at the first free spot of a short search: above the edge's arrow, below it, sliding up/down the gutter
+	 * side in 12px steps, then to the right of the consumer cell. Pills already placed are obstacles, so the two inbound
+	 * relationships of a hovered cell stack instead of colliding. With no free spot it keeps the first one (above the arrow).
+	 */
+	let pillSize = $state<Record<string, { w: number; h: number }>>({});
+	const placed = $derived.by(() => {
+		type Box = { x: number; y: number; w: number; h: number };
+		const hit = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+		const obstacles: Box[] = [];
+		for (const c of model.cells.values()) {
+			const t = rowsGeo.rowTop.get(c.service);
+			const x = cols.cellX.get(c.col);
+			if (t == null || x == null) continue;
+			obstacles.push({ x: x - 2, y: t - 2, w: cols.cellW + 4, h: rowsGeo.cellH(c) + 4 });
+		}
+		for (const r of model.rows) {
+			const t = rowsGeo.rowTop.get(r.service)!;
+			obstacles.push({ x: 0, y: t, w: cols.label - 12, h: Math.max(CELL_H, labelH[r.service] ?? 0) });
+		}
+		const out = new Map<string, { left: number; top: number }>();
+		for (const p of pills) {
+			const sz = pillSize[p.key];
+			if (!sz || !sz.w || !sz.h) continue;
+			const l = linkByKey.get(p.key)!;
+			const toRight = (cols.cellX.get(model.cells.get(l.to)!.col) ?? 0) + cols.cellW + 8;
+			const cands: { left: number; top: number }[] = [];
+			const left = p.x - 10 - sz.w;
+			cands.push({ left, top: p.y - sz.h - 4 }, { left, top: p.y + 4 });
+			for (let k = 1; k <= 10; k++) cands.push({ left, top: p.y - sz.h - 4 - 12 * k }, { left, top: p.y + 4 + 12 * k });
+			for (let k = 0; k <= 4; k++) cands.push({ left: toRight, top: p.y - sz.h / 2 - 12 * k }, { left: toRight, top: p.y - sz.h / 2 + 12 * k });
+			const inBounds = (b: Box) => b.x >= 0 && b.y >= 0 && b.x + b.w <= cols.right && b.y + b.h <= rowsGeo.height;
+			const pick = cands.find((c) => {
+				const b = { x: c.left, y: c.top, w: sz.w, h: sz.h };
+				return inBounds(b) && !obstacles.some((o) => hit(o, b));
+			}) ?? cands[0];
+			out.set(p.key, pick);
+			obstacles.push({ x: pick.left - 2, y: pick.top - 2, w: sz.w + 4, h: sz.h + 4 });
+		}
+		return out;
+	});
+
 	/** "needs payments ~2.9.0 · has 2.4.1" / "e2c9b47 not in dev yet" — the relationship said once */
 	function fullFact(l: LaneLink): string {
 		if (l.kind === 'contract') {
@@ -687,7 +730,14 @@
 			</svg>
 
 			{#each pills as p (p.key)}
-				<div class="pill t-meta pointer-events-none absolute whitespace-nowrap text-held" style="right: calc(100% - {p.x - 10}px); top: {p.y - 26}px" data-pill={p.key}>
+				{@const at = placed.get(p.key)}
+				<div
+					class="pill t-meta pointer-events-none absolute whitespace-nowrap text-held"
+					style="left: {at?.left ?? 0}px; top: {at?.top ?? 0}px; visibility: {at ? 'visible' : 'hidden'}"
+					bind:offsetWidth={() => pillSize[p.key]?.w ?? 0, (w) => (pillSize[p.key] = { w, h: pillSize[p.key]?.h ?? 0 })}
+					bind:offsetHeight={() => pillSize[p.key]?.h ?? 0, (h) => (pillSize[p.key] = { w: pillSize[p.key]?.w ?? 0, h })}
+					data-pill={p.key}
+				>
 					{p.text}
 				</div>
 			{/each}
