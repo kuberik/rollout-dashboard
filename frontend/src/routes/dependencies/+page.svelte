@@ -223,11 +223,12 @@ import { heldHereGates } from '$lib/view-models/held';
 	   at 1440 the same fact is the edge's hover pill, and on a stacked tablet it would push the map a screen down. */
 	let wrapW = $state(0);
 	let railW = $state(0);
-	/** One row per held relationship (regions already folded per cell pair by the view-model), contracts first. */
+	/** One row per held CONTRACT relationship (regions already folded per cell pair by the view-model). Promotion rows are not
+	 *  listed (R2-DES-B-11): "waits for dev" is already the held cell's own line in the map; the contract's "has" is the one fact
+	 *  the map does not print at rest. */
 	const heldRelations = $derived(
 		lanes.links
-			.filter((l) => l.held)
-			.sort((a, b) => Number(a.kind === 'promotion') - Number(b.kind === 'promotion'))
+			.filter((l) => l.held && l.kind === 'contract')
 			.map((l) => {
 				const a = lanes.cells.get(l.from)!;
 				const b = lanes.cells.get(l.to)!;
