@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { fleet, environments, list } from './gates-tab-reference.testkit';
-import { buildLanes, heldSinceByEdge, NO_ENV, cellKey } from './dependency-lanes';
+import { buildLanes, heldSinceByEdge, NO_ENV, cellKey, freesByService, regionShare } from './dependency-lanes';
 
 const g = fleet.providerNetwork;
 const m = buildLanes({ graph: g, environments, heldSince: heldSinceByEdge(g, list.rolloutDependencies.items) });
@@ -30,6 +30,17 @@ describe('environment lanes (home-incident)', () => {
 		expect(m.cells.has(top.cell.key)).toBe(true);
 		expect(m.heldByDeploy).toBe(12);
 		expect(m.heldLinks).toBe(13);
+	});
+	test('one region count: the fold says 5, a blocker share says 4 of 5 (af-south-1 is held by something else)', () => {
+		const top = m.blockers[0];
+		const co = top.freesCells.find((f) => f.service === 'checkout-api')!;
+		expect(co).toMatchObject({ col: 'prod', count: 4, of: 5 });
+		expect(freesByService(top.freesCells)).toContain('checkout-api in prod (4 of 5 regions)');
+		// frees counts exactly the rollouts this blocker holds: 4 checkout-api regions + payments-svc + standalone-api + fulfillment-svc
+		expect(top.frees.filter((n) => n.name === 'checkout-api')).toHaveLength(4);
+		expect(top.frees).toHaveLength(7);
+		expect(regionShare(5, 5)).toBe('5 regions');
+		expect(regionShare(1, 1)).toBeNull();
 	});
 	test('providers sit above their consumers in one group', () => {
 		const names = m.rows.map((r) => r.service);

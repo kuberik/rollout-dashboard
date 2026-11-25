@@ -24,7 +24,7 @@
 	import DependencyCellSheet from './DependencyCellSheet.svelte';	import ShareNodesSolid from 'flowbite-svelte-icons/ShareNodesSolid.svelte';
 	import { href } from '$lib/paths';
 	import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
-	import { NO_ENV, ageOf, type LaneCell, type LaneLink, type LaneModel } from '$lib/view-models/dependency-lanes';
+	import { NO_ENV, ageOf, regionShare, type LaneCell, type LaneLink, type LaneModel } from '$lib/view-models/dependency-lanes';
 	import { blockerTree, needPhrase, promotionPath, type TreeNode } from '$lib/view-models/dependency-lanes-phone';
 
 	let { model, focus = null }: { model: LaneModel; focus?: Set<string> | null } = $props();
@@ -78,7 +78,7 @@
 			{#if c.col !== parent.col || c.service === parent.service}<span class="t-meta shrink-0 text-fg-subtle">{colLabel(c.col)}</span>{/if}
 			{#if multi}
 				<button type="button" class="unfold t-ui-sm ml-auto flex min-h-10 shrink-0 items-center gap-1 text-held" aria-expanded={open} onclick={() => toggle(c.key)} data-unfold={c.key}>
-					{c.sites.length} regions
+					{node.via ? regionShare(node.via.heldCount, c.sites.length) : `${c.sites.length} regions`}
 					{#if open}<ChevronUpOutline class="h-3.5 w-3.5" />{:else}<ChevronDownOutline class="h-3.5 w-3.5" />{/if}
 				</button>
 			{/if}

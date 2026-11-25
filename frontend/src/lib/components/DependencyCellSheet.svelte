@@ -26,7 +26,7 @@
 	import { href } from '$lib/paths';
 	import { portal, modalFocusReturn } from '$lib/a11y.svelte';
 	import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
-	import { NO_ENV, ageOf, type LaneCell, type LaneModel } from '$lib/view-models/dependency-lanes';
+	import { NO_ENV, ageOf, regionShare, type LaneCell, type LaneModel } from '$lib/view-models/dependency-lanes';
 	import { promotionPath } from '$lib/view-models/dependency-lanes-phone';
 
 	let { model, cell, now, onclose }: { model: LaneModel; cell: LaneCell | null; now: Date; onclose: () => void } = $props();
@@ -113,7 +113,7 @@
 							{#each inbound as l (l.key)}
 								<span class="t-meta {l.held ? 'text-held' : 'text-fg-muted'}">
 									<span class="font-medium {l.held ? '' : 'text-fg'}">{l.contract}</span>
-									{l.needs.length ? l.needs.join(', ') : ''} from {svcOf(l.from)}{#if l.serves}<span class={l.held ? '' : 'text-fg-subtle'}>{' · '}has {l.serves}</span>{/if}
+									{l.needs.length ? l.needs.join(', ') : ''} from {svcOf(l.from)}{#if l.serves}<span class={l.held ? '' : 'text-fg-subtle'}>{' · '}has {l.serves}</span>{/if}{#if l.held && l.heldCount < cell.sites.length && cell.sites.length > 1}{' · '}{regionShare(l.heldCount, cell.sites.length)}{/if}
 								</span>
 							{/each}
 						</dd>

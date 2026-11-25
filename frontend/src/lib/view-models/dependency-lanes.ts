@@ -88,8 +88,9 @@ export type LaneBlocker = {
 	why: string;
 	/** Rollouts it holds, transitively through held links. */
 	frees: GraphNode[];
-	/** `frees` folded per cell, in row order: `checkout-api · prod · 4`. */
-	freesCells: { service: string; col: string; count: number }[];
+	/** `frees` folded per cell, in row order: `checkout-api · prod · 4` of the cell's `of` regions (5: af-south-1 is held by
+	 *  something else, so it is not this blocker's to free). */
+	freesCells: { service: string; col: string; count: number; of: number }[];
 	since: string | null;
 };
 
@@ -381,11 +382,11 @@ export function buildLanes(args: {
 			for (const e of outHeld.get(id) ?? []) if (!seen.has(e.to) && e.to !== n.id) { seen.add(e.to); stack.push(e.to); }
 		}
 		const frees = [...seen].map((id) => byId.get(id)!).filter(Boolean);
-		const fold = new Map<string, { service: string; col: string; count: number }>();
+		const fold = new Map<string, { service: string; col: string; count: number; of: number }>();
 		for (const f of frees) {
 			const k = cellOfNode(f.id);
 			const c = cells.get(k)!;
-			const x = fold.get(k) ?? { service: c.service, col: c.col, count: 0 };
+			const x = fold.get(k) ?? { service: c.service, col: c.col, count: 0, of: c.sites.length };
 			x.count++;
 			fold.set(k, x);
 		}
@@ -430,17 +431,29 @@ export function buildLanes(args: {
 	};
 }
 
-/** `checkout-api · 4 regions`, `payments-svc`, for a blocker's frees list. */
-export function freesPhrase(f: { service: string; col: string; count: number }): string {
-	return f.count > 1 ? `${f.service} · ${f.count} regions` : f.service;
+/**
+ * ONE REGION COUNT (R2-DES-B-3). A cell's fold says its total ("5 regions"); wherever a part of it is meant — what one
+ * blocker holds, what one relationship holds — the share is said against that total: `4 of 5 regions`. All of them is
+ * the total; a single-region cell has no region phrase. `null` when there is nothing to say.
+ */
+export function regionShare(count: number, of: number): string | null {
+	if (of <= 1) return null;
+	return count < of ? `${count} of ${of} regions` : `${of} regions`;
 }
 
-/** A blocker's frees folded per service: `checkout-api in prod (4 regions)`, `hello-world in staging, prod`. */
-export function freesByService(cells: { service: string; col: string; count: number }[], word: (c: string) => string = (c) => c): string[] {
+/** `checkout-api · 4 of 5 regions`, `payments-svc`, for a blocker's frees list. */
+export function freesPhrase(f: { service: string; col: string; count: number; of?: number }): string {
+	const share = regionShare(f.count, f.of ?? f.count);
+	return share ? `${f.service} · ${share}` : f.service;
+}
+
+/** A blocker's frees folded per service: `checkout-api in prod (4 of 5 regions)`, `hello-world in staging, prod`. */
+export function freesByService(cells: { service: string; col: string; count: number; of?: number }[], word: (c: string) => string = (c) => c): string[] {
 	const by = new Map<string, { cols: string[]; count: number }>();
 	for (const c of cells) {
 		const x = by.get(c.service) ?? { cols: [], count: 0 };
-		x.cols.push(word(c.col) + (c.count > 1 ? ` (${c.count} regions)` : ''));
+		const share = regionShare(c.count, c.of ?? c.count);
+		x.cols.push(word(c.col) + (share ? ` (${share})` : ''));
 		x.count += c.count;
 		by.set(c.service, x);
 	}

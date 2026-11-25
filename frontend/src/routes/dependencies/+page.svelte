@@ -56,7 +56,7 @@
 	import { applyQuery } from '$lib/components/filter/filter-model';
 	import DependencyLanes, { lanesNaturalWidth } from '$lib/components/DependencyLanes.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
-	import { buildLanes, heldSinceByEdge, ageOf, freesByService, NO_ENV, type LaneBlocker } from '$lib/view-models/dependency-lanes';
+	import { buildLanes, heldSinceByEdge, ageOf, freesByService, regionShare, NO_ENV, type LaneBlocker } from '$lib/view-models/dependency-lanes';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import ClusterMark from '$lib/components/ClusterMark.svelte';
@@ -232,7 +232,8 @@ import { heldHereGates } from '$lib/view-models/held';
 			.map((l) => {
 				const a = lanes.cells.get(l.from)!;
 				const b = lanes.cells.get(l.to)!;
-				const regions = b.sites.length > 1 ? ` · ${l.heldCount} region${l.heldCount === 1 ? '' : 's'}` : '';
+				const share = regionShare(l.heldCount, b.sites.length);
+				const regions = share ? ` · ${share}` : '';
 				const where = a.col === b.col ? `${colWord(b.col)}${regions}` : `${colWord(a.col)} → ${colWord(b.col)}`;
 				const build = l.edges.find((e) => e.held.length)?.held[0];
 				const fact =
