@@ -1,12 +1,14 @@
-/** r3-filters: the state chips are gone, so an old /rollouts?state=failing,held link lands on the section that state lives in now
- *  (r39: #attention, #in-flight, #waiting, #held, #at-rest); other params (?calm=1) are kept. A redirect, so the old address never renders a page it cannot narrow. */
+/** /rollouts?state= is a FILTER now (progress, waiting, held, rest: the list's own groups; see rollouts-filter.ts). Only `failing` has no group in the list
+ *  (a failing rollout is in the banner or Attention), so an old /rollouts?state=failing link still lands on #attention; any other state words stay as a filter. */
 import { redirect } from '@sveltejs/kit';
-const ANCHOR: Record<string, string> = { failing: 'attention', progress: 'in-flight', waiting: 'waiting', held: 'held', rest: 'at-rest' };
 export const load = ({ url }: { url: URL }) => {
 	const v = url.searchParams.get('state');
 	if (v == null) return;
+	const words = v.split(',').map((x) => x.trim()).filter(Boolean);
+	if (!words.includes('failing')) return;
 	const u = new URL(url);
-	u.searchParams.delete('state');
-	u.hash = v.split(',').map((x) => ANCHOR[x]).find(Boolean) ?? 'in-flight';
+	const left = words.filter((x) => x !== 'failing');
+	if (left.length) u.searchParams.set('state', left.join(',')); else u.searchParams.delete('state');
+	u.hash = 'attention';
 	redirect(307, u.pathname + u.search + u.hash);
 };

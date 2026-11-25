@@ -674,7 +674,7 @@ function placesOfRaw(state: HomeState, app: string): (AppPlace & { newest: strin
 	})[0];
 	const order = orderOfEnvs(envs);
 	const newest = newestOfApp(order, newestEnv ? shortBuild(newestEnv.version) : null);
-	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, bakePaused: !!e.bakePaused && e.state === 'checking', pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0, newest }));
+	return envs.map((e) => ({ env: e.env, label: e.label, tier: tierOfEnv(e), state: e.state, bakePaused: !!e.bakePaused && e.state === 'checking', pinned: e.pinned, href: e.href, version: shortBuild(e.version), currency: currencyOfPlace(e.href, shortBuild(e.version), newest), onNewest: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest' && e.state !== 'failed', onBuild: currencyOfPlace(e.href, shortBuild(e.version), newest) === 'newest', behind: behindIn(order, shortBuild(e.version)) ?? 0, pipeline: e.pipeline ?? null, newest }));
 }
 export type AppFailing = { build: string | null; place: string; href: string; line: string };
 /**
@@ -685,7 +685,7 @@ export type AppFailing = { build: string | null; place: string; href: string; li
  * Every reader that turns `!onNewest` into "behind" must check `currency !== 'none'` first (onNewest/onBuild are false for it).
  */
 export type PlaceCurrency = 'newest' | 'behind' | 'none';
-export type AppPlace = { env: string; label: string; tier: TierKey; state: EnvState; /** baking with the clock stopped by a not-Healthy check: reads Paused, still in flight (state stays checking) */ bakePaused: boolean; /** a pin holds newer builds here: beside the state, never in it */ pinned: boolean; href: string; version: string | null; currency: PlaceCurrency; onNewest: boolean; /** runs the newest BUILD whatever its health (the Gates tab's count) */ onBuild: boolean; /** builds of the catalogue's order newer than the one it runs (releases/order.ts); 0 for a place without releases or on a build outside the order */ behind: number };
+export type AppPlace = { env: string; label: string; tier: TierKey; state: EnvState; /** baking with the clock stopped by a not-Healthy check: reads Paused, still in flight (state stays checking) */ bakePaused: boolean; /** a pin holds newer builds here: beside the state, never in it */ pinned: boolean; href: string; version: string | null; currency: PlaceCurrency; onNewest: boolean; /** runs the newest BUILD whatever its health (the Gates tab's count) */ onBuild: boolean; /** builds of the catalogue's order newer than the one it runs (releases/order.ts); 0 for a place without releases or on a build outside the order */ behind: number; /** the place's Deployment pipeline: the strand an At rest row draws */ pipeline?: EnvPipeline | null };
 /** the place's currency against `newest` (see PlaceCurrency) */
 const currencyOfPlace = (href: string, version: string | null, newest: string | null): PlaceCurrency => noReleasesAt(href) ? 'none' : version === newest ? 'newest' : 'behind';
 export type TApp = Omit<AppItem, 'newest' | 'onNewest' | 'fact'> & {

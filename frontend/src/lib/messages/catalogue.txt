@@ -954,6 +954,8 @@ lib/components/new/rollout-view.ts	code	Next: … waits for approval in ….
 lib/components/new/rollout-view.ts	code	Roll back
 lib/components/new/rollout-view.ts	code	Waiting for approval
 lib/components/new/rollout-view.ts	code	Your approval
+lib/components/new/rollouts-filter.ts	code	At rest
+lib/components/new/rollouts-filter.ts	code	In flight
 lib/components/new/rollouts-page.ts	code	… behind
 lib/components/new/rollouts-page.ts	code	… of … regions
 lib/components/new/rollouts-page.ts	code	… regions
@@ -964,16 +966,29 @@ lib/components/new/rollouts-page.ts	code	Held by
 lib/components/new/rollouts-page.ts	code	In flight
 lib/components/new/rollouts-page.ts	code	On the newest
 lib/components/new/rollouts-page.ts	code	Rolled back
-lib/components/new/Rollouts.svelte	text	… apps
+lib/components/new/Rollouts.svelte	text	… app …
 lib/components/new/Rollouts.svelte	code	… at rest
 lib/components/new/Rollouts.svelte	code	… held
 lib/components/new/Rollouts.svelte	text	… is itself waiting on …
 lib/components/new/Rollouts.svelte	code	… moving
 lib/components/new/Rollouts.svelte	code	… waiting
+lib/components/new/Rollouts.svelte	code	0 rollouts
 lib/components/new/Rollouts.svelte	title	All rollouts
 lib/components/new/Rollouts.svelte	text	At rest
+lib/components/new/Rollouts.svelte	text	Clear filters
+lib/components/new/Rollouts.svelte	text	No rollouts match
 lib/components/new/Rollouts.svelte	text	No rollouts yet
+lib/components/new/Rollouts.svelte	text	Nothing in the list fits this search and these filters.
+lib/components/new/Rollouts.svelte	aria-label	Recent deploys and cadence
 lib/components/new/Rollouts.svelte	text	Rollouts appear here as soon as one is deployed.
+lib/components/new/rollouts/RolloutFilters.svelte	code	(max-width: 639px)
+lib/components/new/rollouts/RolloutFilters.svelte	placeholder	Search name, namespace, version
+lib/components/new/rollouts/RolloutFilters.svelte	aria-label	Search rollouts
+lib/components/new/rollouts/RolloutsRail.svelte	aria-label	… deploys in the last … days
+lib/components/new/rollouts/RolloutsRail.svelte	text	All activity
+lib/components/new/rollouts/RolloutsRail.svelte	title	Deploy cadence
+lib/components/new/rollouts/RolloutsRail.svelte	text	last … days
+lib/components/new/rollouts/RolloutsRail.svelte	title	Recent deploys
 lib/components/new/Slipway.svelte	code	… animate-pulse
 lib/components/new/Slipway.svelte	code	…… ago
 lib/components/new/Slipway.svelte	code	…${n.hold && !n.holdC ?

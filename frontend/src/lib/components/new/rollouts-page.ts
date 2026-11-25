@@ -11,7 +11,7 @@
 import { attentionRank } from '$lib/view-models/failure-actions';
 import { newestFirst } from '$lib/instant';
 import {
-	rollouts, pinOnlyPlaces, pinRow, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, pinSinceOfHref, waitClock, gateName, isViewer, personOf, avatarSrc,
+	rollouts, stepsOf, pinOnlyPlaces, pinRow, placeCause, placesOf, placeBehind, regionStates, noReleasesAt, ago, buildOf, buildIdentity, deployedBuild, buildInQuestionFacts, holdSince, pinSinceOfHref, waitClock, gateName, isViewer, personOf, avatarSrc,
 	type TRow, type HomeState
 } from './data';
 import { markOf, markRecoveredOf, tabEnv, rowAction, actionHref, runwayRow, byFailRank, type MarkState } from './rollout-view';
@@ -56,7 +56,7 @@ export type BannerMeta = { since: string | null; /** the instant `since` counts 
 export type BannerModel = { /** the Overview banner's own evidence (observation figure, check line + class glyph, "n health checks failing" / "Recovered at 14:05", Details); null without observations */ evidence?: BannerEvidence | null; row: TRow; title: string; check: { name: string; message: string; cls?: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null; recovered?: boolean; meta: BannerMeta };
 export type AttentionItem = { key: string; row: TRow; model: AttentionModel; app: string; href: string; rollbackHref: string | null; openHref: string; yours: boolean };
 export type StrandRow = { key: string; row: TRow; app: string; href: string; tier: string; place: string | null; mark: MarkState; nodes: MiniNode[]; /** the state word / cause, typed (`CauseText` draws a promotion label by kind); `causeText(lead)` is its plain form */ lead: Cause; rest: string; age: string; yours: boolean; };
-export type RestRow = { key: string; app: string; href: string; place: string; rep: boolean; sentence: string; code: string; age: string; tier: string; /** the quiet row prints the build code before the sentence (Changes' At rest) */ codeFirst?: boolean; /** r42 atoms (opt-in, /design/atoms): the landed change's lead bar */ lead?: { hops: import('$lib/components/atoms/LeadBar.svelte').Hop[]; origin?: number; scale: number; total: string } | null };
+export type RestRow = { key: string; app: string; href: string; place: string; rep: boolean; /** the place's step strand (same path as the active rows'), so every row of the list draws its dots */ nodes?: MiniNode[]; sentence: string; code: string; age: string; tier: string; /** the quiet row prints the build code before the sentence (Changes' At rest) */ codeFirst?: boolean; /** r42 atoms (opt-in, /design/atoms): the landed change's lead bar */ lead?: { hops: import('$lib/components/atoms/LeadBar.svelte').Hop[]; origin?: number; scale: number; total: string } | null };
 export type GroupKey = 'moving' | 'waiting' | 'held';
 export const GROUP_WORD: Record<GroupKey, string> = { moving: 'In flight', waiting: 'Waiting', held: 'Held' };
 
@@ -190,7 +190,7 @@ function restRows(rows: TRow[], restApps: { app: string }[], hs: HomeState, sett
 			const none = noReleasesAt(p.href);
 			/* no releases: the health word and the running build stay; the label takes the currency slot ("2 behind" / "On the newest") */
 			const sentence = none ? `${p.state === 'rolled-back' ? 'Rolled back' : 'Healthy'} · ${none.label}` : restSentence(p, app, settled);
-			out.push({ key: p.href, app, href: p.href, place, rep: false, sentence, code: p.version ?? '', age: ago(deployedBuild({ app, href: p.href, version: p.version ?? '' }).at), tier: p.tier, o: order[p.tier] ?? 9 });
+			out.push({ key: p.href, app, href: p.href, place, rep: false, nodes: nodesOfSteps(stepsOf({ state: p.state, pipeline: p.pipeline ?? null }), p.state), sentence, code: p.version ?? '', age: ago(deployedBuild({ app, href: p.href, version: p.version ?? '' }).at), tier: p.tier, o: order[p.tier] ?? 9 });
 		}
 	}
 	out.sort((a, b) => a.app.localeCompare(b.app) || a.o - b.o || a.place.localeCompare(b.place));

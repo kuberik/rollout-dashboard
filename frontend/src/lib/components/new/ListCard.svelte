@@ -8,10 +8,10 @@
 	 * size against (2 columns of rows from 1700px of card, 3 from 3200). Reference: Rollouts' "All rollouts" card, where it was signed.
 	 */
 	import type { Snippet } from 'svelte';
-	let { children, class: className = '' }: { children: Snippet; class?: string } = $props();
+	let { children, class: className = '', columns = 'auto' }: { children: Snippet; class?: string; /** 1 = one column of rows at every width (/rollouts, next to its rail); 'auto' = the container-query columns /envs/<name> keeps */ columns?: 1 | 'auto' } = $props();
 </script>
 
-<div class="lc {className}">{@render children()}</div>
+<div class="lc {columns === 1 ? 'lc-one' : ''} {className}">{@render children()}</div>
 
 <style>
 	.lc { border: 1px solid var(--k-line); border-radius: 8px; background: var(--k-surface); min-width: 0; overflow: hidden; container-type: inline-size; }
@@ -22,12 +22,12 @@
 	.lc :global(.lc-g + .lc-g) { border-top: 1px solid var(--k-line-subtle); margin-top: 8px; }
 	.lc :global(.lc-rows) { display: grid; grid-template-columns: minmax(0, 1fr); list-style: none; margin: 0; padding: 0; }
 	@container (min-width: 1700px) {
-		.lc :global(.lc-rows) { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
-		.lc :global(.lc-rows > .lr:nth-child(2) .lr-in) { border-top: 0; }
+		.lc:not(.lc-one) :global(.lc-rows) { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
+		.lc:not(.lc-one) :global(.lc-rows > .lr:nth-child(2) .lr-in) { border-top: 0; }
 	}
 	@container (min-width: 3200px) {
-		.lc :global(.lc-rows) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-		.lc :global(.lc-rows > .lr:nth-child(3) .lr-in) { border-top: 0; }
+		.lc:not(.lc-one) :global(.lc-rows) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+		.lc:not(.lc-one) :global(.lc-rows > .lr:nth-child(3) .lr-in) { border-top: 0; }
 	}
 	@container (max-width: 600px) { .lc :global(.lc-gh) { padding: 12px 12px 4px; } }
 </style>

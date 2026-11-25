@@ -39,6 +39,8 @@
 		chrome = true,
 		collapseAfter = null,
 		maxEntries = null,
+		dayHeaders = true,
+		onday = undefined,
 		avatarFor = () => undefined
 	}: {
 		rollouts: Rollout[];
@@ -100,6 +102,10 @@
 		 * `effectiveCapEntries` below.
 		 */
 		maxEntries?: number | null;
+		/** false drops the per-day header bar (a rail that says its count in its own card header); the day groups still separate the rows */
+		dayHeaders?: boolean;
+		/** reports the NEWEST day's label and deploy total (the whole history, not the rows shown) so a host card can print "133 today" */
+		onday?: (day: { label: string; n: number } | null) => void;
 		/** The signed-in account's picture, for its own rows (`actorFrom`'s `src`). */
 		avatarFor?: (login: string) => string | undefined;
 	} = $props();
@@ -316,6 +322,11 @@
 	});
 	const busiestDay = $derived(Math.max(1, ...[...dayTotals.values()].map((t) => t.n)));
 
+	$effect(() => {
+		const g = byDay[0];
+		onday?.(g ? { label: g.label, n: dayTotals.get(g.key)?.n ?? g.entries.length } : null);
+	});
+
 	type DayGroup = { label: string; key: string; entries: ActivityEntry[] };
 	function dayKey(ts: string): string {
 		const d = new Date(ts);
@@ -526,7 +537,7 @@
 						<!-- The day: its label, ONE single-fill volume bar (share of the
 						     busiest day shown) and "N deploys · M failed" — failures in
 						     words and danger ink, never a red segment, omitted at 0. -->
-						<ActivityDayHeader label={group.label} count={t.n} busiest={busiestDay} failed={t.failed} open={t.open} />
+						{#if dayHeaders}<ActivityDayHeader label={group.label} count={t.n} busiest={busiestDay} failed={t.failed} open={t.open} />{/if}
 						<!-- ⭐ ONE ACTIVITY ROW PRODUCT-WIDE (squad-fleet, AD round 0 #2 /
 						     round 2 #4): every rail renders the shared sentence —
 						     avatar · actor verb app · env · old → new · time — never its
