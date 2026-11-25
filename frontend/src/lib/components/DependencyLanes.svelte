@@ -75,7 +75,7 @@
 	import Chip from './Chip.svelte';
 	import { href } from '$lib/paths';
 	import type { EnvironmentTheme } from '$lib/environment-theme';
-	import { NO_ENV, ageOf, type LaneCell, type LaneLink, type LaneModel } from '$lib/view-models/dependency-lanes';
+	import { NO_ENV, ageOf, holdWord, type LaneCell, type LaneLink, type LaneModel } from '$lib/view-models/dependency-lanes';
 
 	let {
 		model,
@@ -163,6 +163,9 @@
 	/** under ~170px a cell drops the line-2 indent and the age (the rail and the tooltip keep it) */
 	const compact = $derived(cols.cellW < 170);
 	const SITE_H = $derived(compact ? 38 : 26);
+	/** From this cell width a site fits one line (wave, name, build, age or word, mark); below it, two (R2-DES-B-4). */
+	const SITE_ONE_LINE = 280;
+	let sitesH = $state<Record<string, number>>({});
 
 	/**
 	 * "frees N" on a blocker's cell (round 2, TL item a): operator question 2 answered INSIDE the map, the same figure
@@ -187,7 +190,7 @@
 	const head = (k: string) => Math.max(CELL_H, Math.ceil(headH[k] ?? 0));
 	const rowsGeo = $derived.by(() => {
 		const cellH = (c: LaneCell) =>
-			(expanded.has(c.key) && c.sites.length > 1 ? head(c.key) + c.sites.length * SITE_H + 8 : head(c.key)) + (freesOf.has(c.key) ? FOOT_H : 0);
+			(expanded.has(c.key) && c.sites.length > 1 ? head(c.key) + (sitesH[c.key] ? Math.ceil(sitesH[c.key]) + 2 : c.sites.length * SITE_H + 8) : head(c.key)) + (freesOf.has(c.key) ? FOOT_H : 0);
 		const rowTop = new Map<string, number>();
 		const rowH = new Map<string, number>();
 		const seps: number[] = [];
@@ -612,27 +615,32 @@
 								{/if}
 							</div>
 							{#if multi && open}
-								<!-- the unfolded regions: at the compact width two lines a site (name + held mark / build + age), else one -->
-								<ul class="border-t border-line-subtle px-3 py-1" data-sites={c.key}>
+								<!-- the unfolded regions (R2-DES-B-4): the site name is whole at every width that draws the matrix. Under ~280px a
+								     site is two lines — the name alone, then its build and, when held, the age in held ink or, with no hold time
+								     (af-south-1, held by an approval), the hold's word; a long pair wraps to a third line instead of clipping. From
+								     280px one line: wave · name · build · age-or-word · held mark. The list is measured, so the cell fits it. -->
+								<ul class="border-t border-line-subtle px-3 py-1" data-sites={c.key} bind:offsetHeight={sitesH[c.key]}>
 									{#each c.sites as s (s.node.id)}
 										{@const age = s.held ? ageOf(s.since, now) : null}
-										{#if compact}
-											<li class="flex flex-col justify-center" style="height: {SITE_H}px">
-												<span class="flex min-w-0 items-center gap-1.5">
-													<a href={href(`/rollouts/${s.node.cluster}/${s.node.namespace}/${s.node.name}`)} class="t-meta min-w-0 truncate text-fg hover:underline" title="{s.wave != null ? `Wave ${s.wave} · ` : ''}{s.node.build ?? 'no build'}{s.reason ? ` · ${s.reason}` : ''}">{s.site}</a>
-													<span class="ml-auto w-3 shrink-0">{#if s.held}<HeldGlyph size={12} class="text-held" title={s.reason ?? 'Held'} />{/if}</span>
-												</span>
-												<span class="flex min-w-0 items-center gap-1.5">
-													<span class="t-code-sm truncate text-fg-muted">{s.node.build ?? '—'}</span>
-													{#if age}<span class="t-meta ml-auto shrink-0 tabular-nums text-fg-subtle" title="Held since">{age}</span>{/if}
+										{@const word = s.held && !age ? (holdWord(s.reason) ?? 'held') : null}
+										{@const siteHref = href(`/rollouts/${s.node.cluster}/${s.node.namespace}/${s.node.name}`)}
+										{@const tip = `${s.wave != null ? `Wave ${s.wave} · ` : ''}${s.node.build ?? 'no build'}${s.reason ? ` · ${s.reason}` : ''}`}
+										{#if cols.cellW < SITE_ONE_LINE}
+											<li class="flex flex-col justify-center py-1" data-site={s.site}>
+												<a href={siteHref} class="t-meta min-w-0 text-fg [overflow-wrap:anywhere] hover:underline" title={tip}>{s.site}</a>
+												<span class="flex min-w-0 flex-wrap items-center gap-x-1.5">
+													<span class="t-code-sm text-fg-muted">{s.node.build ?? 'no build'}</span>
+													{#if age}<span class="t-meta ml-auto tabular-nums text-held" title="Held since">{age}</span>{/if}
+													{#if word}<span class="t-meta ml-auto text-held" title={s.reason ?? 'Held'}>{word}</span>{/if}
 												</span>
 											</li>
 										{:else}
-											<li class="flex items-center gap-2" style="height: {SITE_H}px">
+											<li class="flex min-h-[26px] items-center gap-2" data-site={s.site}>
 												<span class="t-meta w-6 shrink-0 tabular-nums text-fg-disabled">{s.wave != null ? `W${s.wave}` : ''}</span>
-												<a href={href(`/rollouts/${s.node.cluster}/${s.node.namespace}/${s.node.name}`)} class="t-meta min-w-0 truncate text-fg hover:underline" title="{s.wave != null ? `Wave ${s.wave} · ` : ''}{s.node.build ?? 'no build'}{s.reason ? ` · ${s.reason}` : ''}">{s.site}</a>
-												<span class="t-code-sm ml-auto shrink-0 text-fg-muted">{s.node.build ?? '—'}</span>
-												<span class="t-meta w-6 shrink-0 text-right tabular-nums text-fg-subtle" title="Held since">{age ?? ''}</span>
+												<a href={siteHref} class="t-meta min-w-0 text-fg [overflow-wrap:anywhere] hover:underline" title={tip}>{s.site}</a>
+												<span class="t-code-sm ml-auto shrink-0 text-fg-muted">{s.node.build ?? 'no build'}</span>
+												{#if age}<span class="t-meta shrink-0 tabular-nums text-fg-subtle" title="Held since">{age}</span>{/if}
+												{#if word}<span class="t-meta shrink-0 text-held" title={s.reason ?? 'Held'}>{word}</span>{/if}
 												<span class="w-3 shrink-0">{#if s.held}<HeldGlyph size={12} class="text-held" title={s.reason ?? 'Held'} />{/if}</span>
 											</li>
 										{/if}
