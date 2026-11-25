@@ -38,6 +38,8 @@ export type ReadyIssue = {
 	line: string;
 	/** a field conflict's path and who else sets it, so the page can mark up the path's break points (`pathParts`); null otherwise */
 	conflict: { path: string; by: string } | null;
+	/** one generic next-step sentence for a field conflict (owner 2026-11-25: keep it generic, no per-writer advice); null for every other reason */
+	nextStep: string | null;
 	/** the controller's full message, disclosed; null when `line` already is the whole message */
 	detail: string | null;
 	since: string | null;
@@ -45,6 +47,9 @@ export type ReadyIssue = {
 
 /** reasons another surface on the rollout page already states (see the table above) */
 export const OWNED_ELSEWHERE: ReadonlySet<string> = new Set(['BakeTimeFailed', 'BakeTimeRetrying', 'ReleaseSourceRequired', 'NoReleases']);
+/** the three conflict reasons the controller writes; deliberately one sentence for all of them */
+const FIELD_CONFLICT = /FieldConflict$/;
+export const CONFLICT_NEXT_STEP = "Another tool also sets this field. kuberik won't overwrite it \u2014 stop that tool from setting it and the deploy continues on its own.";
 const LEGACY_NO_RELEASES = { reason: 'RolloutSucceeded', message: 'No releases available' };
 /** the controller's write refusals: rollout-controller `deployWriteIssue` reasons */
 const REFUSED = /(?:FieldConflict|InvalidAnnotation)$/;
@@ -81,14 +86,15 @@ export function readyIssue(conditions: readonly Cond[] | null | undefined, o: { 
 
 	const since = c.lastTransitionTime ?? null;
 	const refused = REFUSED.test(reason);
+	const nextStep = FIELD_CONFLICT.test(reason) ? CONFLICT_NEXT_STEP : null;
 	const title = refused ? 'Deploy refused' : 'Not ready';
 	const conflict = CONFLICT.exec(message);
 	if (conflict) {
 		const [, , , path, manager] = conflict;
 		const by = managerName(manager);
-		return { kind: refused ? 'refused' : 'not-ready', reason, title, line: `${reason} on ${path}, also set by ${by}`, conflict: { path, by }, detail: message, since };
+		return { kind: refused ? 'refused' : 'not-ready', reason, title, line: `${reason} on ${path}, also set by ${by}`, conflict: { path, by }, nextStep, detail: message, since };
 	}
 	const body = message.replace(OBJECT_LEAD, '');
 	const line = body ? `${reason}: ${body}` : reason;
-	return { kind: refused ? 'refused' : 'not-ready', reason, title, line, conflict: null, detail: body !== message ? message : null, since };
+	return { kind: refused ? 'refused' : 'not-ready', reason, title, line, conflict: null, nextStep, detail: body !== message ? message : null, since };
 }

@@ -3380,7 +3380,7 @@
 				<!-- The path wraps only at its dots (a `<wbr>` after each, never a character in the text, so a copied path is clean);
 				     the name after "also set by" moves to the next line whole when it fits there (design R1-DES-1, R2-DES-1, R2-DES-2). -->
 				{#snippet readyMessage()}
-					{#if readyShown?.conflict}{readyShown.reason} on <span data-ready-path>{#each pathParts(readyShown.conflict.path) as part, pi (pi)}{part}{#if pi < pathParts(readyShown.conflict.path).length - 1}<wbr />{/if}{/each}</span>, also set by <span class="inline-block max-w-full break-words" data-ready-by>{readyShown.conflict.by}</span>{:else}{readyShown?.line}{/if}
+					{#if readyShown?.conflict}{readyShown.reason} on <span data-ready-path>{#each pathParts(readyShown.conflict.path) as part, pi (pi)}{part}{#if pi < pathParts(readyShown.conflict.path).length - 1}<wbr />{/if}{/each}</span>, also set by <span class="inline-block max-w-full break-words" data-ready-by>{readyShown.conflict.by}</span>{:else}{readyShown?.line}{/if}{#if readyShown?.nextStep}<span class="mt-1 block" data-ready-next>{readyShown.nextStep}</span>{/if}
 				{/snippet}
 				<AlertPanel
 					open={!!readyBanner}

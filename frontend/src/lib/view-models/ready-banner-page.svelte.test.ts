@@ -114,6 +114,7 @@ describe('the Ready banner never repeats a fact another banner states', () => {
 		const path = b.querySelector('[data-ready-path]')!;
 		expect(path.textContent).toBe('spec.values.image.tag');
 		expect(path.querySelectorAll('wbr').length).toBe(3);
+		expect(b.querySelector('[data-ready-next]')!.textContent).toContain('stop that tool from setting it');
 		expect(b.querySelector('[data-ready-by]')!.textContent).toBe('gitops-demo');
 		expect(screen.queryByText('No release source', { exact: true })).toBeNull();
 		expect(screen.queryByText('Deployment failed')).toBeNull();

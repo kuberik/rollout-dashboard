@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { OWNED_ELSEWHERE, managerName, pathParts, readyIssue } from './ready-refusal';
+import { OWNED_ELSEWHERE, CONFLICT_NEXT_STEP, managerName, pathParts, readyIssue } from './ready-refusal';
 
 const ready = (reason: string, message: string, status = 'False') => [
 	{ type: 'DeploymentBlocked', status: 'False', reason: 'HealthChecksHealthy', message: '' },
@@ -20,6 +20,7 @@ describe('readyIssue: which Ready=False reasons the banner speaks for', () => {
 			title: 'Deploy refused',
 			line: 'HelmReleaseFieldConflict on spec.values.image.tag, also set by gitops-demo',
 			conflict: { path: 'spec.values.image.tag', by: 'gitops-demo' },
+			nextStep: CONFLICT_NEXT_STEP,
 			detail: HELM,
 			since: '2026-11-21T10:00:00Z'
 		});
@@ -52,6 +53,14 @@ describe('readyIssue: which Ready=False reasons the banner speaks for', () => {
 		expect(i.kind).toBe('refused');
 		expect(i.line).toBe('HelmReleaseInvalidAnnotation: rollout.kuberik.com/chart-version needs spec.chart.spec.');
 		expect(i.detail).toBe(msg);
+	});
+
+	test('only the three field-conflict reasons carry the generic next step', () => {
+		for (const r of ['KustomizationFieldConflict', 'HelmReleaseFieldConflict', 'OCIRepositoryFieldConflict']) {
+			expect(readyIssue(ready(r, KUST))!.nextStep).toBe(CONFLICT_NEXT_STEP);
+		}
+		expect(readyIssue(ready('HelmReleaseInvalidAnnotation', 'HelmRelease a/b: x needs y.'))!.nextStep).toBeNull();
+		expect(readyIssue(ready('RolloutFailed', 'boom'))!.nextStep).toBeNull();
 	});
 
 	test('RolloutFailed and other reasons are "Not ready" with reason and message, nothing disclosed', () => {
