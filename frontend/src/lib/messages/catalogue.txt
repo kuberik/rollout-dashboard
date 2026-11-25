@@ -348,7 +348,6 @@ lib/components/DependencyLanes.svelte	code	… to …
 lib/components/DependencyLanes.svelte	code	…, ${l.held ?
 lib/components/DependencyLanes.svelte	code	· has …
 lib/components/DependencyLanes.svelte	code	· has none here
-lib/components/DependencyLanes.svelte	title	{s.wave != null ? `Wave $… · ` : ''}…{s.reason ? ` · $…` : ''}
 lib/components/DependencyLanes.svelte	text	frees … …
 lib/components/DependencyLanes.svelte	title	Held since
 lib/components/DependencyLanes.svelte	code	M…,… H…
@@ -364,7 +363,6 @@ lib/components/DependencyLanes.svelte	title	Shipping this frees … held rollout
 lib/components/DependencyLanes.svelte	code	waits for …
 lib/components/DependencyLanesPhone.svelte	text	… blocker …
 lib/components/DependencyLanesPhone.svelte	aria-label	… in …{s.cell.reason ? `, held: $…` : ''}
-lib/components/DependencyLanesPhone.svelte	text	… regions …
 lib/components/DependencyLanesPhone.svelte	text	… services
 lib/components/DependencyLanesPhone.svelte	text	· frees …
 lib/components/DependencyLanesPhone.svelte	text	Every service
@@ -1595,14 +1593,17 @@ lib/view-models/dependency-lanes-phone.ts	code	… region… …
 lib/view-models/dependency-lanes-phone.ts	code	a contract
 lib/view-models/dependency-lanes-phone.ts	code	needs … …
 lib/view-models/dependency-lanes-phone.ts	code	needs …${l.needs[0] ?
-lib/view-models/dependency-lanes.ts	code	… · … regions
 lib/view-models/dependency-lanes.ts	code	… in …
 lib/view-models/dependency-lanes.ts	code	… not in … yet
-lib/view-models/dependency-lanes.ts	code	(… regions)
+lib/view-models/dependency-lanes.ts	code	… of … regions
+lib/view-models/dependency-lanes.ts	code	… regions
+lib/view-models/dependency-lanes.ts	code	a rule
+lib/view-models/dependency-lanes.ts	code	an approval
 lib/view-models/dependency-lanes.ts	code	Has not shipped what they need
 lib/view-models/dependency-lanes.ts	code	its upstream
 lib/view-models/dependency-lanes.ts	code	needs …${need ?
 lib/view-models/dependency-lanes.ts	code	Needs approval
+lib/view-models/dependency-lanes.ts	code	other rules
 lib/view-models/dependency-lanes.ts	code	Waiting for its upstream
 lib/view-models/dependency-lanes.ts	code	waits for …
 lib/view-models/deploy-bars.ts	code	…d ago
@@ -2095,7 +2096,6 @@ routes/dependencies/+page.svelte	code	… rollout… held by another deploy
 routes/dependencies/+page.svelte	code	… serves … here.
 routes/dependencies/+page.svelte	code	… takes nothing newer until … has deployed the next build ….
 routes/dependencies/+page.svelte	text	… without an Environment, placed where their cluster or consumers run
-routes/dependencies/+page.svelte	code	· … region…
 routes/dependencies/+page.svelte	text	&nbsp; … …
 routes/dependencies/+page.svelte	text	&nbsp;· …
 routes/dependencies/+page.svelte	text	A link appears here when an
@@ -2110,10 +2110,9 @@ routes/dependencies/+page.svelte	text	holds one rollout until another has served
 routes/dependencies/+page.svelte	code	in the earlier wave
 routes/dependencies/+page.svelte	code	Its next release needs ……. …
 routes/dependencies/+page.svelte	code	needs …${l.needs.length ?
-routes/dependencies/+page.svelte	text	No deploy is waiting on another. When a release holds others, the one that frees the most leads here.
+routes/dependencies/+page.svelte	text	No deploy is waiting on another. … … … rollout … held by … instead; the map marks each. … When a release holds others, the one that frees the most leads here.
 routes/dependencies/+page.svelte	code	no environment
 routes/dependencies/+page.svelte	text	No rollout that depends on another matches this filter.
-routes/dependencies/+page.svelte	verdict	nothing held
 routes/dependencies/+page.svelte	text	Nothing waits on anything
 routes/dependencies/+page.svelte	code	One rollout is held
 routes/dependencies/+page.svelte	text	Open ›
