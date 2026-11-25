@@ -190,7 +190,7 @@
 							>
 								<StatusMark state={s.cell.held ? 'held' : 'newest'} />
 								<span class="t-code-sm mt-0.5 max-w-full truncate {s.cell.held ? 'text-held' : 'text-fg-muted'}">
-									{s.cell.sites.length > 1 ? `${s.cell.sites.length} regions` : (s.cell.build ?? '—')}
+									{s.cell.sites.length > 1 ? `${s.cell.sites.length} regions` : (s.cell.build ?? 'no build')}
 								</span>
 							</button>
 						{/each}
