@@ -15,6 +15,8 @@
 	 * the fly-in, safe-area padding, `aria-modal`), moved to <body> with `portal` like `CommandPalette`, and it locks
 	 * the document with the same `__scrollLockCount` idiom. The body rows are the rail card `dl` grammar (`t-label`
 	 * term over a `t-meta` value), the path is the lanes' own cell words.
+	 * DIVIDERS: `line-subtle` in light, `line` in dark — dark's `line-subtle` IS the overlay ground (oklch 0.262), so the
+	 * sheet's header/footer rules and the region list drew nothing there (R2-DES-B-6).
 	 */
 	import { fade, fly } from 'svelte/transition';
 	import { CloseOutline } from 'flowbite-svelte-icons';
@@ -81,7 +83,7 @@
 			transition:fly={{ y: 24, duration: 140 }}
 			data-dep-sheet
 		>
-			<div class="flex items-center gap-2 border-b border-line-subtle py-1 pr-1 pl-4">
+			<div class="flex items-center gap-2 border-b border-line-subtle dark:border-line py-1 pr-1 pl-4">
 				<StatusMark state={cell.held ? 'held' : 'newest'} />
 				<span class="t-card-title min-w-0 truncate text-fg">{cell.service}</span>
 				{#if cell.col !== NO_ENV}
@@ -145,7 +147,7 @@
 				{#if cell.sites.length > 1}
 					<div>
 						<p class="t-label mb-1 text-fg-subtle">{cell.sites.length} regions{#if cell.held}<span class="text-held">{' · '}{cell.held} held</span>{/if}</p>
-						<ul class="divide-y divide-line-subtle rounded-md border border-line-subtle">
+						<ul class="divide-y divide-line-subtle rounded-md border border-line-subtle dark:divide-line dark:border-line">
 							{#each cell.sites as s (s.node.id)}
 								<li>
 									<a href={href(`/rollouts/${s.node.cluster}/${s.node.namespace}/${s.node.name}`)} class="flex min-h-10 items-center gap-2 px-3">
@@ -161,7 +163,7 @@
 				{/if}
 			</div>
 
-			<div class="flex items-center gap-2 border-t border-line-subtle px-2 pt-1">
+			<div class="flex items-center gap-2 border-t border-line-subtle dark:border-line px-2 pt-1">
 				<a href={openHref} class="nav-link min-h-11 flex-1 justify-center" data-sheet-open>
 					Open {cell.nodes.length === 1 ? `${cell.service} in ${colLabel(cell.col)}` : cell.service} ›
 				</a>
