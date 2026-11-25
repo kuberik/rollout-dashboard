@@ -548,10 +548,12 @@
 
 			{#each model.rows as row (row.service)}
 				{@const top = rowsGeo.rowTop.get(row.service)!}
-				<div class="absolute min-w-0 pr-3" style="left: 0; top: {top}px; width: {cols.label}px; height: {CELL_H}px" class:dim={!![...row.cells.values()].length && ![...row.cells.values()].some(litCell)}>
-					<a href={href(`/apps/${row.service}`)} class="t-card-title block truncate pt-[6px] text-fg hover:underline">{row.service}</a>
+				<!-- the row label wraps, never ellipsizes (R2-DES-B-7): a name breaks after a hyphen ("hello-frontend-" / "app"), its
+				     measured height can grow the row -->
+				<div class="absolute min-w-0 pr-3" style="left: 0; top: {top}px; width: {cols.label}px" bind:clientHeight={labelH[row.service]} data-row-label class:dim={!![...row.cells.values()].length && ![...row.cells.values()].some(litCell)}>
+					<a href={href(`/apps/${row.service}`)} class="t-card-title block pt-[6px] text-fg [overflow-wrap:anywhere] hover:underline">{#each row.service.split('-') as part, i (i)}{i ? '-' : ''}{#if i}<wbr />{/if}{part}{/each}</a>
 					{#if row.provides.length}
-						<p class="t-meta truncate text-fg-subtle">provides {row.provides.join(', ')}</p>
+						<p class="t-meta text-fg-subtle [overflow-wrap:anywhere]">provides {row.provides.join(', ')}</p>
 					{/if}
 				</div>
 				{#each colKeys as colKey (colKey)}
