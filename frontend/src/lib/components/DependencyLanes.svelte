@@ -484,10 +484,9 @@
 					{:else}
 						<span class="t-ui-sm text-fg-muted">{colLabel(col.key)}</span>
 					{/if}
+					<!-- one kind of rollup per head (R2-DES-B-10): "N held", or nothing when none is (a bare cell count read as a third kind) -->
 					{#if col.held}
 						<span class="t-meta shrink-0 whitespace-nowrap tabular-nums text-held">{col.held} held</span>
-					{:else}
-						<span class="t-meta shrink-0 whitespace-nowrap tabular-nums text-fg-subtle">{col.cells}</span>
 					{/if}
 				</div>
 			{/each}
