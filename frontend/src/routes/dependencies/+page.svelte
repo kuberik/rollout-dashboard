@@ -230,6 +230,7 @@ import { heldHereGates } from '$lib/view-models/held';
 	 * Chosen over narrowing the label column (it frees 28px, the 1024-1366 band needed 70-150) and over wrapping builds
 	 * (a version split over two lines is not legible).
 	 */
+	let wrapW = $state(0);
 	const mapMin = $derived.by(() => {
 		const t = new Map<string, Set<string>>();
 		for (const c of lanes.columns) t.set(c.key, new Set());
@@ -244,7 +245,6 @@ import { heldHereGates } from '$lib/view-models/held';
 	let railHighlight = $state<string[] | null>(null);
 	/* Held relationships only where the rail sits BESIDE the map (wrap ≥ 1000) and has room (rail ≥ 480, i.e. 2560 and up):
 	   at 1440 the same fact is the edge's hover pill, and on a stacked tablet it would push the map a screen down. */
-	let wrapW = $state(0);
 	let railW = $state(0);
 	/** One row per held CONTRACT relationship (regions already folded per cell pair by the view-model). Promotion rows are not
 	 *  listed (R2-DES-B-11): "waits for dev" is already the held cell's own line in the map; the contract's "has" is the one fact
