@@ -607,17 +607,17 @@ import { heldHereGates } from '$lib/view-models/held';
 </div>
 
 <style>
-	/* the ranked blockers lead on a phone, the matrix leads beside them */
+	/* the map (the centrepiece) leads in every form; stacked, the ranked card follows it (coordinator 2026-11-25) */
 	.dep-grid {
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
 	}
 	.dep-rail-main {
-		order: 2;
+		order: 1;
 	}
 	.dep-rail-side {
-		order: 1;
+		order: 2;
 		container-type: inline-size;
 	}
 	.dep-rail-cards {
@@ -631,7 +631,7 @@ import { heldHereGates } from '$lib/view-models/held';
 		align-items: start;
 	}
 	/* ONE decision for the three forms (`layout`, R2-DES-B-1): the phone form carries its own ranked trees, so the rail steps
-	   aside; stacked keeps the ranked card first (the tablet order); side sets the rail beside a map that still gets --map-min. */
+	   aside; stacked puts the map first, the ranked card under it; side sets the rail beside a map that still gets --map-min. */
 	.dep-grid--phone .dep-rail-side {
 		display: none;
 	}
