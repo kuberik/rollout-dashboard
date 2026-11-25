@@ -55,6 +55,7 @@
 	import { depDefs, depText, parseDepFilter, depParams, type DepEntry } from '$lib/components/dependencies-filter';
 	import { applyQuery } from '$lib/components/filter/filter-model';
 	import DependencyLanes, { lanesNaturalWidth, lanesMinWidth } from '$lib/components/DependencyLanes.svelte';
+	import DependencyLanesPhone from '$lib/components/DependencyLanesPhone.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import { buildLanes, heldSinceByEdge, ageOf, freesByService, regionShare, otherHoldsPhrase, NO_ENV, type LaneBlocker } from '$lib/view-models/dependency-lanes';
 	import { page } from '$app/state';
@@ -239,8 +240,18 @@ import { heldHereGates } from '$lib/view-models/held';
 	});
 	const RAIL_MIN = $derived(wrapW >= 1300 ? 320 : 300);
 	const RAIL_GAP = 32;
-	const layout = $derived<'phone' | 'stacked' | 'side'>(
-		wrapW === 0 ? 'side' : wrapW < mapMin ? 'phone' : wrapW >= 1000 && wrapW - RAIL_GAP - RAIL_MIN >= mapMin ? 'side' : 'stacked'
+	/* 'compact' (R3-DES-B-1): a laptop wrap (≥ 700, a 1024 viewport with the sidebar open) too narrow for the matrix keeps
+	   main + rail (≥ 1024 is never one column): the line map in the main card, the blocker trees as a 328px rail card. */
+	const layout = $derived<'phone' | 'compact' | 'stacked' | 'side'>(
+		wrapW === 0
+			? 'side'
+			: wrapW < mapMin
+				? wrapW >= 700
+					? 'compact'
+					: 'phone'
+				: wrapW >= 1000 && wrapW - RAIL_GAP - RAIL_MIN >= mapMin
+					? 'side'
+					: 'stacked'
 	);
 	let railHighlight = $state<string[] | null>(null);
 	/* Held relationships only where the rail sits BESIDE the map (wrap ≥ 1000) and has room (rail ≥ 480, i.e. 2560 and up):
@@ -527,12 +538,12 @@ import { heldHereGates } from '$lib/view-models/held';
 						<button type="button" class="btn btn-secondary ml-2" onclick={() => setFilter({ q: '', clauses: [] })} data-filter-clear>Clear filters</button>
 					</p>
 				{:else}
-					<DependencyLanes model={lanes} phone={layout === 'phone'} focus={focusSet} highlight={railHighlight} {themeOf} {now} />
+					<DependencyLanes model={lanes} phone={layout === 'phone' || layout === 'compact'} phoneParts={layout === 'compact' ? 'map' : 'all'} focus={focusSet} highlight={railHighlight} {themeOf} {now} />
 				{/if}
 				<p class="t-meta mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-fg-subtle" data-graph-footnote>
 					<span class="inline-flex items-center gap-1.5"><svg width="22" height="6" aria-hidden="true"><path d="M0,3 H22" stroke="var(--k-wire)" /></svg>clear</span>
 					<span class="inline-flex items-center gap-1.5"><svg width="22" height="6" aria-hidden="true"><path d="M0,3 H22" stroke="var(--color-held)" stroke-width="1.5" /></svg>held</span>
-					{#if layout !== 'phone'}<span>along a row: promotion · down a column: contract</span>{/if}
+					{#if layout !== 'phone' && layout !== 'compact'}<span>along a row: promotion · down a column: contract</span>{/if}
 					{#if full.unlinkedRollouts > 0}<span>{full.unlinkedRollouts} more rollouts depend on nothing</span>{/if}
 					{#if lanes.unboundCount > 0}<span>{lanes.unboundCount} without an Environment, placed where their cluster or consumers run</span>{/if}
 				</p>
@@ -542,12 +553,15 @@ import { heldHereGates } from '$lib/view-models/held';
 		<!-- main + rail at every state (calm included, so the page keeps one composition); the map card is capped at the widest
 		     the matrix draws and the rail takes the rest of a 2560/3840 screen (round 2, TL item e) -->
 		<div class="rail-wrap" class:mt-6={lanes.heldByDeploy > 0} bind:clientWidth={wrapW}>
-			<div class="dep-grid" class:dep-grid--side={layout === 'side'} class:dep-grid--phone={layout === 'phone'} style="--map-max: {mapMax}px; --map-min: {mapMin}px">
+			<div class="dep-grid" class:dep-grid--side={layout === 'side'} class:dep-grid--phone={layout === 'phone'} class:dep-grid--compact={layout === 'compact'} style="--map-max: {mapMax}px; --map-min: {mapMin}px">
 				<div class="dep-rail-main min-w-0">{@render matrix()}</div>
 				<div class="dep-rail-side min-w-0" id="held-links" bind:clientWidth={railW}>
 					<div class="dep-rail-cards" class:dep-rail-cards--two={layout === 'side' && railW >= 1000}>
 						{#if lanes.blockers.length > 0}
 							<Card icon={HeldGlyph} iconClass="text-held" title="Unblocks the most" verdict={`${lanes.blockers.length} blocker${lanes.blockers.length === 1 ? '' : 's'}`} verdictTone="held" padded={false}>
+								{#if layout === 'compact'}
+									<DependencyLanesPhone model={lanes} focus={focusSet} parts="trees" />
+								{:else}
 								<ul class="divide-y divide-line-subtle">
 									{#each lanes.blockers as b (b.node.id)}
 										{@const on = focusKey === b.node.id}
@@ -565,6 +579,7 @@ import { heldHereGates } from '$lib/view-models/held';
 										</li>
 									{/each}
 								</ul>
+								{/if}
 							</Card>
 						{:else}
 							<!-- calm (REFS pattern 11): the same slot, no state ink, one line that says what would appear here -->
@@ -638,6 +653,15 @@ import { heldHereGates } from '$lib/view-models/held';
 	.dep-grid--side {
 		display: grid;
 		grid-template-columns: minmax(var(--map-min), var(--map-max)) minmax(300px, 1fr);
+		gap: 2rem;
+		align-items: start;
+	}
+	/* laptop wrap too narrow for the matrix: line map + a rail of blocker trees, the same 32px seam as the side form. The rail is
+	   328px, not 300: the widest tree row ("checkout-api prod 4 of 5 regions" two levels deep) needs it whole; at a 1024 viewport
+	   (wrap 729) the line map keeps 369px, over its 341px phone minimum. */
+	.dep-grid--compact {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 328px;
 		gap: 2rem;
 		align-items: start;
 	}

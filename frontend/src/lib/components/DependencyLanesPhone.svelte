@@ -27,7 +27,17 @@
 	import { NO_ENV, ageOf, regionShare, holdWord, type LaneCell, type LaneLink, type LaneModel } from '$lib/view-models/dependency-lanes';
 	import { blockerTree, needPhrase, promotionPath, type TreeNode } from '$lib/view-models/dependency-lanes-phone';
 
-	let { model, focus = null }: { model: LaneModel; focus?: Set<string> | null } = $props();
+	let {
+		model,
+		focus = null,
+		parts = 'all'
+	}: {
+		model: LaneModel;
+		focus?: Set<string> | null;
+		/** 'all' = phone (trees over the line map). On a laptop wrap (R3-DES-B-1) the page splits them: 'map' in the main card,
+		 *  'trees' in the ~300px rail card, which brings its own Card header (so the trees drop theirs). */
+		parts?: 'all' | 'trees' | 'map';
+	} = $props();
 
 	let now = $state(new Date());
 	let sheet = $state<LaneCell | null>(null);
@@ -107,17 +117,17 @@
 	</li>
 {/snippet}
 
-<div class="-mx-4 -mb-4" data-lanes-phone="b">
-	{#if trees.length}
+<div class={parts === 'trees' ? '' : '-mx-4 -mb-4'} data-lanes-phone="b">
+	{#if trees.length && parts !== 'map'}
 		<section data-phone-blockers>
-			<header class="flex h-10 items-center gap-2 px-4">
+			{#if parts !== 'trees'}<header class="flex h-10 items-center gap-2 px-4">
 				<HeldGlyph size={16} class="text-held" />
 				<span class="t-ui-sm font-semibold text-fg">Unblocks the most</span>
 				<span class="t-meta ml-auto tabular-nums text-held">{trees.length} blocker{trees.length === 1 ? '' : 's'}</span>
-			</header>
+			</header>{/if}
 			{#each trees as { b, t }, i (b.node.id)}
 				{@const age = ageOf(b.since, now)}
-				<div class="border-t border-line-subtle px-4 pt-2 pb-3" class:dim={!lit(b.cell)} data-blocker={b.node.name}>
+				<div class="border-line-subtle px-4 pt-2 pb-3" class:border-t={parts !== 'trees' || i > 0} class:dim={!lit(b.cell)} data-blocker={b.node.name}>
 					<div class="node-row relative flex min-h-10 min-w-0 items-center gap-2" class:has-kids={t.children.length > 0}>
 						<StatusMark state={b.node.blocked ? 'held' : 'newest'} />
 						<span class="t-card-title min-w-0 truncate text-fg">{b.node.name}</span>
@@ -138,7 +148,8 @@
 		</section>
 	{/if}
 
-	<section class="border-t border-line" class:border-t-0={!trees.length} data-phone-map>
+	{#if parts !== 'trees'}
+	<section class="border-t border-line" class:border-t-0={!trees.length || parts === 'map'} data-phone-map>
 		<header class="flex h-10 items-center gap-2 px-4">
 			<ShareNodesSolid class="h-4 w-4 text-fg-subtle" />
 			<span class="t-ui-sm font-semibold text-fg">Every service</span>
@@ -205,6 +216,7 @@
 			{/each}
 		</ul>
 	</section>
+	{/if}
 </div>
 
 <DependencyCellSheet {model} cell={sheet} {now} onclose={() => (sheet = null)} />

@@ -80,6 +80,7 @@
 	let {
 		model,
 		phone: phoneProp,
+		phoneParts = 'all',
 		focus = null,
 		highlight = null,
 		themeOf,
@@ -88,6 +89,8 @@
 		model: LaneModel;
 		/** The page's one phone breakpoint (its wrap container); when unset the lanes measure their own width. */
 		phone?: boolean;
+		/** Which half of the phone form to draw (the page splits it beside a rail on a laptop wrap). */
+		phoneParts?: 'all' | 'trees' | 'map';
 		/** Node ids to keep at full ink; everything else dims. Null = no focus. */
 		focus?: Set<string> | null;
 		/** Link keys another region points at (the rail's Held relationships row under the pointer); lit like a hovered edge. */
@@ -743,7 +746,7 @@
 			{/each}
 		</div>
 	{:else}
-		<DependencyLanesPhone {model} {focus} />
+		<DependencyLanesPhone {model} {focus} parts={phoneParts} />
 	{/if}
 </div>
 
