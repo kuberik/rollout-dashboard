@@ -545,7 +545,7 @@ import { heldHereGates } from '$lib/view-models/held';
 			<div class="dep-grid" class:dep-grid--side={layout === 'side'} class:dep-grid--phone={layout === 'phone'} style="--map-max: {mapMax}px; --map-min: {mapMin}px">
 				<div class="dep-rail-main min-w-0">{@render matrix()}</div>
 				<div class="dep-rail-side min-w-0" id="held-links" bind:clientWidth={railW}>
-					<div class="dep-rail-cards" class:dep-rail-cards--two={railW >= 1000}>
+					<div class="dep-rail-cards" class:dep-rail-cards--two={layout === 'side' && railW >= 1000}>
 						{#if lanes.blockers.length > 0}
 							<Card icon={HeldGlyph} iconClass="text-held" title="Unblocks the most" verdict={`${lanes.blockers.length} blocker${lanes.blockers.length === 1 ? '' : 's'}`} verdictTone="held" padded={false}>
 								<ul class="divide-y divide-line-subtle">
