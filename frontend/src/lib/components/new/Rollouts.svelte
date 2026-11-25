@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { queryString } from '$lib/components/filter/filter-model';
 	/**
 	 * ROLLOUTS (r39 build, 2026-11-08; mock .work/home-r34/direction/r39/rollouts.html, FINAL.md "Rollouts", LANGUAGE.md §1/§5/§7).
 	 * The operator's question: "what failed, what needs me, what is moving, what is waiting".
@@ -55,8 +56,7 @@
 	let written = page.url.search;
 	function setFilter(next: FilterQuery) {
 		f = next;
-		const qs = filterParams(page.url.searchParams, next).toString();
-		written = qs ? `?${qs}` : '';
+		written = queryString(filterParams(page.url.searchParams, next));
 		void goto(`${page.url.pathname}${written}${page.url.hash}`, { replaceState: true, keepFocus: true, noScroll: true });
 	}
 	$effect(() => {

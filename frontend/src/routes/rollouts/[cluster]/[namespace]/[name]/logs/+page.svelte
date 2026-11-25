@@ -5,7 +5,7 @@
 	import { afterNavigate, goto } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import { logFilterParams, parseLogFilter } from '$lib/components/logs-filter';
-	import type { FilterQuery } from '$lib/components/filter/filter-model';
+	import { queryString, type FilterQuery } from '$lib/components/filter/filter-model';
 	import { outageEscalation } from '$lib/view-models/outage-escalation.svelte';
 	import LogsViewer from '$lib/components/LogsViewer.svelte';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
@@ -123,10 +123,9 @@
 	});
 	function writeFilter(q: FilterQuery) {
 		const url = new URL(page.url);
-		const next = logFilterParams(url.searchParams, q).toString();
-		if (next === url.searchParams.toString()) return;
-		url.search = next;
-		void goto(`${url.pathname}${url.search}`, { replaceState: true, noScroll: true, keepFocus: true });
+		const next = queryString(logFilterParams(url.searchParams, q));
+		if (next === queryString(url.searchParams)) return;
+		void goto(`${url.pathname}${next}`, { replaceState: true, noScroll: true, keepFocus: true });
 	}
 	const sinceLabel = $derived.by((): string | null => {
 		const since = headDeployedAt(rollout);

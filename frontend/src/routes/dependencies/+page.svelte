@@ -51,8 +51,8 @@
 	import Card from '$lib/components/Card.svelte';
 	import Chip from '$lib/components/Chip.svelte';
 	import QueryBar from '$lib/components/filter/QueryBar.svelte';
-	import { isFiltered, type FilterQuery } from '$lib/components/filter/filter-model';
-	import { depEntries, depDefs, depText, parseDepFilter, depParams, keptColumns } from '$lib/components/dependencies-filter';
+	import { isFiltered, type FilterQuery, queryString } from '$lib/components/filter/filter-model';
+	import { depEntries, depDefs, depText, parseDepFilter, depParams, keptColumns, narrowToSearch } from '$lib/components/dependencies-filter';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import ClusterMark from '$lib/components/ClusterMark.svelte';
@@ -157,8 +157,7 @@ import { heldHereGates } from '$lib/view-models/held';
 	let written = page.url.search;
 	function setFilter(next: FilterQuery) {
 		f = next;
-		const qs = depParams(page.url.searchParams, next).toString();
-		written = qs ? `?${qs}` : '';
+		written = queryString(depParams(page.url.searchParams, next));
 		void goto(`${page.url.pathname}${written}${page.url.hash}`, { replaceState: true, keepFocus: true, noScroll: true });
 	}
 	$effect(() => {
@@ -172,7 +171,7 @@ import { heldHereGates } from '$lib/view-models/held';
 	const kept = $derived(keptColumns(depRows, f, depFacets));
 	const filtered = $derived(isFiltered(f));
 	/* a filter that keeps nothing is an empty graph, not "everything" (filterByEnv treats [] as no filter) */
-	const graph = $derived(filterByEnv(full, kept === null ? [] : kept.length ? kept : ['\u0000']));
+	const graph = $derived(narrowToSearch(filterByEnv(full, kept === null ? [] : kept.length ? kept : ['\u0000']), f.q));
 	const verdict = $derived(networkVerdict(graph));
 	/* the banner and the Held links rail are page facts: they read the whole graph, so a filter never removes them or moves the bar under them */
 	const blocked = $derived(full.blockedEdges);

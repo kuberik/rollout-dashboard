@@ -164,8 +164,10 @@
 	const vitems = $derived.by<VItem[]>(() => {
 		if (mode !== 'values' || !vdef) return [];
 		const f = vq.trim().toLowerCase();
-		const score = (o: Option) => { const s = slugOf(vkey, o.value).toLowerCase(); const w = o.word.toLowerCase(); return s === f || w === f ? 0 : s.startsWith(f) || w.startsWith(f) ? 1 : 2; };
-		const all = optsOf(vkey).filter((o) => !f || slugOf(vkey, o.value).toLowerCase().includes(f) || o.word.toLowerCase().includes(f));
+		/* an alias typed in full (`state:progress`, the address's own spelling) names its value like the slug does */
+		const alias = f ? vdef.aliases?.[f] : undefined;
+		const score = (o: Option) => { const s = slugOf(vkey, o.value).toLowerCase(); const w = o.word.toLowerCase(); return o.value === alias || s === f || w === f ? 0 : s.startsWith(f) || w.startsWith(f) ? 1 : 2; };
+		const all = optsOf(vkey).filter((o) => !f || o.value === alias || slugOf(vkey, o.value).toLowerCase().includes(f) || o.word.toLowerCase().includes(f));
 		const pin = all.filter((o) => pinned.includes(o.value)).sort((a, b) => pinned.indexOf(a.value) - pinned.indexOf(b.value));
 		const rest = all.filter((o) => !pinned.includes(o.value));
 		if (f) rest.sort((a, b) => score(a) - score(b));
@@ -354,7 +356,8 @@
 		if (e.key === 'Enter' || e.key === ',' || (e.key === ' ' && (via === 'type' || !vq.trim()))) {
 			e.preventDefault();
 			const it = vitems[active];
-			if (it) toggle(it.value);
+			/* typing names a value to apply: one already applied stays (the blur path's guard); picking from the list still toggles */
+			if (it) { if (!(via === 'type' && vq.trim() && it.selected)) toggle(it.value); }
 			else if (vq.trim()) return;
 			vq = '';
 			if (via === 'type' && e.key !== ',') finishTyped();

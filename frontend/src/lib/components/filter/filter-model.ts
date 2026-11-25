@@ -5,7 +5,7 @@
  * query keeps, what each value would count, and how the query is spelt in the URL. The UI (a Linear-style menu + pills, a query bar,
  * section toggles — the takes) only draws and reports a new `FilterQuery`.
  *
- * Semantics (binding, feedback_rollout_list_design.md + 2026-11-22 note):
+ * Semantics:
  *  - empty query = everything (no "All" option anywhere);
  *  - a CLAUSE is one property with an operator and >=1 values: `is` = row's value is ANY of them (OR), `not` = row's value is NONE of them;
  *  - clauses AND together; the search text ANDs with them (case-insensitive substring over the page's text fields);

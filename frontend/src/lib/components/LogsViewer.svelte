@@ -960,6 +960,9 @@
 		if (initialFilter && (initialFilter.clauses.length || initialFilter.q)) {
 			fq = { q: '', clauses: initialFilter.clauses };
 			searchQuery = initialFilter.q;
+			// a filter the address asks for wins over the failed build's Error default
+			appliedFailedErrorDefault = true;
+			failedDefaultChecked = true;
 		}
 
 		/* ⭐ WRAP DEFAULTS ON BELOW `sm`. (2026-09-03, design pass 6,
@@ -1315,6 +1318,8 @@
 			if (JSON.stringify(u) === JSON.stringify(barQuery)) return;
 			fq = { q: '', clauses: u.clauses };
 			searchQuery = u.q;
+			appliedFailedErrorDefault = true;
+			failedDefaultChecked = true;
 		});
 	});
 

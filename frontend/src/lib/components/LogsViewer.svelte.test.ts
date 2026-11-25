@@ -1454,6 +1454,36 @@ describe('LogsViewer: opening and staying at the latest (LOGOPEN)', () => {
 		}
 	});
 
+	test('a FAILED build opened with a level in the address keeps that level, not the Error default', async () => {
+		stubWell();
+		try {
+			const changes: unknown[] = [];
+			render(WithQueryClient, {
+				props: {
+					component: LogsViewer as never,
+					props: {
+						namespace: 'hello-world-prod',
+						name: 'hello-world-app',
+						filterType: 'pod',
+						rollout: failedRollout,
+						initialFilter: { q: '', clauses: [{ key: 'level', op: 'is', values: ['info'] }] },
+						onFilterChange: (q: unknown) => changes.push(q)
+					}
+				}
+			});
+			await waitFor(() => expect(capturedResolveLogs).not.toBeNull());
+			capturedResolveLogs!(lines(300, 3));
+			await new Promise((r) => setTimeout(r, 100));
+			const toks = () => [...document.querySelectorAll('[data-logs-filter] .qb-tok')].map((t) => t.textContent?.replace(/\s+/g, ' ').trim());
+			await waitFor(() => expect(toks()).toEqual([expect.stringMatching(/^Level: ?Info/)]));
+			expect(screen.queryByText(/^Errors only/)).not.toBeInTheDocument();
+			// nothing rewrites the address to the Error default
+			expect(changes.every((q) => !JSON.stringify(q).includes('"error"'))).toBe(true);
+		} finally {
+			restoreWell();
+		}
+	});
+
 	test('any filter change re-anchors at the newest match (the rollup "N errors" tap too)', async () => {
 		stubWell();
 		try {

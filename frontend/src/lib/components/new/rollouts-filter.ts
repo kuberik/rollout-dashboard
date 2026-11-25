@@ -1,7 +1,7 @@
 /**
  * THE /rollouts FILTER (R7, owner 2026-11-21; re-expressed on the shared filter model 2026-11-22). ROLE: describes the page's rows as facets
  * (state, environment, namespace, cluster when there is more than one) for filter/filter-model.ts and narrows the list with a query. The page and
- * the filter UI (the takes) draw; this file decides which rows are kept. Rules (feedback_rollout_list_design.md + the 2026-11-22 note): empty
+ * the filter UI draws; this file decides which rows are kept. Rules: empty
  * query = everything (no "All"); `is` = any of, `not` = none of, across properties AND; search matches name, namespace and version, case-insensitive.
  * Filters narrow the "All rollouts" list ONLY: the banner and Attention never pass through here.
  * URL: `?q=&state=progress,waiting,held,rest&env=prod,dev&ns=a,b&ns!=c` (the old ?state values; only `failing` still redirects to #attention, see +page.ts).

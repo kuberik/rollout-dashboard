@@ -21,7 +21,7 @@
 	import { toneInk } from '$lib/view-models/state-tone';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import QueryBar from '$lib/components/filter/QueryBar.svelte';
-	import { isFiltered, EMPTY_QUERY, type FilterQuery } from '$lib/components/filter/filter-model';
+	import { isFiltered, EMPTY_QUERY, type FilterQuery, queryString } from '$lib/components/filter/filter-model';
 	import { parseChangeFilter, changeParams, keepChange, changeEntries, changeDefs, changeText } from './changes-filter';
 	import { stateWord } from './state-words';
 	import { ago, type HomeState } from './data';
@@ -35,8 +35,7 @@
 	let written = page.url.search;
 	function setFilter(next: FilterQuery) {
 		f = next;
-		const qs = changeParams(page.url.searchParams, next).toString();
-		written = qs ? `?${qs}` : '';
+		written = queryString(changeParams(page.url.searchParams, next));
 		void goto(`${page.url.pathname}${written}${page.url.hash}`, { replaceState: true, noScroll: true, keepFocus: true });
 	}
 	$effect(() => {
