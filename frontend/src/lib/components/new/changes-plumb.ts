@@ -35,19 +35,20 @@ export type Plumb = { stops: PlumbStop[]; total: number; chips: PlumbChip[]; lan
 const sinceOf = (p: PChange) => p.ride.since ?? p.c.since ?? p.c.mergedAt;
 
 /** the whole line, narrowed to `repos` (empty = every repo) */
-export function plumbOf(hs: HomeState, repos: readonly string[] = []): Plumb {
+export type PlumbKeep = (c: { repo: string; ref: string; title: string }) => boolean;
+export function plumbOf(hs: HomeState, repos: readonly string[] | PlumbKeep = []): Plumb {
 	return inScope(() => plumbOfRaw(hs, repos));
 }
-function plumbOfRaw(hs: HomeState, repos: readonly string[]): Plumb {
+function plumbOfRaw(hs: HomeState, repos: readonly string[] | PlumbKeep): Plumb {
 	const { mineP } = classifyChanges(hs);
 	const P = changesPage(hs);
-	const keep = (repo: string) => !repos.length || repos.includes(repo);
+	const keepBy: PlumbKeep = typeof repos === 'function' ? repos : (c) => !repos.length || repos.includes(c.repo);
 	const flying = mineP.filter((p) => p.state !== 'landed');
 	const counts = new Map<string, number>();
 	for (const p of flying) counts.set(p.c.repo, (counts.get(p.c.repo) ?? 0) + 1);
 	const chips = [...counts].map(([repo, count]) => ({ repo, count })).sort((a, b) => b.count - a.count || a.repo.localeCompare(b.repo));
 
-	const rows: PlumbRow[] = flying.filter((p) => keep(p.c.repo)).map((p) => ({
+	const rows: PlumbRow[] = flying.filter((p) => keepBy({ repo: p.c.repo, ref: p.ref, title: p.c.title })).map((p) => ({
 		key: p.c.key, repo: p.c.repo, ref: p.ref, title: p.c.title, href: p.c.changeHref ?? p.c.href, state: p.state, col: p.col, age: ago(sinceOf(p)), since: Date.parse(sinceOf(p)),
 		worst: p.services && p.worst && p.services.some((s) => s.app !== p.worst) ? p.worst : null, services: p.services ?? null,
 		...(p.state === 'failed' && p.c.failure?.recovered ? { recovered: true } : {})
@@ -55,10 +56,10 @@ function plumbOfRaw(hs: HomeState, repos: readonly string[]): Plumb {
 	const stops = STOPS.map((col) => ({ col, rows: rows.filter((r) => r.col === col).sort((a, b) => SEV(a.state) - SEV(b.state) || a.since - b.since) }));
 
 	const day = NOW.toISOString().slice(0, 10);
-	const today: PlumbLanded[] = mineP.filter((p) => p.state === 'landed' && keep(p.c.repo) && sinceOf(p).slice(0, 10) === day)
+	const today: PlumbLanded[] = mineP.filter((p) => p.state === 'landed' && keepBy({ repo: p.c.repo, ref: p.ref, title: p.c.title }) && sinceOf(p).slice(0, 10) === day)
 		.map((p) => ({ key: p.c.key, repo: p.c.repo, ref: p.ref, title: p.c.title, href: p.c.changeHref ?? p.c.href, age: ago(sinceOf(p)), at: Date.parse(sinceOf(p)) }))
 		.sort((a, b) => b.at - a.at);
-	const rest: PlumbLanded[] = P.rest.filter((r) => keep(r.repo) && !today.some((l) => l.repo === r.repo && l.ref === r.ref))
+	const rest: PlumbLanded[] = P.rest.filter((r) => keepBy({ repo: r.repo, ref: r.ref, title: r.title }) && !today.some((l) => l.repo === r.repo && l.ref === r.ref))
 		.map((r) => ({ key: r.key, repo: r.repo, ref: r.ref, title: r.title, href: r.href, age: r.age.replace(/^landed /, ''), at: 0 }));
 	return { stops, total: rows.length, chips, landed: [...today, ...rest] };
 }

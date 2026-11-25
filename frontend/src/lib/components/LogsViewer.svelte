@@ -410,6 +410,9 @@
 	import LogHistogram, { type HistogramEntry } from '$lib/components/LogHistogram.svelte';
 	import type { Rollout } from '../../types';
 	import { releaseSourceImage } from '$lib/releases/registry.svelte';
+	import QueryBar from '$lib/components/filter/QueryBar.svelte';
+	import { clauseOf, setValues, type FilterQuery } from '$lib/components/filter/filter-model';
+	import { effective, logDefs, logOptions, LEVELS, type LogLevel } from '$lib/components/logs-filter';
 
 	interface Props {
 		namespace: string;
@@ -457,6 +460,15 @@
 		 * not a page this component owns the loading of).
 		 */
 		rollout?: Rollout | null;
+		/**
+		 * ⭐ THE TOOLBAR'S FILTER, IN THE ADDRESS (2026-11-22). The page owns the URL: it hands down what the address spells
+		 * (applied once the stream is open — a fresh stream clears filters) and takes every change back to write it. Both optional:
+		 * without them the filter is local, as before.
+		 */
+		initialFilter?: FilterQuery;
+		/** the address's filter after a back/forward or a link while mounted; applied when it differs from the bar */
+		urlFilter?: FilterQuery;
+		onFilterChange?: (q: FilterQuery) => void;
 	}
 
 	let {
@@ -466,7 +478,10 @@
 		cluster,
 		onSelectView,
 		onPodCount,
-		rollout
+		rollout,
+		initialFilter,
+		urlFilter,
+		onFilterChange
 	}: Props = $props();
 
 	let selectedPod = $state<string | null>(null);
@@ -485,15 +500,6 @@
 	let columnsMenuOpen = $state(false);
 	let columnsMenuRoot = $state<HTMLElement | undefined>(undefined);
 
-	/** ⭐ THE PHONE "Filters" SHEET BUTTON'S OWN STATE (art director round
-	 *  1, must-fix #5: "one 44px control row (search plus a filter-sheet
-	 *  button showing the active-level count)"). Reveals the SAME pill
-	 *  row desktop already has below `sm` ("a single pill row with a
-	 *  fade" — the coordinator's own call between the two options the AD
-	 *  offered) rather than a second filter mechanism; closed by default
-	 *  so the one control row the AD's spec asks for is genuinely one row
-	 *  until a reader asks for more. */
-	let mobileFiltersOpen = $state(false);
 	let columnsMenuTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
 
 	function closeColumnsMenu(opts: { refocusTrigger?: boolean } = {}) {
@@ -773,9 +779,20 @@
 	let isAutoScrolling = $state(false);
 
 	// Filter state - using Sets for multi-select
-	let selectedPods = $state<Set<string>>(new Set());
+	/**
+	 * ⭐ THE LEVEL AND POD FILTER IS ONE `FilterQuery` NOW: the toolbar's query bar edits it, the address mirrors it, and the
+	 * stream filter below keeps reading the same two sets it always did — `selectedLogLevels` / `selectedPods` are what the clauses
+	 * SELECT (an `is not` clause selects the rest), so negation costs the rest of this file nothing. Writes go through `setLevels` /
+	 * `setPods`, which write an `is` clause (empty = no clause = all).
+	 */
+	let fq = $state<FilterQuery>({ q: '', clauses: [] });
+	/** the pods the Pod clause selects (an `is not` clause selects the rest); a function so it may name `uniquePods` declared further down */
+	const podNames = () => uniquePods.map((p) => p.name);
+	const selectedPods = $derived(effective(clauseOf(fq, 'pod'), podNames()));
+	const selectedLogLevels = $derived(effective(clauseOf(fq, 'level'), LEVELS));
+	const setLevels = (v: Iterable<LogLevel>) => (fq = setValues(fq, 'level', [...v], 'is'));
+	const setPods = (v: Iterable<string>) => (fq = setValues(fq, 'pod', [...v], 'is'));
 	let selectedContainers = $state<Set<string>>(new Set());
-	let selectedLogLevels = $state<Set<'error' | 'warn' | 'info' | 'debug'>>(new Set());
 
 	/**
 	 * ⭐ THE HISTOGRAM'S OWN TIME-RANGE FILTER (art director round 2,
@@ -921,9 +938,8 @@
 		discoveredPods = [];
 		discoveredPodNames.clear();
 		podsEventReceived = false;
-		selectedPods = new Set();
+		fq = { q: '', clauses: [] };
 		selectedContainers = new Set();
-		selectedLogLevels = new Set();
 		searchQuery = '';
 		previousLogCount = 0;
 		previousLastTimestamp = null;
@@ -941,6 +957,10 @@
 	// Reset logs state when component mounts (navigating to logs page)
 	onMount(() => {
 		resetStreamState();
+		if (initialFilter && (initialFilter.clauses.length || initialFilter.q)) {
+			fq = { q: '', clauses: initialFilter.clauses };
+			searchQuery = initialFilter.q;
+		}
 
 		/* ⭐ WRAP DEFAULTS ON BELOW `sm`. (2026-09-03, design pass 6,
 		   operator-walk finding #1) `wrapLines = false` is right at desktop
@@ -1273,6 +1293,31 @@
 		return counts;
 	});
 
+	/** each pod's lines in the buffer (the Pod menu's counts) */
+	const podLineCounts = $derived.by(() => {
+		const n = new Map<string, number>();
+		for (const log of logs) n.set(log.pod, (n.get(log.pod) ?? 0) + 1);
+		return uniquePods.map((p) => ({ name: p.name, lines: n.get(p.name) ?? 0 }));
+	});
+	const barQuery = $derived<FilterQuery>({ q: searchQuery, clauses: fq.clauses });
+	// the address mirrors the bar (the page writes it); the stream's own reset on mount runs before this reports anything
+	let filterReady = false;
+	$effect(() => {
+		const q = barQuery;
+		if (!filterReady) return;
+		untrack(() => onFilterChange?.(q));
+	});
+	onMount(() => { filterReady = true; });
+	$effect(() => {
+		const u = urlFilter;
+		if (!u) return;
+		untrack(() => {
+			if (JSON.stringify(u) === JSON.stringify(barQuery)) return;
+			fq = { q: '', clauses: u.clauses };
+			searchQuery = u.q;
+		});
+	});
+
 	const errorCount = $derived.by(() => {
 		let count = 0;
 		for (const log of logs) {
@@ -1361,7 +1406,7 @@
 
 	const errorsFiltered = $derived(selectedLogLevels.size === 1 && selectedLogLevels.has('error'));
 	function toggleErrorFilter() {
-		selectedLogLevels = errorsFiltered ? new Set() : new Set(['error']);
+		setLevels(errorsFiltered ? [] : ['error']);
 	}
 
 	/**
@@ -1404,12 +1449,12 @@
 		if (appliedFailedErrorDefault || !isFailedRollout) return;
 		appliedFailedErrorDefault = true;
 		failedDefaultChecked = false;
-		selectedLogLevels = new Set(['error']);
+		setLevels(['error']);
 	});
 	$effect.pre(() => {
 		if (!appliedFailedErrorDefault || failedDefaultChecked || logs.length === 0) return;
 		failedDefaultChecked = true;
-		if (errorCount === 0 && errorsFiltered) untrack(() => (selectedLogLevels = new Set()));
+		if (errorCount === 0 && errorsFiltered) untrack(() => setLevels([]));
 	});
 
 	/**
@@ -1447,9 +1492,8 @@
 	);
 
 	function clearFilters() {
-		selectedPods = new Set();
+		fq = { q: '', clauses: [] };
 		selectedContainers = new Set();
-		selectedLogLevels = new Set();
 		searchQuery = '';
 		timeRangeFilter = null;
 	}
@@ -2975,7 +3019,7 @@
 					: 'border-l-transparent hover:bg-hover'}"
 				onclick={() => {
 					onSelectView?.('pod');
-					selectedPods = new Set();
+					setPods([]);
 				}}
 			>
 				<span class="t-ui-sm truncate text-fg">All pods</span>
@@ -3006,7 +3050,7 @@
 					title={pod.name}
 					onclick={() => {
 						onSelectView?.('pod');
-						selectedPods = new Set([pod.name]);
+						setPods([pod.name]);
 					}}
 				>
 					<!-- ⭐ A REST DOT, NOT A GUESS — AND NOT A HUE (AD round 3,
@@ -3175,7 +3219,7 @@
 					     row's three items (itself, search, Filters) without
 					     reserving a whole line for it. -->
 					<div
-						class="flex shrink-0 items-center gap-1 max-sm:order-1 lg:hidden"
+						class="flex shrink-0 items-center gap-1 max-sm:order-1 max-sm:self-start lg:hidden"
 						role="group"
 						aria-label="Log source"
 					>
@@ -3197,191 +3241,25 @@
 						</button>
 					</div>
 				{/if}
-				<!-- ⭐ `max-sm:flex-1`, NOT `max-sm:w-full` (coordinator, logs
-				     round 2: "Row 1 is search (flex-1) + Follow / Wrap / Copy
-				     icon buttons"). Full width used to force search onto its
-				     own line, which is exactly what pushed the view-action
-				     icons three rows down. Sharing the line with them needs
-				     search to take only what they do not — `flex-1`, the same
-				     role it already has in this row from `sm` up (just
-				     unconditional now, not gated to ≥640). -->
-				<div class="relative max-sm:order-2 max-sm:flex-1 sm:w-72 sm:flex-none">
-					<SearchOutline
-						class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-fg-subtle"
+				<!-- ⭐ ONE QUERY BAR REPLACES SEARCH + LEVEL PILLS + POD PILLS + THE PHONE "Filters" BUTTON (owner 2026-11-22: "placing this
+				     many boxes for filters is just too much"). Search words, Level and Pod (only with 2+ pods) are the shared QueryBar's field,
+				     tokens and menus; the Pods/Tests switch before it stays a switch (it chooses the stream, it does not narrow one) and the view
+				     actions after it stay icon buttons (settings of the view, not filters). `flex-1` below `sm` so the field takes what the
+				     switch leaves; from `sm` it is the bar's own 720px-capped field. Counts in the menus are the buffer's, like the old pills'. -->
+				<div class="min-w-0 max-sm:order-2 max-sm:flex-1 {barQuery.clauses.length ? 'max-sm:basis-full' : ''} sm:w-[28rem] sm:max-w-full" data-logs-filter>
+					<QueryBar
+						defs={logDefs(uniquePods.length)}
+						options={(key) => logOptions(key, fq, levelCounts, podLineCounts)}
+						query={barQuery}
+						onchange={(q) => {
+							searchQuery = q.q;
+							fq = { q: '', clauses: q.clauses };
+						}}
+						label="Search logs"
+						placeholder="Search logs or filter by level"
+						placeholderShort="Search logs"
 					/>
-					<!-- ⭐ `.input-sm` (32px) — ONE CONTROL HEIGHT ACROSS THE TOOLBAR
-					     (TL round 3). Was the standalone 36px `.input`, the only
-					     control in this row not already on the toolbar's own 32px
-					     step (`.btn-sm`, `.btn-icon.btn-sm`). -->
-					<!-- ⭐ "Search", NOT "Search logs…" (logs round 8, item 4:
-					     "search placeholder 'Search'") — the field already
-					     sits in a labelled search-icon slot inside an
-					     "Output"/"Test output" card; "logs" in the
-					     placeholder restated what the card already says,
-					     and at phone width it was also the first thing
-					     truncated. `aria-label` keeps the fuller "Search
-					     logs" — a screen reader announces it with no
-					     surrounding card context to supply "logs" the way a
-					     sighted reader gets for free. -->
-					<input
-						type="text"
-						bind:value={searchQuery}
-						placeholder="Search"
-						aria-label="Search logs"
-						class="input input-sm pl-9 max-sm:h-11 {searchQuery ? 'pr-11 sm:pr-9' : ''}"
-					/>
-					{#if searchQuery}
-						<button
-							type="button"
-							class="btn btn-ghost btn-icon btn-xs absolute top-1/2 right-1 -translate-y-1/2 max-sm:h-10 max-sm:w-10"
-							onclick={() => (searchQuery = '')}
-							aria-label="Clear search"
-						>
-							<CloseOutline />
-						</button>
-					{/if}
 				</div>
-
-				<!-- ⭐ THE FILTERS SHEET BUTTON (art director round 1, must-fix
-				     #5: "search plus a filter-sheet button showing the
-				     active-level count"). Phone only — ≥640 keeps the level
-				     pills always visible in the shared row below, same as
-				     today. Toggles `mobileFiltersOpen`, which is what reveals
-				     the (otherwise identical) pill row immediately after this
-				     one in document order. -->
-				<button
-					type="button"
-					class="btn btn-secondary btn-sm relative hidden shrink-0 max-sm:order-3 max-sm:flex max-sm:h-11"
-					aria-expanded={mobileFiltersOpen}
-					aria-pressed={selectedLogLevels.size > 0}
-					onclick={() => (mobileFiltersOpen = !mobileFiltersOpen)}
-				>
-					Filters
-					{#if selectedLogLevels.size > 0}
-						<!-- ⭐ A BADGE, NOT INLINE TEXT (AD round 3, item 2: "an
-						     active-count badge on Filters") — was
-						     `Filters (${n})` growing the button's own width
-						     with the count; a badge sits on a FIXED-width
-						     button instead. Same corner-badge geometry this
-						     file's own "Scroll to latest" button already uses
-						     below (`t-label` + `-top-1.5 -right-1.5` +
-						     `bg-active-solid`/`text-white`), not a second
-						     badge style. -->
-						<span
-							class="t-label absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-active-solid px-1 text-white"
-							aria-hidden="true"
-						>
-							{selectedLogLevels.size}
-						</span>
-					{/if}
-				</button>
-
-				<!-- The phone "↓ Latest" control moved OUT of this row (logs
-				     round 9, squad-rollout lead) — a fixed floating button
-				     near the tab bar instead, see its own markup further
-				     down, so it is reachable regardless of where this
-				     toolbar is scrolled to (this row was never actually
-				     sticky — see its own doc above). -->
-
-				<!-- ROW 2, BEHIND THE Filters BUTTON AT PHONE (art director
-				     round 1, must-fix #5). Was always-visible at phone (logs
-				     round 2); now the SAME row only paints there once
-				     `mobileFiltersOpen` is true, which is the whole point of
-				     a filter-SHEET button — the control row stays one row
-				     until a reader actually asks for the pills. `max-sm:order-3`
-				     still places it right after search/Filters when it IS
-				     open. Unchanged from `sm` up: always visible, its own
-				     line as before. The scroll/no-wrap/no-visible-scrollbar
-				     behaviour and the 16px edge fade (a `mask-image` on the
-				     container, which has to follow scroll content wider than
-				     the viewport) are both unchanged from logs round 2. -->
-				<div
-					class="no-scrollbar -mx-4 {mobileFiltersOpen
-						? 'flex'
-						: 'hidden'} w-[calc(100%+2rem)] min-w-0 items-center gap-1.5 overflow-x-auto px-4 max-sm:order-4 max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-16px),transparent)] sm:mx-0 sm:flex sm:w-auto sm:flex-1 sm:flex-wrap sm:gap-x-4 sm:gap-y-2 sm:overflow-visible sm:px-0 sm:[mask-image:none]"
-				>
-					<div class="flex shrink-0 items-center gap-1.5 sm:flex-wrap" role="group" aria-label="Filter by level">
-						<!-- ⭐ A DOT + A COUNT, AND A ZERO-COUNT LEVEL IS DISABLED, NOT
-						     HIDDEN (SPEC.md §2). Hiding a level pill used to make the
-						     row of filters shuffle as the buffer filled in (Debug
-						     appearing a few seconds after Info, Warning sometimes
-						     never) — a reader could not learn "there's no Warning
-						     pill" from "I haven't looked yet". A disabled pill states
-						     the same fact without moving anything else in the row. -->
-						{#each [{ value: 'error', label: 'Error', dot: 'bg-danger-solid' }, { value: 'warn', label: 'Warning', dot: 'bg-line-strong' }, { value: 'info', label: 'Info', dot: 'bg-fg-subtle' }, { value: 'debug', label: 'Debug', dot: 'bg-fg-subtle' }] as level}
-							{@const v = level.value as 'error' | 'warn' | 'info' | 'debug'}
-							{@const selected = selectedLogLevels.has(v)}
-							{@const count = levelCounts[v]}
-							<button
-								type="button"
-								class="pill"
-								aria-pressed={selected}
-								disabled={count === 0 && !awaitingFirstBatch}
-								onclick={() => {
-									if (selectedLogLevels.has(v)) {
-										selectedLogLevels.delete(v);
-									} else {
-										selectedLogLevels.add(v);
-									}
-									selectedLogLevels = new Set(selectedLogLevels);
-								}}
-							>
-								<span class="status-dot {level.dot}" aria-hidden="true"></span>
-								{level.label}
-								{#if !awaitingFirstBatch}
-									<span class="tabular-nums text-fg-subtle">{count}</span>
-								{/if}
-							</button>
-						{/each}
-					</div>
-					<!-- ⭐ A FILTER WITH ONE POSSIBLE ANSWER FILTERS NOTHING. `> 1`,
-					     not `> 0` (round 1) — a single-pod or single-container
-					     rollout (most of them) showed a one-pill "filter" that
-					     could only ever do nothing. -->
-					{#if uniquePods.length > 1}
-						<!-- `lg:hidden` — see the toggle group's own note just
-						     above; the Sources pane is this same choice from
-						     1024 up. Single-select now (SPEC.md §2: "the source
-						     list IS the filter"), matching the sidebar's rows
-						     one-for-one — a second click on the SAME pod clears
-						     back to "All pods" rather than needing a tap on
-						     each pill to undo a multi-select. -->
-						<div
-							class="flex shrink-0 items-center gap-1.5 sm:flex-wrap lg:hidden"
-							role="group"
-							aria-label="Filter by pod"
-						>
-							{#each uniquePods as pod}
-								{@const selected = selectedPods.has(pod.name)}
-								<button
-									type="button"
-									class="pill"
-									aria-pressed={selected}
-									onclick={() => {
-										selectedPods = selected ? new Set() : new Set([pod.name]);
-									}}
-								>
-									{pod.name}
-								</button>
-							{/each}
-						</div>
-					{/if}
-					<!-- ⭐ THE CONTAINER PILL GROUP IS GONE (art director round 1,
-					     must-fix #7: "the toolbar wraps into two rows (container
-					     chips `app` / `test-runner`)… Container chips move into
-					     the column header or the sources pane, and the toolbar
-					     stays one 48px row"). The Container COLUMN (hidden only
-					     when there is just one, `singleContainerMode`) already
-					     names every row's container; a second control doing the
-					     same job as a filter is what forced this bar to wrap on
-					     the Tests view, the one place a rollout genuinely has
-					     more than one. `selectedContainers` itself is unchanged
-					     (`applyNonSearchFilters` still honours it) — only the
-					     TOOLBAR affordance for setting it is removed, since
-					     filtering by container was never the common case this
-					     bar needed to spend a whole extra line on. -->
-				</div>
-
 				<!-- View actions — Follow / Wrap / Copy / Columns. `ml-auto`:
 				     hard right on the shared line, flush left on its own
 				     wrapped line, the same single-item `space-between` rule

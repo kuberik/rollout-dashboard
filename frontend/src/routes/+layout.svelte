@@ -18,6 +18,7 @@
 	import { provideShellChrome } from '$lib/shell-chrome.svelte';
 	import { ScrollDirectionTracker } from '$lib/scroll-direction.svelte';
 	import { scrollMemoryKey, saveScrollPosition, getScrollPosition } from '$lib/scroll-memory';
+	import { isQueryOnlyNavigation } from '$lib/nav-scroll';
 
 	// ⭐ FIX PASS ITEM 7 (2026-09-10). Namespaces a document-scroller entry
 	// apart from an `<main>`-scroller entry for the SAME url — see the
@@ -232,6 +233,10 @@
 		// comment) — usually 0, but Chrome restores a prior offset on a
 		// plain reload, and a stale 0 baseline there mis-reads the next real
 		// scroll's direction.
+		// A query-only change of the page on screen (a filter or search written to
+		// the URL) is not a new page: keep the scroll offset, header and focus
+		// exactly where they are. See `isQueryOnlyNavigation`.
+		if (isQueryOnlyNavigation(nav)) return;
 		headerScroll.reset(typeof window !== 'undefined' ? window.scrollY : 0);
 		// From `sm` up `<main>` is the scroller. A `popstate` arrival (Back or
 		// Forward) restores whatever `beforeNavigate` saved for the URL it is

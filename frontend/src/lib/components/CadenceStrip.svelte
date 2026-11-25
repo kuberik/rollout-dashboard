@@ -47,7 +47,8 @@
 	 * zoom and fanning; it is still what "Compare namespace" opens.
 	 */
 	import { toneInk, toneSolid } from '$lib/view-models/state-tone';
-	import { ArrowsRepeatOutline, UndoOutline, CodePullRequestSolid } from 'flowbite-svelte-icons';
+	import type { Snippet } from 'svelte';
+	import { UndoOutline, CodePullRequestSolid } from 'flowbite-svelte-icons';
 	import { startOfDayMs, formatRelativeShort } from '$lib/display-time';
 	import { displayTimeZone, timeZonePreference } from '$lib/timezone.svelte';
 	import { actorFrom } from '$lib/actor';
@@ -89,8 +90,7 @@
 		range = 'all',
 		onRangeChange,
 		onSelect,
-		compareActive = false,
-		onToggleCompare,
+		compare,
 		/** Indices (into `history`) the page's `deployActs` calls a rollback. */
 		rollbackIndices = new Set<number>(),
 		now = Date.now(),
@@ -104,8 +104,11 @@
 		onRangeChange?: (r: PresetRange) => void;
 		/** Click a segment (or its card's failed check): select + reveal its row. */
 		onSelect?: (index: number) => void;
-		compareActive?: boolean;
-		onToggleCompare?: () => void;
+		/**
+		 * The "Compare" query bar (history-filter.ts), drawn by the page: it chooses which other lanes the Deployment timeline adds
+		 * (sibling environments, the namespace's rollouts). Replaces the "Compare namespace" link and the timeline card's two pills.
+		 */
+		compare?: Snippet;
 		rollbackIndices?: Set<number>;
 		now?: number;
 		/** The card's "View diff": `undefined` when there is nothing to diff against. */
@@ -951,18 +954,10 @@
 			onChange={(r) => onRangeChange?.(r)}
 			label="Time range"
 		/>
-		{#if onToggleCompare}
-			<button
-				type="button"
-				class="nav-link ml-2 hidden items-center gap-1 sm:inline-flex"
-				aria-pressed={compareActive}
-				onclick={onToggleCompare}
-			>
-				<ArrowsRepeatOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-				{compareActive ? 'Hide namespace' : 'Compare namespace'}
-			</button>
-		{/if}
 	</div>
+	{#if compare}
+		<div class="cadence-compare min-w-0 basis-full sm:ml-auto sm:basis-72">{@render compare()}</div>
+	{/if}
 </div>
 
 {#if visibleHoverIdx !== null}

@@ -8,7 +8,10 @@
 	 * `ActivitySentence` rows. Replaced the 25-lane environment dot strip
 	 * and the one-pill-per-region filter row.
 	 */
+	import QueryBar from '$lib/components/filter/QueryBar.svelte';
 	import FilterChip from '$lib/components/FilterChip.svelte';
+	import { activityFacets, activityText, parseActivityQuery, type ActivityKind as FeedKind } from '$lib/components/activity-filter';
+	import { applyQuery, queryParams, queryString, isFiltered, EMPTY_QUERY, removeClause, type FilterQuery } from '$lib/components/filter/filter-model';
 	import SegmentedControl from '$lib/components/SegmentedControl.svelte';
 	import { displayTimeZone } from '$lib/timezone.svelte';
 	import { formatClockTime } from '$lib/display-time';
@@ -345,42 +348,19 @@
 	});
 
 	// ── FILTERS ────────────────────────────────────────────────────────────
-	// Synced with ?env=&app=&ns=&kind= so a filtered feed is deeplinkable —
-	// paste "the four that need attention", refresh, and Back all have to
-	// undo a chip. (2026-09-03, operator-walk finding 20.) `kind` used to be
-	// a bare `$state`: every other chip on this page changed the URL, and
-	// `Failed`/`In flight` were the one row that silently didn't — the
-	// exact defect this fixes.
-	const envFilter = $derived(page.url.searchParams.get('env'));
-	const appFilter = $derived(page.url.searchParams.get('app'));
-	const nsFilter = $derived(page.url.searchParams.get('ns'));
-
-	/**
-	 * ⭐ TIER PILLS, NOT ONE PILL PER REGION (squad-changes, lane D). The old
-	 * env-chip row floated one `.pill` per `Environment` object — up to 25 on
-	 * a real fleet, scrolling off the right edge of the strip. `tierOf`
-	 * (`promotion-lanes.ts`, the same classifier Home's fleet track uses)
-	 * folds every region into dev/test/staging/prod, so `prod-us-east-2` and
-	 * `prod-ap-northeast-1` are one pill: `prod`. `envFilter` (`?env=`) stays
-	 * — `/envs/[name]` deep-links here with a specific region — but nothing
-	 * on this page draws a pill for it any more; it shows as a "Showing
-	 * only" chip instead, same as `app`/`ns`.
-	 */
-	const tierFilter = $derived<Tier | null>(
-		(() => {
-			const raw = page.url.searchParams.get('tier');
-			// Aliases ("production", "development", "stage") name the same tier.
-			return canonicalTier(raw);
-		})()
-	);
-	const TIER_FILTERS: { key: Tier; label: string }[] = [
-		{ key: 'dev', label: 'dev' },
-		{ key: 'test', label: 'test' },
-		{ key: 'staging', label: 'staging' },
-		{ key: 'prod', label: 'prod' }
-	];
-	function setTierFilter(next: Tier) {
-		setParam('tier', next === tierFilter ? null : next);
+	// THE SHARED FILTER SYSTEM (2026-11-22): the same bar, menu and pills /rollouts draws, on the shared model
+	// (`filter/filter-model.ts`, adapted by `activity-filter.ts`). The query lives in the URL (?kind=failed&tier=prod&ns!=payments&q=api), so a pasted
+	// link, Back and a reload restore it; the old single-value links (?kind= ?tier= ?env= ?app= ?ns=) parse to the same clauses. The time window
+	// (SegmentedControl) and the chart-bucket selection are NOT properties: the window is a range, the bucket is an op-less pill beside the clauses.
+	const kindOf = (e: ActivityEntry): FeedKind | '' => (isFailed(e) ? 'failed' : isRolledBack(e) ? 'rolled_back' : isInFlight(e) ? 'in_flight' : '');
+	const facetDefs = activityFacets<ActivityEntry>(kindOf, (key) => knownEnvs.find((e) => e.key === key)?.label ?? key);
+	const query = $derived<FilterQuery>(parseActivityQuery(page.url.searchParams, facetDefs, new Set(allEntries.map((e) => e.envKey))));
+	function setQuery(next: FilterQuery) {
+		// clearing everything also drops the bucket selection: it is an applied filter too
+		if (!isFiltered(next) && isFiltered(query)) selectedBucket = null;
+		const params = queryParams(page.url.searchParams, next, facetDefs);
+		for (const old of ['tier', 'kind'] as const) if (!next.clauses.some((c) => c.key === old)) params.delete(old);
+		goto(queryString(params) || '?', { replaceState: true, noScroll: true, keepFocus: true });
 	}
 
 	/** `DeployBars`' range pills — the chart renders no toggles of its own. */
@@ -393,111 +373,8 @@
 		{ value: 'all', label: 'All' }
 	];
 
-	function setParam(key: string, next: string | null) {
-		const params = new URLSearchParams(page.url.searchParams);
-		if (next) params.set(key, next);
-		else params.delete(key);
-		const qs = params.toString();
-		goto(qs ? `?${qs}` : '?', { replaceState: false, noScroll: true, keepFocus: true });
-	}
-	function clearAllFilters() {
-		selectedBucket = null;
-		goto('?', { replaceState: false, noScroll: true, keepFocus: true });
-	}
-
-	const activeFilterCount = $derived(
-		(envFilter ? 1 : 0) + (appFilter ? 1 : 0) + (nsFilter ? 1 : 0) + (tierFilter ? 1 : 0)
-	);
-
-	// FOUR STATES, NOT THREE. The old row was `All / Deploys / In progress /
-	// Failures`, where `Deploys` meant Succeeded+Deploying — i.e. "everything
-	// except failures", which is what `All` already is on a healthy cluster,
-	// and it overlapped `In progress` on one of its two values. A filter whose
-	// result a reader cannot predict is a filter they will not press.
-	//
-	// ⛔ `rolled_back` ADDED — UX SWEEP FINDING 6. Four rollups on this page
-	// already count rollbacks (`groupRollup`'s `rolledBack` branch, the day
-	// cards, the chart card's own verdict) and none of them was a FILTER: a
-	// reader who saw "3 rolled back" in a day card's rollup had no press that
-	// scoped the feed to just those three, unlike `Failed`/`In flight`, which
-	// both already had one. `isRolledBack` (below) is the existing predicate
-	// every rollup already reads — this is its first use as a `kindFilter`.
-	type KindFilter = 'all' | 'in_flight' | 'failed' | 'rolled_back';
-	// `?kind=` — absent (or any other value) reads as `all`, and `all` is
-	// never itself written to the URL, so the default URL for this page stays
-	// clean, matching every other filter here.
-	const kindFilter = $derived<KindFilter>(
-		(() => {
-			const raw = page.url.searchParams.get('kind');
-			return raw === 'in_flight' || raw === 'failed' || raw === 'rolled_back' ? raw : 'all';
-		})()
-	);
-	/**
-	 * ⭐ NO `all` PILL (round 4 review, 2026-10-09) — the owner's standing
-	 * rule for every filter row in the product (`/rollouts`, the env row
-	 * right here): no selection IS all, so there is nothing for an `All`
-	 * pill to do that clicking the pressed pill again does not already do.
-	 * `setKindFilter` toggles now — pressing the ACTIVE pill clears back to
-	 * `all` — which is the only way back to "everything" with the pill gone.
-	 */
-	function setKindFilter(next: KindFilter) {
-		setParam('kind', next === kindFilter ? null : next === 'all' ? null : next);
-	}
-	const KIND_FILTERS: {
-		key: Exclude<KindFilter, 'all'>;
-		label: string;
-		title: string;
-		dot: string;
-	}[] = [
-		{
-			key: 'failed',
-			label: 'Failed',
-			title: 'Deploys that did not finish cleanly',
-			dot: 'bg-danger-solid'
-		},
-		{
-			key: 'in_flight',
-			label: 'In flight',
-			title: 'Deploys still going out or still being checked',
-			dot: 'bg-active-solid'
-		},
-		{
-			key: 'rolled_back',
-			label: 'Rolled back',
-			title: 'Deploys that moved a rollout to an OLDER build than it was already running',
-			dot: 'bg-fg-subtle'
-		}
-	];
-	// ⛔ TAKES THE ENTRY, NOT JUST `bakeStatus`, NOW. A rollback IS a
-	// `Succeeded` deploy (see `groupRollup`'s own note on why it ranks above
-	// "all fine" anyway) — there is no `bakeStatus` value for it, so scoping
-	// to it needs the same `rollbackAct` field `isRolledBack` already reads.
-	function matchesKind(e: ActivityEntry): boolean {
-		if (kindFilter === 'all') return true;
-		if (kindFilter === 'failed') return e.bakeStatus === 'Failed';
-		if (kindFilter === 'rolled_back') return isRolledBack(e);
-		return isInFlightEntry(e);
-	}
-
-	/** Every filter but the one axis a pill count needs to ignore — so
-	 *  pressing `Failed` doesn't also erase `Failed`'s own count from the
-	 *  pill row. `/apps`' `statusPills` is the reference for this shape. */
-	function applyFilters(
-		entries: ActivityEntry[],
-		opts: { skipKind?: boolean; skipTier?: boolean } = {}
-	): ActivityEntry[] {
-		return entries
-			.filter((e) => !envFilter || e.envKey === envFilter)
-			.filter((e) => !appFilter || e.rolloutName === appFilter)
-			.filter((e) => !nsFilter || e.rolloutNamespace === nsFilter)
-			.filter((e) => opts.skipTier || !tierFilter || tierOf(e.envKey || e.envLabel) === tierFilter)
-			.filter((e) => opts.skipKind || matchesKind(e));
-	}
-
-	/** Everything the reader has scoped to, WITHOUT the time window. */
-	const scoped = $derived(applyFilters(allEntries));
-	const scopedNoKind = $derived(applyFilters(allEntries, { skipKind: true }));
-	const scopedNoTier = $derived(applyFilters(allEntries, { skipTier: true }));
+	/** every filter, no time window */
+	const scoped = $derived(applyQuery(allEntries, query, facetDefs, activityText));
 
 	// ── THE WINDOW ──────────────────────────────────────────────────────────
 	/**
@@ -572,22 +449,9 @@
 	// for the window the chart's pills set, not for one bucket of it.
 	const windowed = $derived(scoped.filter((e) => inRange(e.timestamp)));
 
-	/** Pill counts (round 2 review, 2026-10-09: "put the zero/non-zero
-	 *  counts in each pill, as on /rollouts"). Each counts the WINDOW with
-	 *  every filter applied except its own axis, same reason `scopedNoKind`/
-	 *  `scopedNoTier` exist. */
-	const windowedNoKind = $derived(scopedNoKind.filter((e) => inRange(e.timestamp)));
-	const windowedNoTier = $derived(scopedNoTier.filter((e) => inRange(e.timestamp)));
-	const kindCounts = $derived({
-		failed: windowedNoKind.filter(isFailed).length,
-		in_flight: windowedNoKind.filter(isInFlight).length,
-		rolled_back: windowedNoKind.filter(isRolledBack).length
-	});
-	const tierCounts = $derived.by<Record<Tier, number>>(() => {
-		const counts: Record<Tier, number> = Object.fromEntries(TIER_ORDER.map((t) => [t, 0])) as Record<Tier, number>;
-		for (const e of windowedNoTier) counts[tierOf(e.envKey || e.envLabel)]++;
-		return counts;
-	});
+	/** the menus' value counts come from the WINDOWED feed (`optionsOf` leaves each property's own clause out of its counts, so picking Failed keeps Failed's count) */
+	const windowedAll = $derived(allEntries.filter((e) => inRange(e.timestamp)));
+
 	const feed = $derived(
 		windowed.filter((e) => inSelectedBucket(e.timestamp)).slice(0, 60)
 	);
@@ -821,11 +685,6 @@
 		return [...map.values()].sort((a, b) => compareEnvironmentNames(a.label, b.label));
 	});
 
-	/** The env filter's own display word, for a clear-ONE-filter button — see
-	 *  the empty state below. Falls back to the raw key so a filter that
-	 *  matched nothing still names itself (its label never made it into
-	 *  `knownEnvs`, which is built from the feed the filter just emptied). */
-	const envFilterLabel = $derived(knownEnvs.find((e) => e.key === envFilter)?.label ?? envFilter);
 
 
 	// ── TIME CLUSTERS ──────────────────────────────────────────────────────
@@ -1806,47 +1665,18 @@
 				<div class="min-w-0">
 					<div
 						bind:this={controlStripEl}
-						class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2"
+						class="mb-4"
 						style="--activity-strip-min-h: {shapeHint?.controlStripHMobile ?? 0}px; --activity-strip-min-h-sm: {shapeHint?.controlStripHDesktop ?? 0}px"
 						data-activity-strip
 					>
-						<div class="flex min-w-0 flex-wrap items-center gap-1.5">
-							<div class="flex min-w-0 flex-wrap items-center gap-1.5">
-								{#each KIND_FILTERS.filter((f) => kindCounts[f.key] > 0 || kindFilter === f.key) as f (f.key)}
-									<!-- the failed dot is danger only while a failure is unresolved: colour only where something needs a person -->
-									<FilterChip selected={kindFilter === f.key} title={f.title} onclick={() => setKindFilter(f.key)} dot={f.key === 'failed' && unresolvedFailedCount === 0 ? 'bg-fg-subtle' : f.dot} label={f.label} count={kindCounts[f.key]} />
-								{/each}
-							</div>
-							<div class="flex min-w-0 flex-wrap items-center gap-1.5">
-								{#each TIER_FILTERS.filter((t) => tierCounts[t.key] > 0 || tierFilter === t.key) as t (t.key)}
-									<FilterChip selected={tierFilter === t.key} title={tierFilter === t.key ? `Stop showing only ${t.label}` : `Show only ${t.label}`} onclick={() => setTierFilter(t.key)} label={t.label} count={tierCounts[t.key]} />
-								{/each}
-							</div>
+						<!-- the chart-bucket selection is a day/hour of the chart, not a property: QueryBar has no fixed-item slot, so it stays today's removable chip beside the bar -->
+						<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+							<div class="min-w-0 flex-1 basis-72"><QueryBar defs={facetDefs} rows={windowedAll} text={activityText} {query} onchange={setQuery} placeholder="Search deploys or filter" placeholderShort="Search or filter" label="Search deploys" /></div>
 							{#if selectedBucket}
-								<div class="flex shrink-0 items-center">
-									<FilterChip removable title="Stop showing only {selectedBucketLabel}" onclick={clearBucketSelection} label={selectedBucketLabel} />
-								</div>
+								<FilterChip removable title="Stop showing only {selectedBucketLabel}" onclick={clearBucketSelection} label={selectedBucketLabel} />
 							{/if}
 						</div>
 					</div>
-
-					{#if envFilter || appFilter || nsFilter}
-						<div class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-3">
-							<span class="t-meta text-fg-subtle">Showing only:</span>
-							{#if envFilter}
-								<FilterChip removable title="Stop showing only {envFilterLabel}" onclick={() => setParam('env', null)}>env <span class="t-code-sm">{envFilterLabel}</span></FilterChip>
-							{/if}
-							{#if appFilter}
-								<FilterChip removable title="Stop showing only {appFilter}" onclick={() => setParam('app', null)}>rollout <span class="t-code-sm">{appFilter}</span></FilterChip>
-							{/if}
-							{#if nsFilter}
-								<FilterChip removable title="Stop showing only {nsFilter}" onclick={() => setParam('ns', null)}>namespace <span class="t-code-sm">{nsFilter}</span></FilterChip>
-							{/if}
-							{#if activeFilterCount >= 2}
-								<button type="button" onclick={clearAllFilters} class="pill-btn t-meta ml-1 text-fg-subtle underline-offset-2 hover:text-fg hover:underline">Clear all</button>
-							{/if}
-						</div>
-					{/if}
 
 					<!-- The hub fails soft: a spoke that did not answer is absent from every count here, and absent is not healthy. -->
 					<PartialDataNotice
@@ -1883,7 +1713,7 @@
 			<!-- `ClockOutline`, not `ClockSolid` (round 6 review): §3.15's
 			     empty state is a structural glyph, not a status disc. -->
 			<ClockOutline class="mb-3 h-10 w-10 text-fg-disabled" />
-			{#if activeFilterCount > 0 || kindFilter !== 'all' || selectedBucket || allEntries.length > 0}
+			{#if isFiltered(query) || selectedBucket || allEntries.length > 0}
 				<!-- ⛔ `allEntries.length > 0` ADDED TO THE GATE (round 2 review,
 				     2026-10-09). The range default is now a FIXED `7d`
 				     (previously fit-to-data — see `timelineRange`'s own note),
@@ -1893,7 +1723,7 @@
 				     yet" below, which is false: the fleet has history, just
 				     not inside this window. -->
 				<p class="t-ui text-fg">
-					{allEntries.length > 0 && activeFilterCount === 0 && kindFilter === 'all' && !selectedBucket
+					{allEntries.length > 0 && !isFiltered(query) && !selectedBucket
 						? 'Nothing in this window'
 						: 'Nothing matches these filters'}
 				</p>
@@ -1937,46 +1767,17 @@
 							class="btn btn-secondary">Widen to all time</button
 						>
 					{/if}
-					{#if kindFilter !== 'all'}
-						<button type="button" onclick={() => setKindFilter('all')} class="btn btn-secondary"
-							>Clear “{KIND_FILTERS.find((f) => f.key === kindFilter)?.label}”</button
-						>
-					{/if}
 					{#if selectedBucket}
-						<button type="button" onclick={clearBucketSelection} class="btn btn-secondary"
-							>Clear “{selectedBucketLabel}”</button
-						>
+						<button type="button" onclick={clearBucketSelection} class="btn btn-secondary">Clear “{selectedBucketLabel}”</button>
 					{/if}
-					{#if tierFilter}
-						<button
-							type="button"
-							onclick={() => setParam('tier', null)}
-							class="btn btn-secondary">Clear “{tierFilter}”</button
-						>
+					{#each query.clauses as c (c.key)}
+						<button type="button" onclick={() => setQuery(removeClause(query, c.key))} class="btn btn-secondary">Clear “{c.values.map((v) => facetDefs.find((f) => f.key === c.key)?.word?.(v) ?? v).join(', ')}”</button>
+					{/each}
+					{#if query.q}
+						<button type="button" onclick={() => setQuery({ ...query, q: '' })} class="btn btn-secondary">Clear “{query.q}”</button>
 					{/if}
-					{#if envFilter}
-						<button
-							type="button"
-							onclick={() => setParam('env', null)}
-							class="btn btn-secondary">Clear “{envFilterLabel}”</button
-						>
-					{/if}
-					{#if appFilter}
-						<button
-							type="button"
-							onclick={() => setParam('app', null)}
-							class="btn btn-secondary">Clear “{appFilter}”</button
-						>
-					{/if}
-					{#if nsFilter}
-						<button type="button" onclick={() => setParam('ns', null)} class="btn btn-secondary"
-							>Clear “{nsFilter}”</button
-						>
-					{/if}
-					{#if activeFilterCount + (kindFilter !== 'all' ? 1 : 0) + (selectedBucket ? 1 : 0) > 1}
-						<button type="button" onclick={clearAllFilters} class="btn btn-secondary"
-							>Clear all filters</button
-						>
+					{#if query.clauses.length + (query.q ? 1 : 0) + (selectedBucket ? 1 : 0) > 1}
+						<button type="button" onclick={() => { selectedBucket = null; setQuery(EMPTY_QUERY); }} class="btn btn-secondary">Clear all filters</button>
 					{/if}
 				</div>
 			{:else}

@@ -455,32 +455,15 @@ describe('LogsViewer: selecting one pod actually narrows the rendered rows', () 
 			expect(renderedRowPods(container).size).toBe(PODS.length);
 		});
 
-		// ⭐ THE CONTROL IS A `.pill` NOW, NOT A DROPDOWN CHECKBOX
-		// (2026-10-08, design-language pass). Pods/containers/levels/columns
-		// moved from Flowbite `Dropdown`+`Checkbox` menus to direct
-		// `.pill` + `aria-pressed` buttons — one per pod, always visible, no
-		// popover to open first. The pod's own name is the pill's
-		// accessible name (the colour dot beside it carries no text).
-		//
-		// ⭐ TWO BUTTONS NOW SHARE THIS NAME (SPEC.md §2, Sources pane,
-		// 2026-10-09): the `lg:hidden` toolbar pill AND the ≥1024 sidebar
-		// row both name themselves after the pod — one is the mobile/
-		// tablet fallback, the other the desktop master/detail, and only
-		// one is ever actually visible at a given viewport (CSS this jsdom
-		// environment does not evaluate, so both sit in the a11y tree at
-		// once). `aria-pressed` is still what tells them apart: only the
-		// `.pill` carries it, same as before this pane had a second control
-		// with the identical name.
+		// ⭐ THE POD CHOICE IS THE SOURCES PANE'S ROW (and the query bar's Pod property) — the `.pill` row is gone (2026-11-22).
+		// The query bar's Pod property is the choice (the Sources pane row sets the same filter on lg).
 		const target = PODS[0];
-		const pill = screen
-			.getAllByRole('button', { name: target })
-			.find((el) => el.hasAttribute('aria-pressed'))!;
-		expect(pill).toHaveAttribute('aria-pressed', 'false');
+		const pickPod = () => pickLevel(container, target, 'pod');
 
 		// This used to throw `Cannot read properties of undefined (reading
 		// 'formattedTimestamp')` synchronously out of the click — see the
 		// comment above. A regression here means the crash is back.
-		expect(() => fireEvent.click(pill)).not.toThrow();
+		await expect(pickPod()).resolves.toBeUndefined();
 
 		await waitFor(() => {
 			nudgeVirtualizer(container);
@@ -489,8 +472,8 @@ describe('LogsViewer: selecting one pod actually narrows the rendered rows', () 
 			expect(pods.has(target)).toBe(true);
 		});
 
-		// The pill's own pressed state agrees with the rows.
-		expect(pill).toHaveAttribute('aria-pressed', 'true');
+		// The bar holds the choice as a Pod token.
+		expect(container.querySelector('[data-token="pod"]')?.textContent).toContain(target);
 
 		// defect #7 (2026-09-03): one pod selected is one pod in view — the
 		// header's own rollup already carries the count, so the row collapses
@@ -963,6 +946,14 @@ describe('lineCountLabel — one sentence, shared by the search count and the fo
  * above already exercise them indirectly, but not the search predicate or
  * the split itself.
  */
+/** choose a level in the toolbar's query bar: field -> Level -> value (the shared QueryBar's own hooks) */
+async function pickLevel(root: HTMLElement, level: string, prop = 'level') {
+	await fireEvent.focus(root.querySelector('[data-query-input]')!);
+	await fireEvent.click(root.querySelector('[data-query-input]')!);
+	await fireEvent.click(await waitFor(() => { const el = document.querySelector(`[data-prop="${prop}"]`); expect(el).not.toBeNull(); return el!; }));
+	await fireEvent.click(await waitFor(() => { const el = document.querySelector(`[data-value="${level}"]`); expect(el).not.toBeNull(); return el!; }));
+}
+
 describe('applyNonSearchFilters / applySearchFilter — the search box measures against its own scope', () => {
 	function getLevel(line: string): 'error' | 'warn' | 'info' | 'debug' | null {
 		const upper = line.toUpperCase();
@@ -1256,8 +1247,8 @@ describe('LogsViewer: the histogram filters the stream to a time window', () => 
 		await waitFor(() => expect(container.querySelector('[data-segment="total"]')).not.toBeNull());
 		const before = totals();
 
-		await fireEvent.click(screen.getByRole('button', { name: /^Error/ }));
-		await waitFor(() => expect(screen.getByRole('button', { name: /^Error/ })).toHaveAttribute('aria-pressed', 'true'));
+		await pickLevel(container, 'error');
+		await waitFor(() => expect(container.querySelector('[data-token="level"]')?.textContent).toContain('Error'));
 		expect(totals()).toEqual(before);
 		// One neutral fill, never a stacked error segment.
 		expect(container.querySelector('[data-segment="error"]')).toBeNull();
@@ -1505,9 +1496,7 @@ describe('LogsViewer: opening and staying at the latest (LOGOPEN)', () => {
 			}
 		});
 		await waitFor(() => expect(capturedOnPodsUpdate).not.toBeNull());
-		const error = screen.getAllByRole('button').find((b) => b.classList.contains('pill') && /Error/.test(b.textContent ?? ''))!;
-		expect(error).toHaveAttribute('aria-pressed', 'true');
-		expect(error.textContent).not.toMatch(/\d/);
+		await waitFor(() => expect(document.querySelector('[data-token="level"]')?.textContent).toContain('Error'));
 		expect(screen.queryByText('Live')).not.toBeInTheDocument();
 		expect(screen.queryByText(/\d+ lines?$/)).not.toBeInTheDocument();
 	});

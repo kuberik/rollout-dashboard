@@ -95,6 +95,8 @@
 	import BakeStatusIcon from '$lib/components/BakeStatusIcon.svelte';
 	import RestGlyph from '$lib/components/RestGlyph.svelte';
 	import DeploymentTimeline from '$lib/components/DeploymentTimeline.svelte';
+	import QueryBar from '$lib/components/filter/QueryBar.svelte';
+	import { compareDef, compareOptions, kindParam, kindQuery, lanesOf, parseKind } from '$lib/components/history-filter';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import FactList from '$lib/components/FactList.svelte';
 	import CardSkeleton from '$lib/components/skeleton/CardSkeleton.svelte';
@@ -239,9 +241,8 @@
 	const currentEnvName = $derived(
 		rolloutEnvironmentName(rollout, environment?.spec?.environment) || null
 	);
-	const hasOtherEnvs = $derived(
-		envInfos.filter((e) => e.environment !== currentEnvName).length > 0
-	);
+	const otherEnvCount = $derived(envInfos.filter((e) => e.environment !== currentEnvName).length);
+	const hasOtherEnvs = $derived(otherEnvCount > 0);
 
 	/**
 	 * ⛔ THE HEADER ENVIRONMENT CHIP IS GONE. (2026-10-08, TL review round 3
@@ -267,10 +268,7 @@
 	 * `Compare namespace`); absent means neither, matching every other
 	 * filter's "the default state writes nothing" rule.
 	 */
-	function parseKindParam(raw: string | null): { env: boolean; ns: boolean } {
-		if (!raw) return { env: false, ns: false };
-		return { env: raw.includes('env'), ns: raw.includes('ns') };
-	}
+	const parseKindParam = (raw: string | null) => ({ env: parseKind(raw).includes('env'), ns: parseKind(raw).includes('ns') });
 	const initialKind = parseKindParam(get(page).url.searchParams.get('kind'));
 
 	// Toggles: show sibling environments / compare rollouts across namespace
@@ -286,16 +284,14 @@
 		// `replaceState: true` — a brush drag on the chart or a fast double-toggle
 		// must not spend a browser-history entry per intermediate value, unlike
 		// `/activity`'s discrete filter chips.
-		goto(`${url.pathname}${url.search}`, { replaceState: true, noScroll: true, keepFocus: true });
+		goto(`${url.pathname}${url.search.replace(/%2C/gi, ",")}`, { replaceState: true, noScroll: true, keepFocus: true });
 	}
 
 	$effect(() => {
-		const parts = [showEnvironments ? 'env' : null, showComparison ? 'ns' : null].filter(
-			(p): p is string => p !== null
-		);
-		setQueryParam('kind', parts.length > 0 ? parts.join('+') : null);
+		setQueryParam('kind', kindParam([...(showEnvironments ? ['env' as const] : []), ...(showComparison ? ['ns' as const] : [])]));
 	});
 
+	const compareQuery = $derived(kindQuery([...(showEnvironments ? ['env' as const] : []), ...(showComparison ? ['ns' as const] : [])]));
 	const nsRolloutsQuery = createQuery(() => ({
 		...rolloutsInNamespaceQueryOptions({ namespace }),
 		enabled: showComparison
@@ -1678,14 +1674,37 @@
 						`Deployment timeline` card below, now shown only in Compare
 						mode.
 					-->
+					{#snippet compare()}
+						<!-- ⭐ ONE "Compare" QUERY BAR replaces the "Compare namespace" link and the timeline card's "Show environments" /
+						     "Compare namespace" pills. Role: choose which other lanes the Deployment timeline adds. Reference: the same
+						     shared QueryBar every filtered page uses, here without free text (`search={false}`) and without "is not" (`single`). -->
+						<!-- phone: compare was never offered below sm (a hover-free desktop chart); it shows only once a lane is on, so it can be removed -->
+						<div class={compareQuery.clauses.length ? '' : 'max-sm:hidden'}>
+						<QueryBar
+							defs={[compareDef]}
+							options={() => compareOptions(lanesOf(compareQuery), otherEnvCount, showComparison && !nsRolloutsQuery.isLoading ? Math.max(0, ((nsRolloutsQuery.data?.rollouts?.items as unknown[]) ?? []).length - 1) : null)}
+							query={compareQuery}
+							onchange={(q) => {
+								const on = lanesOf(q);
+								showEnvironments = on.includes('env');
+								showComparison = on.includes('ns');
+							}}
+							search={false}
+							label="Compare with other lanes"
+							placeholder="Compare with other lanes"
+							placeholderShort="Compare"
+							hints={{ kind: 'Environments, Namespace' }}
+							tip="Adds lanes to the Deployment timeline"
+						/>
+						</div>
+					{/snippet}
 					{#if totalDeploys > 0}
 						<CadenceStrip
 							history={historyWithTitles}
 							range={cadenceRange}
 							onRangeChange={setCadenceRange}
 							onSelect={(i) => revealEntry(i)}
-							compareActive={showComparison}
-							onToggleCompare={() => (showComparison = !showComparison)}
+							{compare}
 							{rollbackIndices}
 							now={$now.getTime()}
 							diffHref={diffHrefForIndex}
@@ -1739,43 +1758,6 @@
 									rowHeight={chartRowHeight}
 									onEntryClick={handleChartEntryClick}
 								>
-									{#snippet extraControls()}
-										<!-- ⭐ ONE PILL ROW, NOT TWO. (2026-10-08, TL review round 3.)
-						     These used to sit on their own row above the chart's
-						     range pills — two filter rows, same `.pill` grammar,
-						     stacked for no reason. `DeploymentTimeline`'s own
-						     `extraControls` slot joins them onto the row its range
-						     pills already draw. -->
-										{#if hasOtherEnvs}
-											<button
-												type="button"
-												class="pill"
-												aria-pressed={showEnvironments}
-												onclick={() => {
-													showEnvironments = !showEnvironments;
-												}}
-												title="Show sibling environments on the timeline"
-											>
-												<LayersSolid class="h-3 w-3" aria-hidden="true" />
-												{showEnvironments ? 'Hide environments' : 'Show environments'}
-											</button>
-										{/if}
-										<button
-											type="button"
-											class="pill"
-											aria-pressed={showComparison}
-											onclick={() => {
-												showComparison = !showComparison;
-											}}
-											title="Show all other rollouts in this namespace"
-										>
-											<LayersSolid class="h-3 w-3" aria-hidden="true" />
-											{showComparison ? 'Hide namespace' : 'Compare namespace'}
-											{#if showComparison && nsRolloutsQuery.isLoading}
-												<Spinner size="4" />
-											{/if}
-										</button>
-									{/snippet}
 								</DeploymentTimeline>
 							</Card>
 						{/if}

@@ -7,7 +7,7 @@
 	 * ONE page template, three bands: the failure banner (the page's one StatementBanner) -> Attention (kit compact cards) -> "All rollouts"
 	 * (one list card: In flight / Waiting / Held groups of strand rows, then the At rest group of quiet rows). No page title, no header facts.
 	 * 2026-11-21 (owner, R1-R7): from `lg` the list sits in the tab Overview's split (3fr main | 22rem+ rail): main = "All rollouts" header, the filter bar
-	 * (search + state / environment / namespace chips, rollouts-filter.ts, URL-held) and ONE list card (never two columns, at any width); the rail =
+	 * (ONE query bar, filter/QueryBar.svelte: key:value tokens + free words, rollouts-filter.ts, URL-held) and ONE list card (never two columns, at any width); the rail =
 	 * Recent deploys + Deploy cadence (RolloutsRail). The banner and Attention stay full width ABOVE the split and are never filtered away; the filter
 	 * narrows the list only. Below `lg` the rail stacks under the list. Every row, At rest included, draws its step strand. References: StatementBanner via FailureBanner (the tab's banner, `change` line), SectionHeader (icon · 16/600 · rollup), AttentionBand/Card, the
 	 * StrandRow list card (kit `.lc` / `.lr`). A rollout in the banner or in Attention is not repeated in the groups; the header counts say so.
@@ -29,7 +29,8 @@
 	import { goto } from '$app/navigation';
 	import RolloutFilters from './rollouts/RolloutFilters.svelte';
 	import RolloutsRail from './rollouts/RolloutsRail.svelte';
-	import { parseFilter, filterParams, filterList, facets as facetsOf, EMPTY_FILTER, type RolloutFilter } from './rollouts-filter';
+	import { parseFilter, filterParams, filterList, EMPTY_QUERY } from './rollouts-filter';
+	import type { FilterQuery } from '$lib/components/filter/filter-model';
 	import type { PageProps } from './pages';
 
 	let { state: hs }: PageProps = $props();
@@ -50,9 +51,9 @@
 	const attRollup = $derived(attentionRollup(P));
 	/* the filter lives in the URL (?q=&state=&env=&ns=). `f` is what the page reads; typing updates it at once and the URL follows (replaceState, focus kept).
 	   An address that changes from outside (a palette link, back/forward) is adopted, but never the echo of the address this page just wrote itself. */
-	let f = $state<RolloutFilter>(parseFilter(page.url.searchParams));
+	let f = $state<FilterQuery>(parseFilter(page.url.searchParams));
 	let written = page.url.search;
-	function setFilter(next: RolloutFilter) {
+	function setFilter(next: FilterQuery) {
 		f = next;
 		const qs = filterParams(page.url.searchParams, next).toString();
 		written = qs ? `?${qs}` : '';
@@ -65,7 +66,6 @@
 		f = parseFilter(page.url.searchParams);
 	});
 	const F = $derived(filterList(P, f));
-	const fx = $derived(facetsOf(P, f));
 	/* zero terms are dropped everywhere; a rollup is never empty ("0 rollouts" when nothing matches) */
 	const allRollup = $derived.by(() => {
 		/* waiting and held fold on a phone (the group headers below repeat them), so "38 at rest" never wraps alone onto a second line */
@@ -110,7 +110,7 @@
 		<section id="all-rollouts" class="min-w-0" data-section="all" data-rollout-list>
 			<SectionHeader title="All rollouts" icon={GridOutline} rollup={allRollup} />
 			{#if P.groups.length || P.rest.length}
-				<div class="mb-4"><RolloutFilters filter={f} facets={fx} onchange={setFilter} /></div>
+				<div class="mb-4"><RolloutFilters {P} filter={f} onchange={setFilter} /></div>
 			{/if}
 			{#if F.groups.length || F.rest.length}
 				<ListCard columns={1}>
@@ -139,7 +139,7 @@
 					<ListOutline class="h-5 w-5 text-fg-disabled" aria-hidden="true" />
 					<p class="t-ui text-fg">No rollouts match</p>
 					<p class="t-meta text-fg-subtle">Nothing in the list fits this search and these filters.</p>
-					<button type="button" class="btn btn-secondary btn-sm mt-3" onclick={() => setFilter(EMPTY_FILTER)}>Clear filters</button>
+					<button type="button" class="btn btn-secondary btn-sm mt-3" onclick={() => setFilter(EMPTY_QUERY)}>Clear filters</button>
 				</div>
 			{:else}
 				<div class="empty" data-list-empty>

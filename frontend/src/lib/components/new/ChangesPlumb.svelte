@@ -20,25 +20,35 @@
 	import AppGlyph from '$lib/components/AppGlyph.svelte';
 	import { toneInk } from '$lib/view-models/state-tone';
 	import StatusMark from '$lib/components/StatusMark.svelte';
-	import FilterChip from '$lib/components/FilterChip.svelte';
+	import QueryBar from '$lib/components/filter/QueryBar.svelte';
+	import { isFiltered, EMPTY_QUERY, type FilterQuery } from '$lib/components/filter/filter-model';
+	import { parseChangeFilter, changeParams, keepChange, changeEntries, changeDefs, changeText } from './changes-filter';
 	import { stateWord } from './state-words';
 	import { ago, type HomeState } from './data';
-	import { plumbOf, serviceWord, servicesByUrgency, spreadStages, reposFromQuery, toggleRepo, type PlumbRow } from './changes-plumb';
+	import { plumbOf, serviceWord, servicesByUrgency, spreadStages, type PlumbRow } from './changes-plumb';
 	import type { Svc } from './change/service-spread';
 
 	let { state: hs }: { state: HomeState } = $props();
-	const known = $derived(plumbOf(hs).chips.map((c) => c.repo));
-	const sel = $derived(reposFromQuery(page.url.searchParams, known));
-	const P = $derived(plumbOf(hs, sel));
-	const chips = $derived(plumbOf(hs).chips);
-
-	function pick(repo: string) {
-		const next = toggleRepo(sel, repo);
-		const u = new URL(page.url);
-		u.searchParams.delete('repo');
-		for (const r of next) u.searchParams.append('repo', r);
-		goto(u.pathname + u.search + u.hash, { replaceState: true, noScroll: true, keepFocus: true });
+	/* the filter lives in the URL (?q=&repo=). `f` is what the page reads; typing updates it at once and the URL follows (replaceState, focus kept);
+	   an address changed from outside is adopted, never the echo of the one this page just wrote. */
+	let f = $state<FilterQuery>(parseChangeFilter(page.url.searchParams));
+	let written = page.url.search;
+	function setFilter(next: FilterQuery) {
+		f = next;
+		const qs = changeParams(page.url.searchParams, next).toString();
+		written = qs ? `?${qs}` : '';
+		void goto(`${page.url.pathname}${written}${page.url.hash}`, { replaceState: true, noScroll: true, keepFocus: true });
 	}
+	$effect(() => {
+		const cur = page.url.search;
+		if (cur === written) return;
+		written = cur;
+		f = parseChangeFilter(page.url.searchParams);
+	});
+	const all = $derived(plumbOf(hs));
+	const rows = $derived(changeEntries(all));
+	const P = $derived(plumbOf(hs, keepChange(f)));
+	const filtered = $derived(isFiltered(f));
 
 	let opened = $state<Record<string, boolean>>({});
 	/** ?open=<repo #ref> (or a change key) opens that change's services on load */
@@ -62,17 +72,21 @@
 </script>
 
 <div class="plb-all" data-plumb>
-	{#if chips.length > 1}
-		<div class="plb-filter" role="group" aria-label="Filter by repo" data-repo-filter>
-			{#each chips as c (c.repo)}
-				<FilterChip label={c.repo} count={c.count} selected={sel.includes(c.repo)} onclick={() => pick(c.repo)} />
-			{/each}
+	{#if all.chips.length > 1}
+		<div class="plb-filter" data-repo-filter>
+			<QueryBar {rows} defs={changeDefs} text={changeText} query={f} onchange={setFilter} placeholder="Search or filter changes" placeholderShort="Search or filter" label="Search and filter changes" hints={{ repo: 'a repository' }} />
 		</div>
 	{/if}
 	<div class="plb-wrap"><div class="plb">
 		<div class="plb-main" id="in-flight" data-group="In flight">
 			<Card icon={RocketOutline} title="In flight" padded={false}>
-				{#snippet rollup()}<span class="t-card-rollup tabular-nums text-fg-subtle">{P.total} {P.total === 1 ? 'change' : 'changes'}{sel.length ? ` · ${sel.length} ${sel.length === 1 ? 'repo' : 'repos'}` : ''}</span>{/snippet}
+				{#snippet rollup()}<span class="t-card-rollup tabular-nums text-fg-subtle">{filtered ? `${P.total} of ${all.total} changes` : `${P.total} ${P.total === 1 ? 'change' : 'changes'}`}</span>{/snippet}
+				{#if filtered && !P.total}
+					<div class="flex items-center justify-between gap-3 border-b border-line px-4 py-3" data-filter-empty>
+						<p class="t-ui text-fg-muted">No change in flight matches this filter.</p>
+						<button type="button" class="btn btn-secondary" onclick={() => setFilter(EMPTY_QUERY)} data-filter-clear>Clear filters</button>
+					</div>
+				{/if}
 				<div class="plb-cq">
 					<ol class="plb-route">
 						{#each P.stops as s (s.col)}
@@ -146,7 +160,7 @@
 						{/each}
 					</ul>
 				{:else}
-					<p class="t-meta px-4 py-4 text-fg-subtle">Nothing has landed{sel.length ? ' in this selection' : ''} yet.</p>
+					<p class="t-meta px-4 py-4 text-fg-subtle">Nothing has landed{filtered ? ' in this selection' : ''} yet.</p>
 				{/if}
 			</Card>
 		</aside>
@@ -155,7 +169,7 @@
 
 <style>
 	.plb-all { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-	.plb-filter { display: flex; flex-wrap: wrap; gap: 8px; }
+	.plb-filter { min-width: 0; }
 	/* main + side column once the body can hold both: the rollout tab's 3fr / minmax(22rem, 2fr); below that the side follows the main card */
 	.plb-wrap { container-type: inline-size; min-width: 0; }
 	.plb { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
