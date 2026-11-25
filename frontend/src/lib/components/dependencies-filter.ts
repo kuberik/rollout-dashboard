@@ -25,9 +25,10 @@ const URL_DEFS = depDefs([]);
 export const parseDepFilter = (params: URLSearchParams): FilterQuery => parseQuery(params, URL_DEFS);
 export const depParams = (params: URLSearchParams, f: FilterQuery): URLSearchParams => queryParams(params, f, URL_DEFS);
 
-/** the columns (env values of the nodes) the query keeps; null = no filter, keep everything */
+/** the columns (env values of the nodes) the filter clauses keep; null = no clause, keep everything. The search text is not read here:
+ * it narrows rollouts, not columns (narrowToSearch), so a match keeps its direct links in any column. */
 export function keptColumns(entries: DepEntry[], f: FilterQuery, defs: FacetDef<DepEntry>[]): string[] | null {
-	const kept = applyQuery(entries, f, defs, depText);
+	const kept = applyQuery(entries, { ...f, q: '' }, defs, depText);
 	return kept === entries ? null : [...new Set(kept.map((e) => e.env || e.ns))];
 }
 
@@ -39,5 +40,7 @@ export function narrowToSearch(graph: RolloutGraph, q: string): RolloutGraph {
 	const keep = new Set(hit);
 	for (const e of graph.edges) if (hit.has(e.from) || hit.has(e.to)) { keep.add(e.from); keep.add(e.to); }
 	const edges = graph.edges.filter((e) => keep.has(e.from) && keep.has(e.to));
-	return { ...graph, nodes: graph.nodes.filter((n) => keep.has(n.id)), edges, blockedEdges: edges.filter((e) => e.state === 'blocked'), hasCycle: edges.some((e) => e.cyclic) };
+	const nodes = graph.nodes.filter((n) => keep.has(n.id));
+	const cols = new Set(nodes.map((n) => n.env));
+	return { ...graph, nodes, envs: graph.envs.filter((c) => cols.has(c)), edges, blockedEdges: edges.filter((e) => e.state === 'blocked'), hasCycle: edges.some((e) => e.cyclic) };
 }
