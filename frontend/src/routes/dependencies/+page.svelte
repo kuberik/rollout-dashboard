@@ -54,7 +54,7 @@
 	import { isFiltered, type FilterQuery, queryString } from '$lib/components/filter/filter-model';
 	import { depDefs, depText, parseDepFilter, depParams, type DepEntry } from '$lib/components/dependencies-filter';
 	import { applyQuery } from '$lib/components/filter/filter-model';
-	import DependencyLanes, { lanesNaturalWidth } from '$lib/components/DependencyLanes.svelte';
+	import DependencyLanes, { lanesNaturalWidth, lanesMinWidth } from '$lib/components/DependencyLanes.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import { buildLanes, heldSinceByEdge, ageOf, freesByService, regionShare, otherHoldsPhrase, NO_ENV, type LaneBlocker } from '$lib/view-models/dependency-lanes';
 	import { page } from '$app/state';
@@ -219,6 +219,27 @@ import { heldHereGates } from '$lib/view-models/held';
 			lanes.columns.length,
 			new Set(lanes.links.filter((l) => l.kind === 'contract').map((l) => l.from)).size
 		)
+	);
+	/**
+	 * THE MATRIX GETS ITS WIDTH FIRST (R2-DES-B-1). `mapMin` is the narrowest card in which every cell keeps its build and
+	 * reason whole (`CELL_MIN`). Three forms, one decision, all read off the same wrap width:
+	 *   side    — the rail sits beside the map only while the map still gets `mapMin` (1440 and up on the mock fleet);
+	 *   stacked — otherwise the map takes the full width, the rail stacks (1280, 1366: cells 160-180px instead of 105);
+	 *   phone   — when even a full-width map is under `mapMin` (980, 1024 with the sidebar open), the phone form draws
+	 *             (blocker trees + line map), which was made for a narrow container.
+	 * Chosen over narrowing the label column (it frees 28px, the 1024-1366 band needed 70-150) and over wrapping builds
+	 * (a version split over two lines is not legible).
+	 */
+	const mapMin = $derived.by(() => {
+		const t = new Map<string, Set<string>>();
+		for (const c of lanes.columns) t.set(c.key, new Set());
+		for (const l of lanes.links) if (l.kind === 'contract') t.get(lanes.cells.get(l.from)!.col)?.add(l.from);
+		return lanesMinWidth(lanes.columns.map((c) => t.get(c.key)?.size ?? 0));
+	});
+	const RAIL_MIN = $derived(wrapW >= 1300 ? 320 : 300);
+	const RAIL_GAP = 32;
+	const layout = $derived<'phone' | 'stacked' | 'side'>(
+		wrapW === 0 ? 'side' : wrapW < mapMin ? 'phone' : wrapW >= 1000 && wrapW - RAIL_GAP - RAIL_MIN >= mapMin ? 'side' : 'stacked'
 	);
 	let railHighlight = $state<string[] | null>(null);
 	/* Held relationships only where the rail sits BESIDE the map (wrap ≥ 1000) and has room (rail ≥ 480, i.e. 2560 and up):
@@ -506,12 +527,12 @@ import { heldHereGates } from '$lib/view-models/held';
 						<button type="button" class="btn btn-secondary ml-2" onclick={() => setFilter({ q: '', clauses: [] })} data-filter-clear>Clear filters</button>
 					</p>
 				{:else}
-					<DependencyLanes model={lanes} phone={wrapW > 0 && wrapW < 680} focus={focusSet} highlight={railHighlight} {themeOf} {now} />
+					<DependencyLanes model={lanes} phone={layout === 'phone'} focus={focusSet} highlight={railHighlight} {themeOf} {now} />
 				{/if}
 				<p class="t-meta mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-fg-subtle" data-graph-footnote>
 					<span class="inline-flex items-center gap-1.5"><svg width="22" height="6" aria-hidden="true"><path d="M0,3 H22" stroke="var(--k-wire)" /></svg>clear</span>
 					<span class="inline-flex items-center gap-1.5"><svg width="22" height="6" aria-hidden="true"><path d="M0,3 H22" stroke="var(--color-held)" stroke-width="1.5" /></svg>held</span>
-					{#if !(wrapW > 0 && wrapW < 680)}<span>along a row: promotion · down a column: contract</span>{/if}
+					{#if layout !== 'phone'}<span>along a row: promotion · down a column: contract</span>{/if}
 					{#if full.unlinkedRollouts > 0}<span>{full.unlinkedRollouts} more rollouts depend on nothing</span>{/if}
 					{#if lanes.unboundCount > 0}<span>{lanes.unboundCount} without an Environment, placed where their cluster or consumers run</span>{/if}
 				</p>
@@ -521,10 +542,10 @@ import { heldHereGates } from '$lib/view-models/held';
 		<!-- main + rail at every state (calm included, so the page keeps one composition); the map card is capped at the widest
 		     the matrix draws and the rail takes the rest of a 2560/3840 screen (round 2, TL item e) -->
 		<div class="rail-wrap" class:mt-6={lanes.heldByDeploy > 0} bind:clientWidth={wrapW}>
-			<div class="dep-grid" style="--map-max: {mapMax}px">
+			<div class="dep-grid" class:dep-grid--side={layout === 'side'} class:dep-grid--phone={layout === 'phone'} style="--map-max: {mapMax}px; --map-min: {mapMin}px">
 				<div class="dep-rail-main min-w-0">{@render matrix()}</div>
 				<div class="dep-rail-side min-w-0" id="held-links" bind:clientWidth={railW}>
-					<div class="dep-rail-cards" class:dep-rail-cards--two={wrapW >= 1000 && railW >= 1000}>
+					<div class="dep-rail-cards" class:dep-rail-cards--two={railW >= 1000}>
 						{#if lanes.blockers.length > 0}
 							<Card icon={HeldGlyph} iconClass="text-held" title="Unblocks the most" verdict={`${lanes.blockers.length} blocker${lanes.blockers.length === 1 ? '' : 's'}`} verdictTone="held" padded={false}>
 								<ul class="divide-y divide-line-subtle">
@@ -554,7 +575,7 @@ import { heldHereGates } from '$lib/view-models/held';
 								</p>
 							</Card>
 						{/if}
-						{#if heldRelations.length && wrapW >= 1000 && railW >= 480}
+						{#if heldRelations.length && layout === 'side' && railW >= 480}
 							<!-- WIDE ONLY (rail ≥ 480px, i.e. 2560 and up): each held relationship's whole fact, once. At 1440 the same fact is
 							     the hover pill on its edge (density budget); on a wide screen the room the rail gains is spent on it here. -->
 							<div>
@@ -609,33 +630,26 @@ import { heldHereGates } from '$lib/view-models/held';
 		grid-template-columns: 1fr 1fr;
 		align-items: start;
 	}
-	/* ONE breakpoint for the phone form (owner round 2): below a 680px wrap the map draws its phone form (blocker trees,
-	   DependencyLanesPhone, told by the `phone` prop below) and the ranked card steps aside; at 680 and up the matrix keeps
-	   ≥ 640px inside its card and the ranked card returns. Both read the same container, so they cannot disagree. */
-	@container (max-width: 679.98px) {
-		.dep-rail-side {
-			display: none;
-		}
+	/* ONE decision for the three forms (`layout`, R2-DES-B-1): the phone form carries its own ranked trees, so the rail steps
+	   aside; stacked keeps the ranked card first (the tablet order); side sets the rail beside a map that still gets --map-min. */
+	.dep-grid--phone .dep-rail-side {
+		display: none;
 	}
-	/* side by side only where the map still gets ≥ 640px of matrix (container ≥ 1000, a 1280 viewport): below it the matrix would
-	   fall to its phone form beside the rail, so a tablet stacks — ranked blockers first, then the full-width matrix */
-	@container (min-width: 1000px) {
-		.dep-grid {
-			display: grid;
-			grid-template-columns: minmax(600px, var(--map-max)) minmax(300px, 1fr);
-			gap: 2rem;
-			align-items: start;
-		}
-		.dep-rail-main {
-			order: 1;
-		}
-		.dep-rail-side {
-			order: 2;
-		}
+	.dep-grid--side {
+		display: grid;
+		grid-template-columns: minmax(var(--map-min), var(--map-max)) minmax(300px, 1fr);
+		gap: 2rem;
+		align-items: start;
+	}
+	.dep-grid--side .dep-rail-main {
+		order: 1;
+	}
+	.dep-grid--side .dep-rail-side {
+		order: 2;
 	}
 	@container (min-width: 1300px) {
-		.dep-grid {
-			grid-template-columns: minmax(600px, var(--map-max)) minmax(320px, 1fr);
+		.dep-grid--side {
+			grid-template-columns: minmax(var(--map-min), var(--map-max)) minmax(320px, 1fr);
 		}
 	}
 </style>

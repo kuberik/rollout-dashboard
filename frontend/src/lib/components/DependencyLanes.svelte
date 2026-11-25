@@ -12,6 +12,27 @@
 	export function lanesNaturalWidth(columns: number, trunks: number): number {
 		return 200 + columns * (CELL_MAX + 24 + GUT_EXTRA) + 8 * trunks + 34;
 	}
+	/**
+	 * THE NARROWEST CELL THE MATRIX DRAWS (R2-DES-B-1). Measured on the mock fleet: the widest one-line fact a cell must keep
+	 * whole is a build or the region fold with its chevron ("4.45.0-45", "5 regions ⌄") at 121px; reasons longer than the cell
+	 * ("Pinned to 4.40.0-40") wrap to a second line and the row grows. Below this the page does not draw the matrix at all
+	 * (it stacks the rail, then falls to the phone form) — a cell never ellipsizes its build or its reason.
+	 */
+	export const CELL_MIN = 124;
+	/** The label column at a given matrix width (the same steps `cols` uses). */
+	export const labelWidth = (w: number) => (w >= 1400 ? 200 : w >= 900 ? 160 : 132);
+	/** Fixed gutter per column: the nearest trunk's room plus 8px per further trunk. */
+	export const gutterWidth = (trunks: number) => 16 + 8 + 8 * Math.max(0, trunks - 1);
+	/**
+	 * The narrowest the matrix may draw, card padding included (34): label + gutters + CELL_MIN per column. The page sets
+	 * the rail beside the map only when the map still gets this, and draws the phone form when even a full-width map would not.
+	 */
+	export function lanesMinWidth(trunksPerColumn: number[]): number {
+		const body = trunksPerColumn.reduce((a, t) => a + gutterWidth(t) + CELL_MIN, 0);
+		let w = labelWidth(0) + body;
+		if (w >= 900) w = labelWidth(900) + body;
+		return w + 34;
+	}
 </script>
 
 <script lang="ts">
@@ -119,8 +140,8 @@
 
 	/** horizontal layout: label column, gutters (trunks), cells */
 	const cols = $derived.by(() => {
-		const label = width >= 1400 ? 200 : width >= 900 ? 160 : 132;
-		const base = colKeys.map((c) => NEAR + 8 + PITCH * Math.max(0, tracksByCol.get(c)!.length - 1));
+		const label = labelWidth(width);
+		const base = colKeys.map((c) => gutterWidth(tracksByCol.get(c)!.length));
 		const free = Math.max(0, width - label - base.reduce((a, b) => a + b, 0));
 		let cellW = colKeys.length ? free / colKeys.length : 0;
 		let extra = 0;
@@ -156,9 +177,17 @@
 	});
 	const FOOT_H = 22;
 
+	/**
+	 * Measured heights (R2-DES-B-1/-7): a cell's head grows by a line when its reason wraps, a row label when the service
+	 * name wraps; the row takes the tallest. Measured off the rendered text (bind:clientHeight), so the font decides, not a
+	 * character count. Neither box's own height depends on the row's, so the measurement cannot loop.
+	 */
+	let headH = $state<Record<string, number>>({});
+	let labelH = $state<Record<string, number>>({});
+	const head = (k: string) => Math.max(CELL_H, Math.ceil(headH[k] ?? 0));
 	const rowsGeo = $derived.by(() => {
 		const cellH = (c: LaneCell) =>
-			(expanded.has(c.key) && c.sites.length > 1 ? CELL_H + c.sites.length * SITE_H + 8 : CELL_H) + (freesOf.has(c.key) ? FOOT_H : 0);
+			(expanded.has(c.key) && c.sites.length > 1 ? head(c.key) + c.sites.length * SITE_H + 8 : head(c.key)) + (freesOf.has(c.key) ? FOOT_H : 0);
 		const rowTop = new Map<string, number>();
 		const rowH = new Map<string, number>();
 		const seps: number[] = [];
@@ -169,7 +198,7 @@
 				y += GROUP_GAP - ROW_GAP;
 			}
 			rowTop.set(r.service, y);
-			const h = Math.max(CELL_H, ...[...r.cells.values()].map(cellH));
+			const h = Math.max(CELL_H, Math.ceil(labelH[r.service] ?? 0), ...[...r.cells.values()].map(cellH));
 			rowH.set(r.service, h);
 			y += h + ROW_GAP;
 		});
@@ -547,13 +576,14 @@
 							onfocusout={() => (hoverOwn = null)}
 							onkeydown={(e) => move(e, c.key)}
 						>
-							<div class="tap-zone relative flex h-12 flex-col justify-center px-3">
+							<!-- the head: never an ellipsis (R2-DES-B-1); a reason longer than the cell wraps and the measured head grows the row -->
+							<div class="tap-zone relative flex min-h-12 flex-col justify-center px-3 py-1" bind:clientHeight={headH[c.key]}>
 								<div class="flex min-w-0 items-center" class:gap-2={!compact} class:gap-1.5={compact}>
 									<StatusMark state={c.held ? 'held' : 'newest'} />
 									{#if multi}
-										<a href={rolloutHref(c)} class="tap-link t-ui-sm truncate text-fg" data-cell-link>{c.sites.length} regions</a>
+										<a href={rolloutHref(c)} class="tap-link t-ui-sm min-w-0 whitespace-nowrap text-fg" data-cell-link>{c.sites.length} regions</a>
 									{:else}
-										<a href={rolloutHref(c)} class="tap-link t-code-sm truncate text-fg" data-cell-link>{c.build ?? 'no build'}</a>
+										<a href={rolloutHref(c)} class="tap-link t-code-sm min-w-0 text-fg [overflow-wrap:anywhere]" data-cell-link>{c.build ?? 'no build'}</a>
 									{/if}
 									<span class="ml-auto flex shrink-0 items-center gap-1.5">
 										{#if multi}
@@ -572,11 +602,11 @@
 								</div>
 								{#if c.held}
 									<p class="t-meta flex min-w-0 gap-2 text-held" class:pl-6={!compact} title={needLine(c) ?? undefined}>
-										<span class="truncate">{shortNeed(c)}</span>
+										<span class="min-w-0 [overflow-wrap:anywhere]">{shortNeed(c)}</span>
 										{#if since && !compact}<span class="ml-auto shrink-0 tabular-nums text-fg-subtle" title="Held since">{since}</span>{/if}
 									</p>
 								{:else if multi && c.build}
-									<p class="t-code-sm truncate text-fg-subtle" class:pl-6={!compact}>{c.build}</p>
+									<p class="t-code-sm text-fg-subtle [overflow-wrap:anywhere]" class:pl-6={!compact}>{c.build}</p>
 								{/if}
 							</div>
 							{#if multi && open}
