@@ -79,6 +79,22 @@ export function whyWords(f: Pick<Failure, 'kind' | 'why' | 'rollsBack'>): string
 	}
 }
 
+/** the rule in two or three words; the ordinary case (the check rolls back on this kind) says nothing */
+export function shortWhy(why: string): string {
+	switch (why) {
+		case 'SourceOptedOut':
+			return 'opted out';
+		case 'SourceOptedIn':
+			return 'opted in';
+		case 'CheckErrorNever':
+			return 'check could not run';
+		case 'NotInRollbackOn':
+			return 'not a rollback kind';
+		default:
+			return '';
+	}
+}
+
 export type VerdictRow = {
 	key: string;
 	/** the failing check's class (the glyph) */
@@ -93,6 +109,10 @@ export type VerdictRow = {
 	word: string;
 	/** "Test failed · opted out with ..." */
 	why: string;
+	/** the controller's rule, verbatim (`SourceOptedOut`, `CheckRollbackOn`, ...) */
+	rule: string;
+	/** the reason in two or three words, printed only when it is not the ordinary case ("opted out", "check error") */
+	short: string;
 	message?: string;
 };
 
@@ -117,6 +137,8 @@ export function verdictRows(entry: HistoryEntry | null | undefined): VerdictRow[
 				rollsBack: f.rollsBack,
 				word: f.rollsBack ? 'rolls back' : 'does not roll back',
 				why: `${kindWord(f.kind)} · ${whyWords(f)}`,
+				rule: f.why,
+				short: shortWhy(f.why),
 				message: f.message
 			});
 		}
@@ -151,26 +173,42 @@ export type AutoRollbackView =
 
 const display = (e: HistoryEntry | undefined): string => e?.version?.version || e?.version?.tag || e?.version?.revision || 'this build';
 
-/** the sentence a failed bake leads with when it was NOT rolled back; ManualDeploy is the design's wording */
-export function notRolledBackHeadline(reason: string, failed: HistoryEntry, rows: VerdictRow[]): string {
+/**
+ * WHY a failed bake was NOT rolled back, as one short line (glanceable rule: at most 12 words). The state itself
+ * ("Not rolled back") is a separate word the banner draws as a chip, so this never repeats it.
+ */
+export function notRolledBackWhy(reason: string, failed: HistoryEntry, rows: VerdictRow[]): string {
 	switch (reason) {
 		case 'ManualDeploy':
-			return 'Not rolled back automatically: deployed by hand';
+			return 'Deployed by hand';
 		case 'ManualIntent':
-			return 'Not rolled back automatically: a deploy was already requested by hand';
+			return 'A deploy was already requested by hand';
 		case 'NoTarget':
-			return 'Not rolled back: no earlier build passed its bake';
+			return 'No earlier build passed its bake';
 		case 'DeployError':
-			return 'Not rolled back: the rollback deploy could not be written';
+			return 'The rollback deploy could not be written';
 		case 'NotATrigger': {
 			const names = rows.filter((r) => !r.rollsBack);
-			if (names.length === 1) return `Not rolled back: ${shortRef(names[0].ref)} failed, and it does not roll back`;
-			if (names.length > 1) return `Not rolled back: none of the ${names.length} failures roll back`;
-			return `Not rolled back: ${display(failed)} failed for a reason that does not roll back`;
+			if (names.length === 1) return names[0].rule === 'SourceOptedOut' ? `${shortRef(names[0].ref)} is opted out` : `${shortRef(names[0].ref)} does not roll back`;
+			if (names.length > 1) return `None of the ${names.length} failures roll back`;
+			return `${display(failed)} failed for a reason that does not roll back`;
 		}
 		default:
-			return 'Not rolled back automatically';
+			return '';
 	}
+}
+
+/** the state word plus its reason, joined for places that print one string (aria labels, titles) */
+export function notRolledBackHeadline(reason: string, failed: HistoryEntry, rows: VerdictRow[]): string {
+	const why = notRolledBackWhy(reason, failed, rows);
+	return why ? `Not rolled back · ${why}` : 'Not rolled back';
+}
+
+/** the one line under a rolled-back banner's chips: which failure triggered it */
+export function triggerLine(triggers: VerdictRow[]): string {
+	if (triggers.length === 0) return '';
+	const first = shortRef(triggers[0].ref);
+	return triggers.length === 1 ? `Triggered by ${first}` : `Triggered by ${first} and ${triggers.length - 1} more`;
 }
 
 /** `ns/name` -> `name` */
@@ -190,7 +228,7 @@ export function autoRollbackView(r: Rollout | null | undefined): AutoRollbackVie
 	}
 	if (c.status === 'False' && head.bakeStatus === 'Failed') {
 		const rows = verdictRows(head);
-		return { state: 'not-rolled-back', reason: c.reason, headline: notRolledBackHeadline(c.reason, head, rows), failed: head, rows, message: c.message };
+		return { state: 'not-rolled-back', reason: c.reason, headline: notRolledBackHeadline(c.reason, head, rows), why: notRolledBackWhy(c.reason, head, rows), failed: head, rows, message: c.message };
 	}
 	return null;
 }
@@ -211,16 +249,21 @@ export function entryRolledBack(r: Rollout | null | undefined, entry: HistoryEnt
 }
 
 /**
- * The one line above a failed entry's verdict rows in History: what the controller did with this failure.
- * `ran` is true only when it rolled back; otherwise a failure that "rolls back" is drawn as "would roll back" in muted ink.
+ * The one line on a failed History entry: a state word and, at most, a short reason. The verdict rows sit behind
+ * Details. `ran` is true only when it rolled back; otherwise a failure that "rolls back" is drawn as "would roll back"
+ * in muted ink. The collapsed row already says "Rolled back automatically", so a rolled-back entry names the trigger.
  */
-export function entryRollbackNote(r: Rollout | null | undefined, entry: HistoryEntry): { ran: boolean; note: string } {
-	if (entryRolledBack(r, entry)) return { ran: true, note: 'Rolled back automatically' };
-	if (!r?.spec?.autoRollback?.enabled) return { ran: false, note: 'Not rolled back: automatic rollback is off for this rollout' };
-	if (deployedByHand(entry.deployKind)) return { ran: false, note: 'Not rolled back automatically: deployed by hand' };
-	if (!entry.deployKind) return { ran: false, note: 'Not rolled back: deployed before rollback decisions were recorded' };
+export type EntryRollbackNote = { ran: boolean; word: string; why: string; note: string };
+const noteOf = (ran: boolean, word: string, why = ''): EntryRollbackNote => ({ ran, word, why, note: why ? `${word} · ${why}` : word });
+
+export function entryRollbackNote(r: Rollout | null | undefined, entry: HistoryEntry): EntryRollbackNote {
+	const rows = verdictRows(entry);
+	if (entryRolledBack(r, entry)) return noteOf(true, 'Rolled back', triggerLine(rows.filter((x) => x.rollsBack)));
+	if (!r?.spec?.autoRollback?.enabled) return noteOf(false, rows.some((x) => x.rollsBack) ? 'Would roll back' : 'Not rolled back', 'Automatic rollback is off');
+	if (deployedByHand(entry.deployKind)) return noteOf(false, 'Not rolled back', 'Deployed by hand');
+	if (!entry.deployKind) return noteOf(false, 'Not rolled back', 'Deployed before rollback decisions were recorded');
 	const head = r.status?.history?.[0];
 	const c = cond(r);
-	if (head === entry && c?.status === 'False' && c.reason) return { ran: false, note: notRolledBackHeadline(c.reason, entry, verdictRows(entry)) };
-	return { ran: false, note: 'Not rolled back' };
+	if (head === entry && c?.status === 'False' && c.reason) return noteOf(false, 'Not rolled back', notRolledBackWhy(c.reason, entry, rows));
+	return noteOf(false, 'Not rolled back');
 }

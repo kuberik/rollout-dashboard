@@ -455,7 +455,6 @@ lib/components/FailurePanel.svelte	text	+ … more
 lib/components/FailurePanel.svelte	code	A health check
 lib/components/FailurePanel.svelte	code	An error occurred during deployment.
 lib/components/FailurePanel.svelte	text	Automated deployments are held until this is resolved.
-lib/components/FailurePanel.svelte	title	Deployment failed
 lib/components/FailurePanel.svelte	code	Roll back
 lib/components/FailureSourceRow.svelte	text	&nbsp; …
 lib/components/FailureSourceRow.svelte	text	&nbsp;at failure
@@ -1182,6 +1181,7 @@ lib/components/RetryTestsModal.svelte	text	Re-run tests. Pipeline stays paused u
 lib/components/RetryTestsModal.svelte	text	Retry tests
 lib/components/RetryTestsModal.svelte	text	Skip tests
 lib/components/RetryTestsModal.svelte	code	Unknown test
+lib/components/RollbackGlance.svelte	aria-label	replaced by
 lib/components/RolloutHeaderFlows.svelte	code	… · Check restarted
 lib/components/RolloutHeaderFlows.svelte	code	Failed to retry
 lib/components/RolloutHeaderFlows.svelte	code	Retry started
@@ -1388,39 +1388,47 @@ lib/view-models/auto-deploy.ts	code	Nothing moves off … until the pin is clear
 lib/view-models/auto-deploy.ts	code	the last deploy failed its checks
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there.
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there.
+lib/view-models/auto-rollback.ts	code	… does not roll back
+lib/view-models/auto-rollback.ts	code	… failed for a reason that does not roll back
+lib/view-models/auto-rollback.ts	code	… is opted out
 lib/view-models/auto-rollback.ts	code	a check that cannot run never rolls back
+lib/view-models/auto-rollback.ts	code	A deploy was already requested by hand
 lib/view-models/auto-rollback.ts	code	Apply failed
 lib/view-models/auto-rollback.ts	code	apply failures
 lib/view-models/auto-rollback.ts	code	Automatic rollback
+lib/view-models/auto-rollback.ts	code	Automatic rollback is off
+lib/view-models/auto-rollback.ts	code	check could not run
 lib/view-models/auto-rollback.ts	code	Check error
 lib/view-models/auto-rollback.ts	code	check errors
+lib/view-models/auto-rollback.ts	code	Deployed before rollback decisions were recorded
+lib/view-models/auto-rollback.ts	code	Deployed by hand
 lib/view-models/auto-rollback.ts	code	does not roll back
 lib/view-models/auto-rollback.ts	code	Force deployed
+lib/view-models/auto-rollback.ts	code	No earlier build passed its bake
+lib/view-models/auto-rollback.ts	code	None of the … failures roll back
+lib/view-models/auto-rollback.ts	code	not a rollback kind
 lib/view-models/auto-rollback.ts	code	Not ready
 lib/view-models/auto-rollback.ts	code	Not rolled back
-lib/view-models/auto-rollback.ts	code	Not rolled back automatically
-lib/view-models/auto-rollback.ts	code	Not rolled back automatically: a deploy was already requested by hand
-lib/view-models/auto-rollback.ts	code	Not rolled back automatically: deployed by hand
-lib/view-models/auto-rollback.ts	code	Not rolled back: … failed for a reason that does not roll back
-lib/view-models/auto-rollback.ts	code	Not rolled back: … failed, and it does not roll back
-lib/view-models/auto-rollback.ts	code	Not rolled back: automatic rollback is off for this rollout
-lib/view-models/auto-rollback.ts	code	Not rolled back: deployed before rollback decisions were recorded
-lib/view-models/auto-rollback.ts	code	Not rolled back: no earlier build passed its bake
-lib/view-models/auto-rollback.ts	code	Not rolled back: none of the … failures roll back
-lib/view-models/auto-rollback.ts	code	Not rolled back: the rollback deploy could not be written
+lib/view-models/auto-rollback.ts	code	Not rolled back · …
+lib/view-models/auto-rollback.ts	code	opted in
 lib/view-models/auto-rollback.ts	code	opted in with rollout.kuberik.com/rollback: true
+lib/view-models/auto-rollback.ts	code	opted out
 lib/view-models/auto-rollback.ts	code	opted out with rollout.kuberik.com/rollback: false
 lib/view-models/auto-rollback.ts	code	resources that are not ready
-lib/view-models/auto-rollback.ts	code	Rolled back automatically
+lib/view-models/auto-rollback.ts	code	Rolled back
 lib/view-models/auto-rollback.ts	code	rolls back
 lib/view-models/auto-rollback.ts	code	Rules bypassed
 lib/view-models/auto-rollback.ts	code	Test failed
 lib/view-models/auto-rollback.ts	code	test failures
 lib/view-models/auto-rollback.ts	code	the check does not roll back on …
 lib/view-models/auto-rollback.ts	code	the check rolls back on …
+lib/view-models/auto-rollback.ts	code	The rollback deploy could not be written
 lib/view-models/auto-rollback.ts	code	these failures
 lib/view-models/auto-rollback.ts	code	this build
+lib/view-models/auto-rollback.ts	code	Triggered by …
+lib/view-models/auto-rollback.ts	code	Triggered by … and … more
 lib/view-models/auto-rollback.ts	code	unclassified failures
+lib/view-models/auto-rollback.ts	code	Would roll back
 lib/view-models/banner.ts	code	… … in …${place ?
 lib/view-models/blocking-story.ts	code	— it is on
 lib/view-models/blocking-story.ts	code	, not 1
@@ -2235,13 +2243,11 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	deployed … ago
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Deployment pipeline
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	External links
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	failed here
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	failed its bake, so
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to check for new versions
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to continue rollout
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Failed to continue rollout: …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Held by rules
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Holding … rollout … — … … … .
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	is running again. … … … stays held until someone deploys it by name. …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Loading releases…
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Lockstep is set on … only
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Newer builds

@@ -109,7 +109,8 @@
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import AutoRollbackVerdicts from '$lib/components/AutoRollbackVerdicts.svelte';
-	import { autoRollbackView, failedBakeHeld } from '$lib/view-models/auto-rollback';
+	import { autoRollbackView, failedBakeHeld, triggerLine } from '$lib/view-models/auto-rollback';
+	import RollbackGlance from '$lib/components/RollbackGlance.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import { readyIssue, readyFacts, type ReadyIssue } from '$lib/view-models/ready-refusal';
@@ -3777,6 +3778,7 @@
 						     control stays `Details`, because nobody opens a banner to
 						     find an email address and ONE record is not a set. -->
 						{#snippet rollbackDetail()}
+							{#if autoRolled}<div class="mb-2"><AutoRollbackVerdicts rows={[...autoRolled.triggers, ...autoRolled.spared]} /></div>{/if}
 							<p class="break-words">{rollbackNext(rolledBack, autoDeploy)}</p>
 							{#if author}
 								<FactList
@@ -3816,10 +3818,14 @@
 						{#snippet rollbackMessage()}
 							{#if autoRolled}
 								{@const failedName = getDisplayVersion(autoRolled.failed.version)}
-								<p data-auto-rollback-sentence>
-									<span class="text-fg">{failedName}</span> failed its bake, so <span class="text-fg">{autoRolled.target}</span> is running again.{#if failedBakeHeld(rollout, autoRolled.failed.version.tag)}{' '}{failedName} stays held until someone deploys it by name.{/if}
-								</p>
-								<div class="mt-2"><AutoRollbackVerdicts rows={[...autoRolled.triggers, ...autoRolled.spared]} /></div>
+								{@const held = failedBakeHeld(rollout, autoRolled.failed.version.tag)}
+								<!-- GLANCEABLE (owner rule, 2026-11-26): the shaped fact as chips, one line naming the trigger; the verdict rows sit behind Details -->
+								<RollbackGlance
+									from={failedName}
+									to={autoRolled.target}
+									states={held ? [{ role: 'held', label: 'Held', title: `${failedName} is skipped by automatic deploys until someone deploys it by name` }] : []}
+									line={triggerLine(autoRolled.triggers)}
+								/>
 								{#if canModify && failedBakeHeld(rollout, autoRolled.failed.version.tag)}
 									<!-- the release for the hold: the same `Deploy anyway` the held build's row in Newer builds carries, here where the hold is stated -->
 									<div class="mt-3">

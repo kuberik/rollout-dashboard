@@ -2917,9 +2917,18 @@
 																	{#if entry.bakeStatus === 'Failed' && verdictRows(entry).length > 0}
 																		{@const rbNote = entryRollbackNote(rollout, entry)}
 																		<!-- AUTO-ROLLBACK PREVIEW: which failed sources roll back, and why (the controller's verdicts, kept on the entry) -->
+																		<!-- GLANCEABLE (owner rule, 2026-11-26): one state word and a short reason; the verdict rows sit behind Details -->
 																		<div class="flex flex-col gap-1.5" data-history-verdicts>
-																			<span class="t-meta text-fg-subtle" data-testid="history-rollback-note">{rbNote.note}</span>
-																			<AutoRollbackVerdicts rows={verdictRows(entry)} would={!rbNote.ran} />
+																			<span class="t-meta flex flex-wrap items-baseline gap-x-1.5" data-testid="history-rollback-note"
+																				><span class="font-medium {rbNote.ran ? 'text-fg' : 'text-fg-muted'}">{rbNote.word}</span
+																				>{#if rbNote.why}<span class="text-fg-subtle">{rbNote.why}</span>{/if}</span
+																			>
+																			<details class="group t-meta" data-history-verdict-details>
+																				<summary class="nav-link inline-flex cursor-pointer list-none items-center gap-1 text-fg-muted"
+																					><ChevronRightOutline class="h-3 w-3 transition-transform group-open:rotate-90" aria-hidden="true" />Details</summary
+																				>
+																				<div class="mt-1.5"><AutoRollbackVerdicts rows={verdictRows(entry)} would={!rbNote.ran} /></div>
+																			</details>
 																		</div>
 																	{/if}
 																	<!-- ⭐ DROPPED: "Checked for Xm" (AD round 2, same "drop

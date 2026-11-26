@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rollout } from '../../types';
-import { autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, splitSource, verdictRows, whyWords } from './auto-rollback';
+import { autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
 
 const v = (tag: string) => ({ tag, version: `1.${tag.slice(-1)}.0`, revision: 'a'.repeat(40), created: '2026-11-21T10:00:00Z' });
 const failed = {
@@ -66,15 +66,29 @@ describe('auto-rollback view-model', () => {
 		r.status!.history = [{ id: 6, version: v('r5'), timestamp: 't', deployKind: 'Automatic', bakeStatus: 'InProgress' } as never, ...r.status!.history!];
 		expect(autoRollbackView(r)).toBeNull();
 	});
-	it('not rolled back: ManualDeploy uses the design wording', () => {
+	it('not rolled back: ManualDeploy gives a short reason beside the state word', () => {
 		const r = { status: { conditions: [{ type: 'AutoRollback', status: 'False', reason: 'ManualDeploy' }], history: [{ ...failed, deployKind: 'ForceDeploy' }] } } as never;
 		const a = autoRollbackView(r);
-		expect(a?.state === 'not-rolled-back' && a.headline).toBe('Not rolled back automatically: deployed by hand');
+		expect(a?.state === 'not-rolled-back' && a.why).toBe('Deployed by hand');
+		expect(a?.state === 'not-rolled-back' && a.headline).toBe('Not rolled back · Deployed by hand');
+	});
+	it('every reason line stays within 12 words', () => {
+		const rows = verdictRows(failed as never);
+		for (const reason of ['ManualDeploy', 'ManualIntent', 'NoTarget', 'DeployError', 'NotATrigger', 'Other']) {
+			expect(notRolledBackWhy(reason, failed as never, rows).split(/\s+/).length).toBeLessThanOrEqual(12);
+		}
+	});
+	it('names the trigger in one line', () => {
+		const rows = verdictRows(failed as never).filter((x) => x.rollsBack);
+		expect(triggerLine(rows)).toBe('Triggered by smoke');
+		expect(triggerLine([...rows, ...rows])).toBe('Triggered by smoke and 1 more');
+		expect(triggerLine([])).toBe('');
 	});
 	it('NotATrigger names the one source that did not trigger', () => {
 		const only = { ...failed, failedHealthChecks: [{ ...failed.failedHealthChecks[0], failures: [failed.failedHealthChecks[0].failures[0]] }] };
 		const rows = verdictRows(only as never);
-		expect(notRolledBackHeadline('NotATrigger', only as never, rows)).toBe('Not rolled back: flaky-ui failed, and it does not roll back');
+		expect(notRolledBackWhy('NotATrigger', only as never, rows)).toBe('flaky-ui is opted out');
+		expect(notRolledBackHeadline('NotATrigger', only as never, rows)).toBe('Not rolled back · flaky-ui is opted out');
 	});
 	it('reads the hold from candidates[].failedBake', () => {
 		expect(failedBakeHeld(rolledBack(), 'r4')).toBe(true);
@@ -94,11 +108,11 @@ describe('entryRollbackNote: verdicts follow what the controller decided', () =>
 		const e = failed();
 		const r = ro(true, [ok({ id: 8, deployKind: 'AutoRollback', rollbackOf: 7 }), e, ok()]);
 		expect(entryRolledBack(r, e)).toBe(true);
-		expect(entryRollbackNote(r, e)).toEqual({ ran: true, note: 'Rolled back automatically' });
+		expect(entryRollbackNote(r, e)).toEqual({ ran: true, word: 'Rolled back', why: 'Triggered by smoke', note: 'Rolled back · Triggered by smoke' });
 	});
 	it('rollout not opted in: never "rolls back"', () => {
 		const e = failed();
-		expect(entryRollbackNote(ro(undefined, [e, ok()]), e)).toEqual({ ran: false, note: 'Not rolled back: automatic rollback is off for this rollout' });
+		expect(entryRollbackNote(ro(undefined, [e, ok()]), e)).toMatchObject({ ran: false, word: 'Would roll back', why: 'Automatic rollback is off' });
 		expect(entryRollbackNote(ro(false, [e, ok()]), e).ran).toBe(false);
 	});
 	it('a rollback of another entry does not count for this one', () => {
@@ -107,21 +121,21 @@ describe('entryRollbackNote: verdicts follow what the controller decided', () =>
 		expect(entryRolledBack(r, e)).toBe(false);
 	});
 	it.each([
-		['ManualIntent', 'Not rolled back automatically: a deploy was already requested by hand'],
-		['NoTarget', 'Not rolled back: no earlier build passed its bake'],
-		['DeployError', 'Not rolled back: the rollback deploy could not be written']
-	])('skipped as %s: the condition reason is the note, verdicts are conditional', (reason, note) => {
+		['ManualIntent', 'A deploy was already requested by hand'],
+		['NoTarget', 'No earlier build passed its bake'],
+		['DeployError', 'The rollback deploy could not be written']
+	])('skipped as %s: the condition reason is the note, verdicts are conditional', (reason, why) => {
 		const e = failed();
 		const r = ro(true, [e, ok()], [{ type: 'AutoRollback', status: 'False', reason, message: '' }]);
-		expect(entryRollbackNote(r, e)).toEqual({ ran: false, note });
+		expect(entryRollbackNote(r, e)).toMatchObject({ ran: false, word: 'Not rolled back', why });
 	});
 	it('deployed by hand, or before deploy kinds were recorded', () => {
-		expect(entryRollbackNote(ro(true, [failed({ deployKind: 'ForceDeploy' })]), failed({ deployKind: 'ForceDeploy' })).note).toBe('Not rolled back automatically: deployed by hand');
+		expect(entryRollbackNote(ro(true, [failed({ deployKind: 'ForceDeploy' })]), failed({ deployKind: 'ForceDeploy' })).note).toBe('Not rolled back · Deployed by hand');
 		const old = failed({ deployKind: undefined });
-		expect(entryRollbackNote(ro(true, [old]), old)).toEqual({ ran: false, note: 'Not rolled back: deployed before rollback decisions were recorded' });
+		expect(entryRollbackNote(ro(true, [old]), old)).toMatchObject({ ran: false, why: 'Deployed before rollback decisions were recorded' });
 	});
 	it('an older failed entry that was not rolled back reads plainly', () => {
 		const e = failed({ id: 3 });
-		expect(entryRollbackNote(ro(true, [ok({ id: 9 }), e]), e)).toEqual({ ran: false, note: 'Not rolled back' });
+		expect(entryRollbackNote(ro(true, [ok({ id: 9 }), e]), e)).toEqual({ ran: false, word: 'Not rolled back', why: '', note: 'Not rolled back' });
 	});
 });

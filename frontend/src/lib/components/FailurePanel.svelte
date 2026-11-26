@@ -19,6 +19,7 @@
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
 	import AutoRollbackVerdicts from './AutoRollbackVerdicts.svelte';
+	import RollbackGlance from './RollbackGlance.svelte';
 	import { autoRollbackView } from '$lib/view-models/auto-rollback';
 	import { poolOf, worstOf, bannerEvidence, failingNowList, failingSummary, checkView, failureSince as checksFailingSince, type SnapCheck } from '$lib/view-models/health-failures';
 
@@ -273,10 +274,10 @@
 	class="mb-4"
 	severity="failed"
 	recovered={allRecovered}
-	title="Deployment failed"
-	observations={evidence ? evObservations : observations}
-	check={evidence ? evCheck : undefined}
-	message={evidence ? evMessage : failureAgo ? `${bannerMessage} \u00b7\u00a0${failureAgo}\u00a0ago` : bannerMessage}
+	title={notRolled ? 'Failed · not rolled back' : 'Deployment failed'}
+	observations={notRolled ? undefined : evidence ? evObservations : observations}
+	check={notRolled ? undefined : evidence ? evCheck : undefined}
+	message={notRolled ? undefined : evidence ? evMessage : failureAgo ? `${bannerMessage} \u00b7\u00a0${failureAgo}\u00a0ago` : bannerMessage}
 	footnoteLabel="Details"
 	pulse={true}
 	primary={retryFirst ? (canUpdate ? retryAct : undefined) : rollbackShown ? rollbackAct : undefined}
@@ -289,11 +290,16 @@
 >
 	{#snippet body()}
 		{#if notRolled}
-			<p class="min-w-0 font-medium text-fg" data-not-rolled-back={notRolled.reason}>{notRolled.headline}</p>
-			{#if notRolled.rows.length > 0}<AutoRollbackVerdicts rows={notRolled.rows} would={notRolled.reason !== 'NotATrigger'} />{/if}
+			<!-- GLANCEABLE (owner rule, 2026-11-26): the headline carries both states, so the body is the reason in one short line;
+			     the failing check, its figures and the verdict rows sit behind Details -->
+			<div data-not-rolled-back={notRolled.reason} title={notRolled.headline}>
+				<RollbackGlance line={[notRolled.why, failureAgo ? `${failureAgo} ago` : ''].filter(Boolean).join(' · ')} />
+			</div>
 		{/if}
 	{/snippet}
 	{#snippet footnoteBody()}
+		{#if notRolled && notRolled.rows.length > 0}<div class="mb-2"><AutoRollbackVerdicts rows={notRolled.rows} would={notRolled.reason !== 'NotATrigger'} /></div>{/if}
+		{#if notRolled && !evidence && bannerMessage}<p class="mb-1 break-words">{bannerMessage}</p>{/if}
 		{#if evidence}
 			<FailureDetails {pool} />
 		{:else if failedHCList.length > 0}
