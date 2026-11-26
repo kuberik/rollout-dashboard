@@ -22,6 +22,7 @@
 	import { homePage } from './home-page';
 	import type { PageProps } from './pages';
 	import SkeletonBar from '$lib/components/skeleton/SkeletonBar.svelte';
+	import RepoListSkeleton from '$lib/components/skeleton/RepoListSkeleton.svelte';
 	import { githubAbsence } from './data';
 	import ConnectGithubAction from '$lib/components/ConnectGithubAction.svelte';
 
@@ -30,6 +31,11 @@
 	const P = $derived(homePage(hs));
 	const A = $derived(apps(hs));
 	const span = $derived(false); // owner 2026-11-08: no card spans a row
+	/* "Your changes" placeholder (visual audit #18): as many skeleton rows as the list had last time, so the flip moves nothing (3 on a
+	 * first visit; 0 keeps the empty card's shape, which is what will land) */
+	const MINE_ROWS_KEY = 'kuberik.home.mine-rows';
+	const lastRows = (() => { try { const v = localStorage.getItem(MINE_ROWS_KEY); return v === null ? null : Math.min(8, Number(v) || 0); } catch { return null; } })();
+	$effect(() => { if (!ab) try { localStorage.setItem(MINE_ROWS_KEY, String(P.repos.length)); } catch { /* private mode */ } });
 </script>
 
 
@@ -61,6 +67,8 @@
 					<RepoList>
 						{#each P.repos as r (r.repo)}<RepoCard model={r.card} href={r.href} shell="item" />{/each}
 					</RepoList>
+				{:else if ab?.kind === 'loading' && lastRows !== 0}
+					<RepoListSkeleton rows={lastRows ?? 3} />
 				{:else}
 					<div class="empty" data-list-empty data-github-absence={ab?.kind}>
 						<CodeBranchOutline class="h-5 w-5 text-fg-disabled" aria-hidden="true" />
