@@ -52,7 +52,12 @@
 	import Chip from '$lib/components/Chip.svelte';
 	import QueryBar from '$lib/components/filter/QueryBar.svelte';
 	import { isFiltered, type FilterQuery, queryString } from '$lib/components/filter/filter-model';
-	import { depEntries, depDefs, depText, parseDepFilter, depParams, keptColumns, narrowToSearch } from '$lib/components/dependencies-filter';
+	import { depDefs, depText, parseDepFilter, depParams, type DepEntry } from '$lib/components/dependencies-filter';
+	import { applyQuery } from '$lib/components/filter/filter-model';
+	import DependencyLanes, { lanesNaturalWidth, lanesMinWidth } from '$lib/components/DependencyLanes.svelte';
+	import DependencyLanesPhone from '$lib/components/DependencyLanesPhone.svelte';
+	import StatusMark from '$lib/components/StatusMark.svelte';
+	import { buildLanes, heldSinceByEdge, ageOf, freesByService, regionShare, otherHoldsPhrase, NO_ENV, type LaneBlocker } from '$lib/view-models/dependency-lanes';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import ClusterMark from '$lib/components/ClusterMark.svelte';
@@ -166,15 +171,124 @@ import { heldHereGates } from '$lib/view-models/held';
 		written = cur;
 		f = parseDepFilter(page.url.searchParams);
 	});
-	const depRows = $derived(depEntries(full.nodes, (e) => envThemes.has(e)));
-	const depFacets = $derived(depDefs(full.envs, (e) => envLabel(e)));
-	const kept = $derived(keptColumns(depRows, f, depFacets));
+	/* TAKE B: the filter narrows the MATRIX. Environment = the column a rollout is drawn in (its Environment's tier, or where its
+	   cluster says it runs), Namespace = the rollout's own namespace. A kept held rollout keeps its held providers (buildLanes), so the
+	   banner, the ranked list and the matrix are computed from the same visible set and can never name something not drawn. */
+	const heldSince = $derived(heldSinceByEdge(full, query.data?.rolloutDependencies?.items ?? []));
+	/* The Gates tab's range or none: a held build set asking several ranges with no Gates-tab reading prints the contract alone
+	   ("needs payments"), never the first range of the set — the map may not name a range the rollout's own page does not
+	   (pinned by gates-agreement.svelte.test.ts). */
+	const needOf = (e: GraphEdge) => heldRequirement(e);
+	const fullLanes = $derived(buildLanes({ graph: full, environments, heldSince, needOf }));
+	const colOfNode = $derived.by(() => {
+		const m = new Map<string, string>();
+		for (const c of fullLanes.cells.values()) for (const n of c.nodes) m.set(n.id, c.col);
+		return m;
+	});
+	type DepRow = DepEntry & { id: string };
+	const depRows = $derived<DepRow[]>(
+		full.nodes.map((n) => {
+			const col = colOfNode.get(n.id) ?? NO_ENV;
+			return { id: n.id, env: col === NO_ENV ? '' : col, ns: n.namespace, name: n.name };
+		})
+	);
+	const depFacets = $derived(depDefs(fullLanes.columns.map((c) => c.key), (e) => e));
 	const filtered = $derived(isFiltered(f));
-	/* a filter that keeps nothing is an empty graph, not "everything" (filterByEnv treats [] as no filter) */
-	const graph = $derived(narrowToSearch(filterByEnv(full, kept === null ? [] : kept.length ? kept : ['\u0000']), f.q));
-	const verdict = $derived(networkVerdict(graph));
-	/* the banner and the Held links rail are page facts: they read the whole graph, so a filter never removes them or moves the bar under them */
+	const keep = $derived.by(() => {
+		if (!filtered) return null;
+		const kept = applyQuery(depRows, f, depFacets as never, depText as never) as DepRow[];
+		return new Set(kept.map((r) => r.id));
+	});
+	const lanes = $derived(keep ? buildLanes({ graph: full, environments, heldSince, needOf, keep }) : fullLanes);
 	const blocked = $derived(full.blockedEdges);
+	let focusKey = $state<string | null>(null);
+	const focusBlocker = $derived(lanes.blockers.find((b) => b.node.id === focusKey) ?? null);
+	const focusSet = $derived(focusBlocker ? new Set([focusBlocker.node.id, ...focusBlocker.frees.map((n) => n.id)]) : null);
+	let now = $state(new Date());
+	$effect(() => {
+		const t = setInterval(() => (now = new Date()), 60000);
+		return () => clearInterval(t);
+	});
+	const topBlocker = $derived<LaneBlocker | null>(lanes.blockers[0] ?? null);
+	/** No held link and no held cell: the map says "Nothing is held" (REFS pattern 11); approvals alone say "No deploy holds another". */
+	const nothingHeld = $derived(lanes.heldLinks === 0 && [...lanes.cells.values()].every((c) => c.held === 0));
+	/** Calm with held cells (R2-DES-B-5): never "nothing held" beside held marks — name what IS held, counted from the data. */
+	const otherHolds = $derived(lanes.heldLinks === 0 ? otherHoldsPhrase(lanes) : null);
+	/** The map card's cap: the widest the matrix draws (cells at their max, gutters capped), so the rest goes to the rail. */
+	const mapMax = $derived(
+		lanesNaturalWidth(
+			lanes.columns.length,
+			new Set(lanes.links.filter((l) => l.kind === 'contract').map((l) => l.from)).size
+		)
+	);
+	/**
+	 * THE MATRIX GETS ITS WIDTH FIRST (R2-DES-B-1). `mapMin` is the narrowest card in which every cell keeps its build and
+	 * reason whole (`CELL_MIN`). Three forms, one decision, all read off the same wrap width:
+	 *   side    — the rail sits beside the map only while the map still gets `mapMin` (1440 and up on the mock fleet);
+	 *   stacked — otherwise the map takes the full width, the rail stacks (1280, 1366: cells 160-180px instead of 105);
+	 *   phone   — when even a full-width map is under `mapMin` (980, 1024 with the sidebar open), the phone form draws
+	 *             (blocker trees + line map), which was made for a narrow container.
+	 * Chosen over narrowing the label column (it frees 28px, the 1024-1366 band needed 70-150) and over wrapping builds
+	 * (a version split over two lines is not legible).
+	 */
+	let wrapW = $state(0);
+	const mapMin = $derived.by(() => {
+		const t = new Map<string, Set<string>>();
+		for (const c of lanes.columns) t.set(c.key, new Set());
+		for (const l of lanes.links) if (l.kind === 'contract') t.get(lanes.cells.get(l.from)!.col)?.add(l.from);
+		return lanesMinWidth(lanes.columns.map((c) => t.get(c.key)?.size ?? 0));
+	});
+	const RAIL_MIN = $derived(wrapW >= 1300 ? 320 : 300);
+	const RAIL_GAP = 32;
+	/* 'compact' (R3-DES-B-1): a laptop wrap (≥ 700, a 1024 viewport with the sidebar open) too narrow for the matrix keeps
+	   main + rail (≥ 1024 is never one column): the line map in the main card, the blocker trees as a 328px rail card. */
+	const layout = $derived<'phone' | 'compact' | 'stacked' | 'side'>(
+		wrapW === 0
+			? 'side'
+			: wrapW < mapMin
+				? wrapW >= 700
+					? 'compact'
+					: 'phone'
+				: wrapW >= 1000 && wrapW - RAIL_GAP - RAIL_MIN >= mapMin
+					? 'side'
+					: 'stacked'
+	);
+	let railHighlight = $state<string[] | null>(null);
+	/* Held relationships only where the rail sits BESIDE the map (wrap ≥ 1000) and has room (rail ≥ 480, i.e. 2560 and up):
+	   at 1440 the same fact is the edge's hover pill, and on a stacked tablet it would push the map a screen down. */
+	let railW = $state(0);
+	/** One row per held CONTRACT relationship (regions already folded per cell pair by the view-model). Promotion rows are not
+	 *  listed (R2-DES-B-11): "waits for dev" is already the held cell's own line in the map; the contract's "has" is the one fact
+	 *  the map does not print at rest. */
+	const heldRelations = $derived(
+		lanes.links
+			.filter((l) => l.held && l.kind === 'contract')
+			.map((l) => {
+				const a = lanes.cells.get(l.from)!;
+				const b = lanes.cells.get(l.to)!;
+				const share = regionShare(l.heldCount, b.sites.length);
+				const regions = share ? ` · ${share}` : '';
+				const where = a.col === b.col ? `${colWord(b.col)}${regions}` : `${colWord(a.col)} → ${colWord(b.col)}`;
+				const build = l.edges.find((e) => e.held.length)?.held[0];
+				const fact =
+					l.kind === 'contract'
+						? `needs ${l.contract ?? 'a contract'}${l.needs.length ? ` ${l.needs.join(' or ')}` : ''} · has ${l.serves ?? 'none here'}`
+						: build
+							? `${build} not in ${colWord(a.col)} yet`
+							: `waits for ${colWord(a.col)}`;
+				const n = b.nodes[0];
+				return {
+					key: l.key,
+					from: l.kind === 'contract' ? a.service : null,
+					to: b.service,
+					where,
+					fact,
+					since: ageOf(l.since, now),
+					href: b.nodes.length === 1 ? href(`/rollouts/${n.cluster}/${n.namespace}/${n.name}`) : href(`/apps/${b.service}`)
+				};
+			})
+	);
+	const colWord = (c: string) => (c === NO_ENV ? 'no environment' : c);
 	const nodeById = $derived(new Map(full.nodes.map((n) => [n.id, n] as const)));
 
 	/** Environments the graph actually touches, in promotion order. */
@@ -391,222 +505,175 @@ import { heldHereGates } from '$lib/view-models/held';
 			</div>
 		</div>
 	{:else}
-		{#if blocked.length > 0}
-			<!-- THE PAGE'S ONE BLOCKING FACT, at banner scale. `pinned` (held),
-			     not `warning` (stuck only, per DESIGN-LANGUAGE.md §2.5/§3.12):
-			     neither kind of block clears itself and neither clears on
-			     approval — somebody has to ship the thing in front, but this
-			     is a HOLD, not a stuck rollout. -->
-			<!-- ⭐ NO `icon` OVERRIDE (round 4 review, 2026-10-09). `pinned`'s
-			     `defaultIcon` is `HeldGlyph` now (`AlertPanel`'s own severity
-			     table) — the TL is fixing the banner disc centrally there;
-			     this call site stops hand-picking `ShareNodesSolid` via
-			     `iconForKind`, the same share-node BlockingStoryPanel draws
-			     for a contract block elsewhere, which doubled as a SECOND
-			     "held" glyph beside `HeldGlyph`'s gate. -->
+		{#if lanes.heldByDeploy > 0 && topBlocker}
+			<!-- THE PAGE'S ONE BLOCKING FACT (held = `pinned`, HeldGlyph). It names the blocker that frees the most; the matrix and the
+			     ranked list below draw that exact cell, so headline and centrepiece cannot disagree (D2). -->
 			<AlertPanel
 				severity="pinned"
-				title={bannerTitle}
-				message={bannerMessage}
-				footnote={bannerDetail ?? undefined}
+				title={`${lanes.heldByDeploy} rollout${lanes.heldByDeploy === 1 ? ' is' : 's are'} held by another deploy`}
+				message={`${topBlocker.node.name} in ${colWord(topBlocker.cell.col)} frees the most: ${topBlocker.frees.length} rollout${topBlocker.frees.length === 1 ? '' : 's'} wait on it.`}
+				footnote={lanes.oldestSince ? `Oldest hold ${ageOf(lanes.oldestSince, now)}, newest ${ageOf(lanes.newestSince, now)} ago. ${lanes.heldLinks} of ${lanes.totalLinks} links held.` : undefined}
 			>
 				{#snippet actions()}
-					<!-- ⭐ THE BANNER'S RIGHT SLOT WAS EMPTY. (round 2 review,
-					     2026-10-08) A plain in-page anchor, not a `goto` — the
-					     held list is a real `id` on the page (`#held-links`),
-					     at every width: first on a phone (see the mobile-order
-					     note by `.dep-rail`), beside the graph in the rail at
-					     ≥1024. -->
-					<a href="#held-links" class="btn btn-secondary" data-action="held-links">Show held links</a>
+					<button type="button" class="btn btn-secondary" data-action="focus-top" onclick={() => (focusKey = focusKey === topBlocker.node.id ? null : topBlocker.node.id)}>
+						{focusKey === topBlocker.node.id ? 'Show all' : `Trace ${topBlocker.node.name}`}
+					</button>
 				{/snippet}
 			</AlertPanel>
 		{/if}
 
-		<!-- ⭐ MAIN + RAIL, ≥1024 NEVER SINGLE COLUMN — AND THE HELD LIST LEADS
-		     ON A PHONE. (round 2 review, 2026-10-08) `.rail-wrap`/`.rail-grid`/
-		     `.rail-main`/`.rail-side` (`app.css`) is the same shared shell Home
-		     and `/activity`'s rail use, reused verbatim — only while there IS
-		     a rail: a healthy graph with nothing held has no second card to
-		     put beside it, and the grid's reserved 280-320px column would
-		     just be empty space, so the plain single column renders when
-		     `blocked.length === 0` (`{#if}`/`{:else}` around a shared
-		     `graphSection` snippet, not a duplicated copy of the filters +
-		     graph Card). The graph stays the CENTREPIECE — first and widest
-		     in the rail-grid's source order, so it leads at ≥1024 where both
-		     sit side by side — but on a phone the held list is what needs a
-		     person RIGHT NOW and the graph is reference material, so
-		     `.dep-rail-main`/`.dep-rail-side` flip `order` below the shell's
-		     own container-query breakpoint (scoped styles below, same 760px
-		     step `.rail-grid` itself turns on). -->
-		{#snippet graphSection()}
-			{#if graphEnvs.length > 1}
-				<!-- THE QUERY BAR FILTERS WHICH COLUMNS RENDER. A node IS a (service, environment), so keeping `prod` leaves the prod column and the
-				     contract edges inside it; the promotion edges into it come from a column no longer on screen and are dropped with it.
-				     Environment = real tiers, Namespace = the fallback columns of rollouts no Environment binds (not environments, so a separate property). -->
-				<div class="mb-4" data-dep-filter>
-					<QueryBar rows={depRows} defs={depFacets} text={depText} query={f} onchange={setFilter} placeholder="Search or filter rollouts" placeholderShort="Search or filter" label="Search and filter the dependency graph" hints={{ env: 'prod, staging, dev …', ns: 'a namespace' }} />
-				</div>
-			{/if}
-
+		{#snippet matrix()}
+			<div class="mb-4" data-dep-filter>
+				<QueryBar rows={depRows} defs={depFacets} text={depText} query={f} onchange={setFilter} placeholder="Search or filter rollouts" placeholderShort="Search or filter" label="Search and filter the dependency map" hints={{ env: 'prod, staging, dev …', ns: 'a namespace' }} />
+			</div>
 			<Card
 				icon={ShareNodesSolid}
-				title="Dependency graph"
-				verdict={verdict.text}
-				verdictTone={verdict.tone}
-				class="mb-6"
+				title="Dependency map"
+				verdict={lanes.totalLinks === 0 ? 'no links' : lanes.heldLinks ? `${lanes.heldLinks} of ${lanes.totalLinks} links held` : otherHolds ? `No dependency holds · ${otherHolds.n} held by ${otherHolds.by}` : nothingHeld ? 'Nothing is held' : 'No dependency holds'}
+				verdictTone={lanes.heldLinks ? 'held' : 'neutral'}
 			>
-				{#if graph.nodes.length === 0}
+				{#if lanes.rows.length === 0}
 					<p class="t-meta py-6 text-center text-fg-subtle">
-						{filtered ? 'No rollout that depends on another matches this filter.' : 'No rollout depends on another.'}
-						{#if filtered}<button type="button" class="btn btn-secondary ml-2" onclick={() => setFilter({ q: '', clauses: [] })} data-filter-clear>Clear filters</button>{/if}
+						No rollout that depends on another matches this filter.
+						<button type="button" class="btn btn-secondary ml-2" onclick={() => setFilter({ q: '', clauses: [] })} data-filter-clear>Clear filters</button>
 					</p>
 				{:else}
-					<DependencyNetwork {graph} {themeOf} {heldRequirement} orderKey={(kept ?? []).join(',')} />
+					<DependencyLanes model={lanes} phone={layout === 'phone' || layout === 'compact'} phoneParts={layout === 'compact' ? 'map' : 'all'} focus={focusSet} highlight={railHighlight} {themeOf} {now} />
 				{/if}
-				{#if full.unlinkedRollouts > 0 || full.hasCycle}
-					<p class="t-meta mt-3 text-fg-subtle" data-graph-footnote>
-						{#if full.unlinkedRollouts > 0}{full.unlinkedRollouts} rollout{full.unlinkedRollouts === 1 ? '' : 's'} depend{full.unlinkedRollouts === 1 ? 's' : ''} on nothing and are not drawn{/if}{#if full.unlinkedRollouts > 0 && full.hasCycle}<span class="text-fg-disabled"> · </span>{/if}{#if full.hasCycle}<span class="text-fg">the graph contains a cycle</span>{/if}
-					</p>
-				{/if}
+				<p class="t-meta mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-fg-subtle" data-graph-footnote>
+					<span class="inline-flex items-center gap-1.5"><svg width="22" height="6" aria-hidden="true"><path d="M0,3 H22" stroke="var(--k-wire)" /></svg>clear</span>
+					<span class="inline-flex items-center gap-1.5"><svg width="22" height="6" aria-hidden="true"><path d="M0,3 H22" stroke="var(--color-held)" stroke-width="1.5" /></svg>held</span>
+					{#if layout !== 'phone' && layout !== 'compact'}<span>along a row: promotion · down a column: contract</span>{/if}
+					{#if full.unlinkedRollouts > 0}<span>{full.unlinkedRollouts} more rollouts depend on nothing</span>{/if}
+					{#if lanes.unboundCount > 0}<span>{lanes.unboundCount} without an Environment, placed where their cluster or consumers run</span>{/if}
+				</p>
 			</Card>
 		{/snippet}
 
-		<!-- ⭐ A NAMESPACE IS NOT AN ENVIRONMENT CHIP (round 5 review,
-		     2026-10-09). A node's `env` falls back to the rollout's
-		     NAMESPACE when no `Environment` record binds it
-		     (`dependency-graph.ts`'s own fallback — the graph still needs
-		     an axis to place the node on) — `themeOf(env)` is `null` in
-		     exactly that case, since `envThemes` is built from real
-		     `Environment` tiers only. Drawing that fallback as `Chip
-		     role="env"` (a bordered box + a 6px identity dot) claimed an
-		     identity the page does not have for it; a namespace is a
-		     name, so it prints as one — `t-meta text-fg-subtle`, the same
-		     ink `ClusterMark` and every other quiet qualifier on this rail
-		     already use. -->
-		{#snippet envMark(node: GraphNode | undefined)}
-			{@const t = node ? themeOf(node.env) : null}
-			{#if t}
-				<span
-					class="environment-theme-scope inline-flex"
-					style={getEnvironmentThemeStyle(t)}><Chip role="env" theme={t} label={envLabel(node!.env)} wide /></span
-				>
-			{:else if node?.env}
-				<span class="t-meta text-fg-subtle">{envLabel(node.env)}</span>
-			{/if}
-		{/snippet}
-
-		{#if blocked.length > 0}
-			<div class="rail-wrap">
-				<div class="rail-grid">
-					<div class="rail-main dep-rail-main min-w-0">
-						{@render graphSection()}
-					</div>
-					<div class="rail-side dep-rail-side min-w-0" id="held-links">
-			<!-- HeldGlyph (round 4 review) — was `ExclamationCircleOutline`,
-			     the failed/stuck glyph shape even in outline form. Every
-			     held mark on the page is the same gate now. -->
-			<Card
-				icon={HeldGlyph}
-				iconClass="text-held"
-				title="Held links"
-				verdict={`${blocked.length} of ${full.edges.length}`}
-				verdictTone="held"
-				padded={false}
-			>
-				<ul class="divide-y divide-line-subtle">
-					{#each blocked as e (e.key)}
-						{@const from = nodeById.get(e.from)}
-						{@const to = nodeById.get(e.to)}
-						<li class="px-4 py-3">
-							<!-- The relation, as one line a person can read aloud. A
-							     promotion is one service between two environments; a
-							     contract is two services inside one. The row prints
-							     whichever it is, and never both shapes at once. -->
-							<div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-								<!-- `ServerOutline`, not `ServerSolid` (round 6 review):
-								     a structural glyph naming "this row is about a
-								     service", not a status mark. -->
-								<ServerOutline class="h-4 w-4 shrink-0 text-fg-disabled" />
-								{#if e.writer === 'promotion'}
-									<a
-										href={href(`/apps/${to?.name ?? ''}`)}
-										class="t-card-title truncate text-fg hover:underline"
-										>{to?.name}</a
-									>
-									{@render envMark(from)}
-									<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-held" />
-									{@render envMark(to)}
+		<!-- main + rail at every state (calm included, so the page keeps one composition); the map card is capped at the widest
+		     the matrix draws and the rail takes the rest of a 2560/3840 screen (round 2, TL item e) -->
+		<div class="rail-wrap" class:mt-6={lanes.heldByDeploy > 0} bind:clientWidth={wrapW}>
+			<div class="dep-grid" class:dep-grid--side={layout === 'side'} class:dep-grid--phone={layout === 'phone'} class:dep-grid--compact={layout === 'compact'} style="--map-max: {mapMax}px; --map-min: {mapMin}px">
+				<div class="dep-rail-main min-w-0">{@render matrix()}</div>
+				<div class="dep-rail-side min-w-0" id="held-links" bind:clientWidth={railW}>
+					<div class="dep-rail-cards" class:dep-rail-cards--two={layout === 'side' && railW >= 1000}>
+						{#if lanes.blockers.length > 0}
+							<Card icon={HeldGlyph} iconClass="text-held" title="Unblocks the most" verdict={`${lanes.blockers.length} blocker${lanes.blockers.length === 1 ? '' : 's'}`} verdictTone="held" padded={false}>
+								{#if layout === 'compact'}
+									<DependencyLanesPhone model={lanes} focus={focusSet} parts="trees" />
 								{:else}
-									<a
-										href={href(`/apps/${from?.name ?? ''}`)}
-										class="t-card-title truncate text-fg hover:underline"
-										>{from?.name}</a
-									>
-									<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-held" />
-									<a
-										href={href(`/apps/${to?.name ?? ''}`)}
-										class="t-card-title truncate text-fg hover:underline"
-										>{to?.name}</a
-									>
-									{@render envMark(to)}
+								<ul class="divide-y divide-line-subtle">
+									{#each lanes.blockers as b (b.node.id)}
+										{@const on = focusKey === b.node.id}
+										<li class="tap-zone relative px-4 py-3" class:bg-selected={on} data-blocker={b.node.name}>
+											<div class="flex min-w-0 items-center gap-2">
+												<StatusMark state={b.node.blocked ? 'held' : 'newest'} />
+												<button type="button" class="tap-link t-card-title min-w-0 truncate text-left text-fg" aria-pressed={on} onclick={() => (focusKey = on ? null : b.node.id)}>{b.node.name}</button>
+												<span class="t-meta shrink-0 text-fg-subtle">{colWord(b.cell.col)}</span>
+												<a href={href(`/rollouts/${b.node.cluster}/${b.node.namespace}/${b.node.name}`)} class="nav-link ml-auto shrink-0 !py-0">Open ›</a>
+											</div>
+											<p class="t-meta mt-1 pl-6 text-fg-muted">{b.why}{#if b.since}<span class="text-fg-subtle">&nbsp;· {ageOf(b.since, now)}</span>{/if}</p>
+											<p class="t-meta mt-1 pl-6 text-fg-subtle">
+												<span class="tabular-nums text-held">frees {b.frees.length}</span> · {freesByService(b.freesCells).join('; ')}
+											</p>
+										</li>
+									{/each}
+								</ul>
 								{/if}
-								{#if to}
-									<a
-										href={href(`/rollouts/${to.cluster}/${to.namespace}/${to.name}`)}
-										class="nav-link ml-auto shrink-0 !py-0"
-										>Open ›</a
-									>
-								{/if}
-							</div>
-							<p class="t-meta mt-1 pl-6 text-fg-muted">{consequence(e)}</p>
-							{#if to?.cluster}
-								<p class="t-meta mt-1 flex flex-wrap items-center gap-1.5 pl-6 text-fg-subtle">
-									<ClusterMark name={to.cluster} />
+							</Card>
+						{:else}
+							<!-- calm (REFS pattern 11): the same slot, no state ink, one line that says what would appear here -->
+							<Card icon={HeldGlyph} iconClass="text-fg-disabled" title="Unblocks the most" verdict={otherHolds ? 'no dependency holds' : 'nothing held'} padded={false}>
+								<p class="t-meta px-4 py-3 text-fg-muted" data-calm-rail>
+									No deploy is waiting on another.{#if otherHolds}{' '}{otherHolds.n} rollout{otherHolds.n === 1 ? ' is' : 's are'} held by {otherHolds.by} instead; the map marks each.{/if}
+									When a release holds others, the one that frees the most leads here.
 								</p>
-							{/if}
-						</li>
-					{/each}
-				</ul>
-			</Card>
+							</Card>
+						{/if}
+						{#if heldRelations.length && layout === 'side' && railW >= 480}
+							<!-- WIDE ONLY (rail ≥ 480px, i.e. 2560 and up): each held relationship's whole fact, once. At 1440 the same fact is
+							     the hover pill on its edge (density budget); on a wide screen the room the rail gains is spent on it here. -->
+							<div>
+								<Card icon={ShareNodesSolid} title="Held relationships" verdict={`${heldRelations.length}`} verdictTone="held" padded={false}>
+									<ul class="divide-y divide-line-subtle">
+										{#each heldRelations as r (r.key)}
+											<!-- svelte-ignore a11y_no_noninteractive_element_interactions (pointer lights the edge; the link is the control) -->
+											<li class="tap-zone relative px-4 py-3" data-relation={r.key} onmouseenter={() => (railHighlight = [r.key])} onmouseleave={() => (railHighlight = null)}>
+												<div class="flex min-w-0 items-center gap-2">
+													<HeldGlyph size={12} class="shrink-0 text-held" />
+													<a href={r.href} class="tap-link t-card-title min-w-0 truncate text-fg" onfocus={() => (railHighlight = [r.key])} onblur={() => (railHighlight = null)}>{#if r.from}{r.from}&nbsp;<span class="text-fg-subtle">→</span>&nbsp;{/if}{r.to}</a>
+													<span class="t-meta ml-auto shrink-0 text-fg-subtle">{r.where}</span>
+												</div>
+												<p class="t-meta mt-1 flex gap-2 pl-6 text-held">
+													<span class="min-w-0 truncate">{r.fact}</span>
+													{#if r.since}<span class="ml-auto shrink-0 tabular-nums text-fg-subtle">{r.since}</span>{/if}
+												</p>
+											</li>
+										{/each}
+									</ul>
+								</Card>
+							</div>
+						{/if}
 					</div>
 				</div>
 			</div>
-		{:else}
-			{@render graphSection()}
-		{/if}
+		</div>
 	{/if}
 </div>
 
 <style>
-	/* ⭐ THE HELD LIST LEADS ON A PHONE, THE GRAPH LEADS AT ≥1024. (round 2
-	   review, 2026-10-08) `.rail-grid` (`app.css`) is a plain flex column
-	   below its own container-query breakpoint and a two-column grid at and
-	   above it — source order either way, with no opinion on WHICH child
-	   should lead. This page wants the opposite order on a phone (the held
-	   list needs a person right now; the graph is reference material) from
-	   the order at ≥1024 (the graph is the centrepiece, first and widest).
-	   `order` flips at the SAME step `.rail-grid` itself turns on, scoped
-	   to this page only — the shared shell's own default (source order, no
-	   `order` set) is untouched for every other caller.
-	   ⭐ 760 → 700 (design-rollout, 5f10ba7): `.rail-grid` itself moved to
-	   700px — measured, 1024 with the sidebar open gives the rail only
-	   729px of container width, under the old 760px step, so the grid
-	   stayed single-column there while this page's `order` still assumed
-	   the two-column width had already kicked in. A private copy of a
-	   shared breakpoint has exactly one job — stay the same number as the
-	   original — so this moves with it, not a value chosen independently. */
-	.dep-rail-main {
-		order: 2;
+	/* the map (the centrepiece) leads in every form; stacked, the ranked card follows it (coordinator 2026-11-25) */
+	.dep-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
 	}
-	.dep-rail-side {
+	.dep-rail-main {
 		order: 1;
 	}
-	@container (min-width: 700px) {
-		.dep-rail-main {
-			order: 1;
-		}
-		.dep-rail-side {
-			order: 2;
+	.dep-rail-side {
+		order: 2;
+		container-type: inline-size;
+	}
+	.dep-rail-cards {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+	.dep-rail-cards--two {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		align-items: start;
+	}
+	/* ONE decision for the three forms (`layout`, R2-DES-B-1): the phone form carries its own ranked trees, so the rail steps
+	   aside; stacked puts the map first, the ranked card under it; side sets the rail beside a map that still gets --map-min. */
+	.dep-grid--phone .dep-rail-side {
+		display: none;
+	}
+	.dep-grid--side {
+		display: grid;
+		grid-template-columns: minmax(var(--map-min), var(--map-max)) minmax(300px, 1fr);
+		gap: 2rem;
+		align-items: start;
+	}
+	/* laptop wrap too narrow for the matrix: line map + a rail of blocker trees, the same 32px seam as the side form. The rail is
+	   328px, not 300: the widest tree row ("checkout-api prod 4 of 5 regions" two levels deep) needs it whole; at a 1024 viewport
+	   (wrap 729) the line map keeps 369px, over its 341px phone minimum. */
+	.dep-grid--compact {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 328px;
+		gap: 2rem;
+		align-items: start;
+	}
+	.dep-grid--side .dep-rail-main {
+		order: 1;
+	}
+	.dep-grid--side .dep-rail-side {
+		order: 2;
+	}
+	@container (min-width: 1300px) {
+		.dep-grid--side {
+			grid-template-columns: minmax(var(--map-min), var(--map-max)) minmax(320px, 1fr);
 		}
 	}
 </style>

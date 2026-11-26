@@ -138,6 +138,8 @@ export function correctedHomeFixture(f: HomeFixture): HomeFixture {
  *  - payments-svc staging: no Environment object at all (a service the dependency join knows): "» Promotion" everywhere, no source.
  * Served-only, like `correctedHomeFixture`'s other edits; nothing else in the fixture changes.
  */
+/** Set by the calm/quiet scenarios on a PROMOTION_HELD rollout: its promotion hold is not added (see `withoutRefusedCandidates`). */
+const CALM_PROMOTION = 'mock.kuberik.com/promotion-clear';
 const PROMOTION_HELD: { ns: string; name: string; gate: string }[] = [
 	{ ns: 'platform-staging', name: 'payments-svc', gate: 'promotion-staging' },
 	{ ns: 'checkout-edge-staging', name: 'checkout-edge', gate: 'promotion-staging' }
@@ -145,7 +147,7 @@ const PROMOTION_HELD: { ns: string; name: string; gate: string }[] = [
 export function withPromotionHolds(f: HomeFixture): HomeFixture {
 	const rollouts = f.rollouts.map((r) => {
 		const h = PROMOTION_HELD.find((x) => x.ns === r.metadata.namespace && x.name === r.metadata.name);
-		if (!h) return r;
+		if (!h || r.metadata.annotations?.[CALM_PROMOTION]) return r;
 		const gates = [...((r.status?.gates ?? []) as unknown[]), { name: h.gate, kind: 'promotion', allowedVersions: [], message: 'Gate does not allow any release candidate' }];
 		return { ...r, status: { ...r.status, gates } };
 	});
@@ -172,9 +174,42 @@ export function homeScenarioFixture(f: HomeFixture, scenario: HomeScenario): Hom
 		}
 		if (scenario === 'home-quiet' && ((st.gates ?? []) as { name: string }[]).some((g) => /approval/.test(g.name)))
 			next = { ...next, releaseCandidates: [] };
+		next = withoutRefusedCandidates(r, next);
+		const calmPromotion = PROMOTION_HELD.some((x) => x.ns === r.metadata.namespace && x.name === r.metadata.name);
+		if (calmPromotion) return { ...r, metadata: { ...r.metadata, annotations: { ...r.metadata.annotations, [CALM_PROMOTION]: 'true' } }, status: next };
 		return next === st ? r : { ...r, status: next };
 	});
-	return { ...f, rollouts, healthChecks: [] };
+	return { ...f, rollouts, rolloutDependencies: f.rolloutDependencies.map(satisfiedDependency), healthChecks: [] };
+}
+
+/**
+ * CALM AND QUIET HOLD NOTHING ON ANOTHER DEPLOY (/dependencies round 2, 2026-11-25). The incident fixture's thirteen dependency and
+ * promotion holds were left untouched by both scenarios, so the dependency map had no calm state to show. Here the same relationships
+ * stand (every RolloutDependency, every gate, every Environment unchanged in shape), but nothing is refused by them:
+ *  - every `dependency` and `promotion` gate allows every candidate the rollout has (the provider serves what the consumer's next
+ *    release needs; the upstream environment has deployed it) — candidates come from the release catalogue, so a gate that allows
+ *    them is the only way a mock rollout stops being held by it;
+ *  - the two promotion holds `withPromotionHolds` adds later are not added (`CALM_PROMOTION` marks the rollout);
+ *  - every RolloutDependency reports `Satisfied=True` and no `blockedReleases`.
+ * Approval gates are untouched: calm still has approvals waiting on a person; quiet already clears those.
+ */
+function withoutRefusedCandidates(r: K8sObject, st: Record<string, any>): Record<string, any> { // eslint-disable-line @typescript-eslint/no-explicit-any
+	const tags = ((st.releaseCandidates ?? []) as { tag?: string }[]).map((c) => c.tag).filter((t): t is string => !!t);
+	const gates = (st.gates ?? []) as { kind?: string; allowedVersions?: string[] | null }[];
+	if (!tags.length || !gates.some((g) => (g.kind === 'dependency' || g.kind === 'promotion') && Array.isArray(g.allowedVersions))) return st;
+	return {
+		...st,
+		gates: gates.map((g) =>
+			(g.kind === 'dependency' || g.kind === 'promotion') && Array.isArray(g.allowedVersions)
+				? { ...g, allowedVersions: [...new Set([...g.allowedVersions, ...tags])], message: undefined }
+				: g
+		)
+	};
+}
+function satisfiedDependency(d: K8sObject): K8sObject {
+	const st = (d.status ?? {}) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+	const conditions = ((st.conditions ?? []) as { type: string; status: string }[]).map((c) => (c.type === 'Satisfied' ? { ...c, status: 'True', reason: 'Satisfied', message: 'Every candidate is served' } : c));
+	return { ...d, status: { ...st, blockedReleases: [], conditions } };
 }
 
 /**
