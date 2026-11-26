@@ -22,7 +22,8 @@
 		main,
 		facts = [],
 		aside,
-		toggleLabel = 'Details'
+		toggleLabel = 'Details',
+		narrowSplit = false
 	}: {
 		main: Snippet;
 		facts?: Fact[];
@@ -30,12 +31,15 @@
 		aside?: Snippet;
 		/** the toggle's word on a narrow banner; a countable set takes the count form (`lib/disclosure.ts`) */
 		toggleLabel?: string;
+		/** split from a 480px body instead of 720px: a short record that must be seen without a click beside a banner whose
+		 *  actions take the right side (rollback dependency safety's break rows at 1440). Phones still fold it. Off by default. */
+		narrowSplit?: boolean;
 	} = $props();
 	let open = $state(false);
 </script>
 
 <div class="glance-split-cq min-w-0">
-	<div class="glance-split" data-glance-split>
+	<div class="glance-split" data-glance-split data-narrow-split={narrowSplit || undefined}>
 		<div class="min-w-0" data-glance-main>{@render main()}</div>
 		{#if aside || facts.length}
 			<button
@@ -82,6 +86,23 @@
 			display: none;
 		}
 		.glance-facts {
+			display: block;
+			border-left: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+			padding-left: 16px;
+		}
+	}
+	/* `narrowSplit`: the same two columns from a 480px body (the record column's floor drops to 200px to fit). */
+	@container (min-width: 480px) {
+		.glance-split[data-narrow-split] {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) minmax(200px, 420px);
+			column-gap: 24px;
+			align-items: start;
+		}
+		.glance-split[data-narrow-split] .glance-toggle {
+			display: none;
+		}
+		.glance-split[data-narrow-split] .glance-facts {
 			display: block;
 			border-left: 1px solid color-mix(in srgb, currentColor 18%, transparent);
 			padding-left: 16px;
