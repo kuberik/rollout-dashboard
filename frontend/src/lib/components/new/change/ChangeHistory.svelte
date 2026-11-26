@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { safeHref } from '$lib/safe-href';
 	/**
 	 * THE CHANGE'S STORY (change-strip r2; owner 2026-11-12: "main thing 'history' cards is pretty bland"). An activity feed, NEWEST FIRST
 	 * (owner, as the rollout History tab reads), the life read upwards:
@@ -101,7 +102,7 @@
 						{#if e.build && (e.build !== headBuild || e.kind === 'deployed' || e.kind === 'moving')}<span class="t-code-sm whitespace-nowrap text-fg-muted" data-ev-build>{e.build}</span>{/if}
 						{#if showWho(e)}<span class="inline-flex min-w-0 items-center gap-1.5" data-ev-who>{#if !isViewer(e.who)}<Avatar name={e.who ?? ''} src={avatarSrc(e.who ?? '')} size={16} />{/if}<span class="truncate">{isViewer(e.who) ? 'you' : e.who}</span></span>{/if}
 						{#if e.cause || e.from}<span class="min-w-0 truncate" data-ev-cause title={[e.from ? `from ${e.from}` : '', e.cause ?? ''].filter(Boolean).join(' · ')}>{[e.from ? `from ${e.from}` : '', e.cause ?? ''].filter(Boolean).join(' · ')}</span>{/if}
-						{#if ln}<a href={ln.href} target={ln.ext ? '_blank' : undefined} rel={ln.ext ? 'noopener noreferrer' : undefined} class="tap-link inline-flex items-center gap-1 whitespace-nowrap text-fg-subtle hover:text-fg" data-ev-link>{ln.text}{#if ln.ext}<ArrowUpRightFromSquareOutline class="h-3 w-3" aria-hidden="true" />{:else}<ChevronRightOutline class="h-3 w-3" aria-hidden="true" />{/if}</a>{/if}
+						{#if ln}<a href={ln.ext ? safeHref(ln.href) : ln.href} target={ln.ext ? '_blank' : undefined} rel={ln.ext ? 'noopener noreferrer' : undefined} class="tap-link inline-flex items-center gap-1 whitespace-nowrap text-fg-subtle hover:text-fg" data-ev-link>{ln.text}{#if ln.ext}<ArrowUpRightFromSquareOutline class="h-3 w-3" aria-hidden="true" />{:else}<ChevronRightOutline class="h-3 w-3" aria-hidden="true" />{/if}</a>{/if}
 					</span>
 					<span class="cdh-dt t-meta whitespace-nowrap tabular-nums text-fg-subtle" data-ev-delta>{dt}</span>
 				</div>

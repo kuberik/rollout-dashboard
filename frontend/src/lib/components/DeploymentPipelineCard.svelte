@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import StatusMark from '$lib/components/StatusMark.svelte';
+	import { safeHref } from '$lib/safe-href';
 	import Leaving from './Leaving.svelte';
 	import StepDisc from './StepDisc.svelte';
 	import { bakeElapsedMs, bakePaused } from '$lib/bake-hold';
@@ -894,7 +895,7 @@
 								{#each testLinks as link}
 									{@const Mark = TEST_LINK_MARK[link.kind]}
 									<a
-										href={link.url}
+										href={safeHref(link.url)}
 										target="_blank"
 										rel="noopener noreferrer"
 										title={link.vendor ? `${link.label} in ${link.vendor}` : link.label}

@@ -2388,11 +2388,32 @@ func setupRouter() *gin.Engine {
 		})
 	}
 
-	// Serve frontend
+	// Serve frontend. denyFraming is registered here, after every /api route,
+	// so gin applies it only to the static files and the NoRoute index.html
+	// fallback below (gin snapshots a route's middleware chain when the route
+	// is added).
+	r.Use(denyFraming())
 	r.Use(static.Serve("/", static.LocalFile(os.Getenv("KO_DATA_PATH"), false)))
 	r.NoRoute(func(c *gin.Context) {
 		c.File(filepath.Join(os.Getenv("KO_DATA_PATH"), "index.html"))
 	})
 
 	return r
+}
+
+// denyFraming forbids every other origin from framing the dashboard
+// (clickjacking: promote, rollback and pin are one click). The SvelteKit CSP is
+// a <meta> tag, where browsers ignore frame-ancestors, so this must be a
+// response header. X-Frame-Options covers browsers without CSP level 2.
+//
+// The public /demo build is not served by this binary: scripts/build-demo.sh
+// copies it into the website repo, which hosts it and frames it from
+// kuberik.com (src/lib/demo/embed.ts posts to window.parent). Keep this header
+// out of that hosting.
+func denyFraming() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Content-Security-Policy", "frame-ancestors 'none'")
+		c.Header("X-Frame-Options", "DENY")
+		c.Next()
+	}
 }

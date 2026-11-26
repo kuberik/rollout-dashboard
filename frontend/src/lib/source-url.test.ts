@@ -25,4 +25,21 @@ describe('sourceTreeUrl', () => {
 		for (const s of ['github.com/o/r', 'git@github.com:o/r', 'https://github.com/o/r', 'gitlab.com/o/r.git'])
 			expect(sourceTreeUrl(s, 'x')).toMatch(/^https?:\/\//);
 	});
+	it('is empty unless the result is http(s) (OCI annotation is attacker-controlled)', () => {
+		for (const s of [
+			'javascript://%0aalert(1)',
+			'JaVaScRiPt://x',
+			'data://text/html,<script>alert(1)</script>',
+			'vbscript://x',
+			' javascript://%0aalert(1)',
+			'\tjavascript://%0aalert(1)',
+			'\n JaVaScRiPt://x/y\t'
+		])
+			expect(sourceTreeUrl(s, 'abc'), JSON.stringify(s)).toBe('');
+	});
+	it('still builds https URLs for the supported forms', () => {
+		expect(sourceTreeUrl('git@github.com:org/repo', 'abc')).toBe('https://github.com/org/repo/tree/abc');
+		expect(sourceTreeUrl('https://github.com/org/repo', 'abc')).toBe('https://github.com/org/repo/tree/abc');
+		expect(sourceTreeUrl('  https://github.com/org/repo.git/ ', 'v1.2')).toBe('https://github.com/org/repo/tree/v1.2');
+	});
 });

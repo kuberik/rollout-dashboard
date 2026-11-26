@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+	import { safeHref } from '$lib/safe-href';
 	import type { Kustomization, OCIRepository, ManagedResourceStatus } from '../../types';
 	import StatusSpinner from './StatusSpinner.svelte';
 	import Card from './Card.svelte';
@@ -377,7 +378,7 @@
 								<div class="flex items-center gap-2 py-1.5 pl-9 pr-4">
 									<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0 text-accent-text" />
 									<a
-										href={url}
+										href={safeHref(url)}
 										target="_blank"
 										rel="noopener noreferrer"
 										class="t-meta truncate text-accent-text hover:underline"
