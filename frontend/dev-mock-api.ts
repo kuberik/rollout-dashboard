@@ -78,6 +78,11 @@ export async function mockApiPlugin(): Promise<Plugin> {
 		(await import('./src/lib/demo/health-failures-fixtures')).install(true, fixtureFlags.includes('release-switch'));
 		resetDemoState();
 	}
+	/** `MOCK_FIXTURES=deploy-refused` adds billing-api and orders-web, whose dev Rollouts the controller refused (Ready=False field conflicts; deploy-refused-fixtures.ts). */
+	if (fixtureFlags.includes('deploy-refused')) {
+		(await import('./src/lib/demo/deploy-refused-fixtures')).install();
+		resetDemoState();
+	}
 	const homeFixture = loadHomeFixture();
 	/**
 	 * ⭐ SCENARIO PER REQUEST (r39). `MOCK_SCENARIO=home-incident|home-calm|home-quiet` is the default; the `kuberik_scenario` cookie (set by

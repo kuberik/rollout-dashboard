@@ -110,6 +110,7 @@
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import { readyIssue, pathParts, type ReadyIssue } from '$lib/view-models/ready-refusal';
 	import FactList from '$lib/components/FactList.svelte';
 	import NotFound from '$lib/components/NotFound.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -705,6 +706,19 @@
 			contractHolds: contractHoldsIn
 		})
 	);
+	/**
+	 * THE READY=FALSE BANNER (owner 2026-11-21, "Add it to the banner"): the controller's refusal or error, by reason and message
+	 * (`view-models/ready-refusal.ts`). It ranks FIRST in the banner stack, above held/pinned, failing and rolled back: it is the one
+	 * statement that the controller cannot act at all, and every other banner's way forward (wait for the gate, approve, retry, clear
+	 * the pin) runs into the same refusal until Git is fixed. It never folds the others (each is an independent fact with its own
+	 * action); reasons another surface already states (BakeTimeFailed -> FailurePanel, ReleaseSourceRequired -> ReleaseSourceNotice,
+	 * NoReleases -> the builds card, NoReleaseCandidates while held -> held; the table is in ready-refusal.ts) render nothing here.
+	 */
+	const readyBanner = $derived(readyIssue(rollout?.status?.conditions, { held: !!(hereCard?.held ?? blockStory.blocked) || !!blockStory.pinnedTo }));
+	/** the last issue shown, kept while the banner collapses out: its message is a snippet of THIS page, and AlertPanel freezes props, not snippets */
+	let readyLast: ReadyIssue | null = null;
+	const readyShown = $derived.by(() => (readyBanner ? (readyLast = readyBanner) : readyLast));
+
 	// The gates the held banner names, frozen while it collapses out: its
 	// action slot is a snippet of THIS page, so without this it would read
 	// `0 rules` for the length of the fade. (See `AlertPanel`'s `open`.)
@@ -3362,6 +3376,20 @@
 				{#if myClusterErrors.length}
 					<PartialDataNotice class="mb-4" errors={myClusterErrors} subject="this rollout" onRetry={() => fleetListQuery.refetch()} isRetrying={fleetListQuery.isFetching} />
 				{/if}
+				<!-- ══ READY=FALSE (deploy refused / not ready) ══ — first in the stack; see `readyBanner`. `open`, not `{#if}`: it collapses out when the next deploy succeeds. -->
+				<!-- The path wraps only at its dots (a `<wbr>` after each, never a character in the text, so a copied path is clean);
+				     the name after "also set by" moves to the next line whole when it fits there (design R1-DES-1, R2-DES-1, R2-DES-2). -->
+				{#snippet readyMessage()}
+					{#if readyShown?.conflict}{readyShown.reason} on <span data-ready-path>{#each pathParts(readyShown.conflict.path) as part, pi (pi)}{part}{#if pi < pathParts(readyShown.conflict.path).length - 1}<wbr />{/if}{/each}</span>, also set by <span class="inline-block max-w-full break-words" data-ready-by>{readyShown.conflict.by}</span>{:else}{readyShown?.line}{/if}{#if readyShown?.nextStep}<span class="mt-1 block" data-ready-next>{readyShown.nextStep}</span>{/if}
+				{/snippet}
+				<AlertPanel
+					open={!!readyBanner}
+					severity="error"
+					title={readyBanner?.title ?? 'Deploy refused'}
+					messageBody={readyMessage}
+					footnote={readyBanner?.detail ?? undefined}
+					dataTour="ready-banner"
+				/>
 				{#if blockStory.pinnedTo}
 					<!--
 						⛔ THIS WAS `{#if pinnedTo && !rolledBack} … {:else if

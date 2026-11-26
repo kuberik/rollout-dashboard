@@ -1775,6 +1775,13 @@ lib/view-models/pr-pipeline.ts	code	waiting for the next reconcile
 lib/view-models/pr-pipeline.ts	code	waiting on … to reach …
 lib/view-models/promotion-lanes.ts	code	minmax(160px, 1.5fr)
 lib/view-models/promotion-lanes.ts	code	minmax(88px, 1fr)
+lib/view-models/ready-refusal.ts	code	… on …, also set by …
+lib/view-models/ready-refusal.ts	code	another field manager
+lib/view-models/ready-refusal.ts	code	Another tool also sets this field. kuberik won't overwrite it — stop that tool from setting it and the deploy continues on its own.
+lib/view-models/ready-refusal.ts	code	Deploy refused
+lib/view-models/ready-refusal.ts	code	No releases available
+lib/view-models/ready-refusal.ts	code	Not ready
+lib/view-models/ready-refusal.ts	code	Rollout …
 lib/view-models/regions.ts	code	… … across … builds
 lib/view-models/regions.ts	code	… … with no deploy yet
 lib/view-models/regions.ts	code	… …regions
@@ -2060,8 +2067,10 @@ routes/namespaces/[name]/+page.svelte	text	Show … more rollout …
 routes/namespaces/[name]/+page.svelte	title	This app has never deployed here
 routes/namespaces/[name]/+page.svelte	text	View all activity
 routes/rollouts/[cluster]/[namespace]/[name]/+layout.svelte	label	Rollout sections
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	, also set by
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… : no versions to choose from
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… … … … … · held: … … … … · held: … … … … · promoting … … … …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… … … on
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… … newer · held by the pin …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	… · Check restarted
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… actions for …
