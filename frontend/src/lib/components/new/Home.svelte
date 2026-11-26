@@ -6,7 +6,7 @@
 	 * The operator's question: "what needs me, and where are my changes". Replaces the old Needs-you Inbox.
 	 * MAIN: Attention (figure-led cards when data supports a figure, else title-led; the lead spans an odd row; Roll back outline, Approve the
 	 * one blue; the card is the link) -> "Your changes" (ONE list card: a RepoCard `shell="item"` per repo, identity row over a full-width env
-	 * row with beads, "N landed" at the row's end). SIDE (the tab's 3fr / minmax(22rem, 2fr) split from lg): the Fleet card. No banner, no page
+	 * row with beads, "N landed" at the row's end). SIDE (the tab's 3fr / minmax(22rem, 2fr) split from lg, the tab's 16px gutter): the Fleet card, its top on the first main card's top (`.rail-under-head`). No banner, no page
 	 * title, no counts under the bar. Calm (nothing needs you) drops the Attention band and keeps the rest; it is never a hero.
 	 * References: SectionHeader(icon, rollup), AttentionBand/Card, RepoList/RepoCard, Card (FleetCard). Composition lives in home-page.ts (tested).
 	 */
@@ -35,7 +35,7 @@
 
 <div class="w-full px-4 py-6 max-sm:pt-4 sm:px-6" data-page="home" data-truth-page="home">
 	<h1 class="sr-only">Home</h1>
-	<div class="hm flex flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(22rem,2fr)] lg:items-start lg:gap-x-6" data-home-page data-calm={P.calm ? '' : undefined}>
+	<div class="hm flex flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(22rem,2fr)] lg:items-start lg:gap-x-4" data-home-page data-calm={P.calm ? '' : undefined}>
 		<div class="flex min-w-0 flex-col gap-8" data-home-main>
 			{#if P.asks.length}
 				<section id="attention" data-section="attention">
@@ -78,7 +78,7 @@
 				{/if}
 			</section>
 		</div>
-		<aside class="min-w-0 lg:sticky lg:top-6" aria-label="Fleet" data-home-side><FleetCard trouble={P.fleet.trouble} deploys={P.fleet.deploys} /></aside>
+		<aside class="rail-under-head min-w-0 lg:sticky lg:top-6" aria-label="Fleet" data-home-side><FleetCard trouble={P.fleet.trouble} deploys={P.fleet.deploys} /></aside>
 	</div>
 </div>
 
