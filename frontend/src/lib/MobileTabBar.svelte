@@ -3,13 +3,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { href, appPath } from '$lib/paths';
-	import {
-		HomeOutline,
-		GridOutline,
-		RocketOutline,
-		LayersOutline,
-		CodePullRequestOutline
-	} from 'flowbite-svelte-icons';
+	import { NAV_ICON } from '$lib/nav-icons';
 
 	/**
 	 * ⛔ U-13 (2026-10-08, polish pass) — the TL's ruling (lib/CLAUDE.md,
@@ -26,13 +20,13 @@
 	 * product abbreviates the environments section name.
 	 */
 	const tabs = [
-		{ key: 'control', href: '/', label: 'Home', icon: HomeOutline },
-		{ key: 'rollouts', href: '/rollouts', label: 'Rollouts', icon: GridOutline },
-		{ key: 'apps', href: '/apps', label: 'Apps', icon: RocketOutline },
-		{ key: 'envs', href: '/environments', label: 'Envs', icon: LayersOutline },
+		{ key: 'control', href: '/', label: 'Home', icon: NAV_ICON['/'] },
+		{ key: 'rollouts', href: '/rollouts', label: 'Rollouts', icon: NAV_ICON['/rollouts'] },
+		{ key: 'apps', href: '/apps', label: 'Apps', icon: NAV_ICON['/apps'] },
+		{ key: 'envs', href: '/environments', label: 'Envs', icon: NAV_ICON['/environments'] },
 		// Five items: six clipped `Activity` at 390 (AD round 1). Activity stays
 		// one tap away from Home's Recent activity card.
-		{ key: 'changes', href: '/changes', label: 'Changes', icon: CodePullRequestOutline }
+		{ key: 'changes', href: '/changes', label: 'Changes', icon: NAV_ICON['/changes'] }
 	] as const;
 	function isActive(navHref: string): boolean {
 		const path = appPath(page.url.pathname);

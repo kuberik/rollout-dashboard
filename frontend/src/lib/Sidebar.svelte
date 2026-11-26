@@ -29,13 +29,8 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { href, appPath } from '$lib/paths';
+	import { NAV_ICON } from '$lib/nav-icons';
 	import {
-		HomeOutline,
-		GridOutline,
-		RocketOutline,
-		LayersOutline,
-		ClockOutline,
-		CodePullRequestOutline,
 		SearchOutline,
 		MoonOutline,
 		SunOutline,
@@ -57,12 +52,12 @@
 	import { homeAskCount } from '$lib/components/new/home-page';
 
 	const NAV = [
-		{ key: 'control', href: '/', label: 'Home', icon: HomeOutline },
-		{ key: 'rollouts', href: '/rollouts', label: 'Rollouts', icon: GridOutline },
-		{ key: 'changes', href: '/changes', label: 'Changes', icon: CodePullRequestOutline },
-		{ key: 'envs', href: '/environments', label: 'Environments', icon: LayersOutline },
-		{ key: 'apps', href: '/apps', label: 'Apps', icon: RocketOutline },
-		{ key: 'activity', href: '/activity', label: 'Activity', icon: ClockOutline }
+		{ key: 'control', href: '/', label: 'Home', icon: NAV_ICON['/'] },
+		{ key: 'rollouts', href: '/rollouts', label: 'Rollouts', icon: NAV_ICON['/rollouts'] },
+		{ key: 'changes', href: '/changes', label: 'Changes', icon: NAV_ICON['/changes'] },
+		{ key: 'envs', href: '/environments', label: 'Environments', icon: NAV_ICON['/environments'] },
+		{ key: 'apps', href: '/apps', label: 'Apps', icon: NAV_ICON['/apps'] },
+		{ key: 'activity', href: '/activity', label: 'Activity', icon: NAV_ICON['/activity'] }
 	] as const;
 	/* r39: the Starred block under the sections — the apps this browser starred (StarToggle's store), alphabetical */
 	/* the Home item's badge: Home's Attention asks, from the live source only (null = no live source yet: no badge) */
