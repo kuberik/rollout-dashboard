@@ -126,3 +126,5 @@ require (
 // (spec.releaseSourceRef, status.releaseSource, status.candidates), HealthCheck
 // observations[].message and the bake hold history fields. The requirement
 // moves to a release tag once one carries them.
+
+replace github.com/kuberik/rollout-controller => /home/luka/projects/kuberik/.work/rollback-api/wt-rc
