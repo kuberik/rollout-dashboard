@@ -1895,6 +1895,9 @@ func setupRouter() *gin.Engine {
 			})
 		})
 
+		// Dependency breaks a manual rollback to ?tag= would cause (warning source).
+		api.GET("/rollouts/:namespace/:name/rollback-check", handleRollbackCheck)
+
 		// Get events for a specific rollout
 		api.GET("/rollouts/:namespace/:name/events", func(c *gin.Context) {
 			k8sClient, ok := getK8sReadClient(c)

@@ -20,6 +20,9 @@
 		SearchOutline
 	} from 'flowbite-svelte-icons';
 	import { createQuery, createQueries } from '@tanstack/svelte-query';
+	import { rollbackCheckQueryOptions } from '$lib/api/rollback-check';
+	import { rollbackWarningParts } from '$lib/view-models/rollback-deps';
+	import BreakRows from './BreakRows.svelte';
 	import {
 		hasForceDeployAnnotation,
 		getDisplayVersion,
@@ -1300,6 +1303,20 @@
 	 * (`/activity`) already use — same query key, so it is usually already
 	 * cached and this costs nothing extra.
 	 */
+	/**
+	 * ROLLBACK DEPENDENCY SAFETY: picking an older build asks the backend what that build would break (a running consumer that needs
+	 * what it does not serve). The answer is a WARNING under the picker, never a refusal, and it fails quiet (`rollbackCheckQueryOptions`).
+	 */
+	const rollbackCheckQuery = createQuery(() => ({
+		...rollbackCheckQueryOptions(rollout?.metadata?.namespace ?? '', rollout?.metadata?.name ?? '', cluster, selectedVersion ?? ''),
+		enabled: open && direction === 'rollback' && !!selectedVersion && !!rollout?.metadata?.name
+	}));
+	const dependencyWarning = $derived(
+		direction === 'rollback' && selectedVersion && rollbackCheckQuery.data?.tag === selectedVersion
+			? rollbackWarningParts(selectedRelease?.version || selectedVersion, rollbackCheckQuery.data.breaks, rollbackCheckQuery.data.hiddenConsumers)
+			: null
+	);
+
 	const githubStatusQuery = createQuery(() => ({
 		queryKey: githubStatusQueryKey,
 		queryFn: fetchGithubStatus,
@@ -3715,6 +3732,16 @@
 						{/if}
 
 						<div bind:this={rightFooterEl} class="flex flex-col gap-3">
+							{#if dependencyWarning}
+								<!-- ROLLBACK DEPENDENCY SAFETY: the dialog's own callout shape (the box above this build's commits: held icon, the fact in full ink, what to do about it muted). A warning, never a refusal. -->
+								<div class="t-meta border-line bg-subtle text-fg-muted flex items-start gap-2 rounded-md border p-3" data-rollback-warning role="status">
+									<ExclamationCircleSolid class="text-held mt-0.5 h-4 w-4 shrink-0" />
+									<div class="min-w-0 flex-1 [overflow-wrap:anywhere]">
+										<span class="text-fg">{dependencyWarning.lead}</span>{#if dependencyWarning.rest}<span class="text-fg-muted">{' '}{dependencyWarning.rest}</span>{/if}
+										{#if dependencyWarning.rows.length > 0}<div class="mt-2"><BreakRows rows={dependencyWarning.rows} {cluster} self={rollout?.metadata?.name ?? ''} /></div>{/if}
+									</div>
+								</div>
+							{/if}
 							{#if rollout && !hasForceDeployAnnotation(rollout) && !mustPin}
 								<div class="flex items-center justify-between gap-3">
 									<div class="min-w-0">

@@ -67,6 +67,8 @@ export type DependencyNodeData = {
 		/** What the provider actually serves here, e.g. `2.4.1`. */
 		providedVersion: string | null;
 	}[];
+	/** The provider's side of a rollback edge: why its failed build is held (`protecting`), or that an edge allows rolling back under the consumer (`allowed`). */
+	rollbackNotes: { kind: 'protecting'; text: string }[];
 	href: string | null;
 	focused: boolean;
 	title: string;

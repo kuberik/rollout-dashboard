@@ -12,6 +12,7 @@
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
 	import { deployKindLabel, entryRollbackNote, verdictRows } from '$lib/view-models/auto-rollback';
+	import { historySkippedBuilds, historySkippedTail } from '$lib/view-models/rollback-deps';
 	import AutoRollbackVerdicts from '$lib/components/AutoRollbackVerdicts.svelte';
 	import FailureSourceRow from '$lib/components/FailureSourceRow.svelte';
 	import { historyPool, failureSince } from '$lib/view-models/health-failures';
@@ -2171,12 +2172,11 @@
 												     OUTCOME, and this gets a neutral 12px icon rather than
 												     a second status mark. -->
 																			<span
-																				class="text-fg-muted inline-flex items-center gap-1"
-																				title={act.sentence}
+																				class="text-fg-muted min-w-0"
+																				title={historySkippedTail(entry) ? `${act.sentence}; ${historySkippedTail(entry)}` : act.sentence}
 																			>
-																				<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-																				{entry.deployKind === 'AutoRollback' ? 'Rolled back automatically from' : 'Rolled back from'}
-																				<span class="t-code-sm text-fg-muted">{act.from}</span>
+																				<UndoOutline class="mr-1 inline h-3 w-3 shrink-0 align-[-1px]" aria-hidden="true" />{entry.deployKind === 'AutoRollback' && !historySkippedBuilds(entry) ? 'Rolled back automatically from' : 'Rolled back from'}
+																				<span class="t-code-sm text-fg-muted">{act.from}</span>{#if historySkippedBuilds(entry)}{@const sk = historySkippedBuilds(entry)}<span data-history-rollback-skipped>, skipped {#each sk?.builds ?? [] as b, k (k)}{k > 0 ? ', ' : ''}<span class="t-code-sm text-fg-muted">{b}</span>{/each}{#if (sk?.rest ?? 0) > 0}{' '}and {sk?.rest} more{/if}</span>{/if}
 																			</span>
 																		{:else if act && act.kind === 'forward' && act.by > 1}
 																			<!-- ⭐ A ONE-RELEASE FORWARD STEP IS THE NORM AND PRINTS

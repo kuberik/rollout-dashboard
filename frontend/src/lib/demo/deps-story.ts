@@ -36,7 +36,7 @@
  * / `Environment` change events, so an open graph, its cards and every
  * count update live over the stream. `/api/demo/reset` returns to `arm`.
  */
-import { extraEnvironments } from './extra-fixtures';
+import { extraDependencies, extraEnvironments } from './extra-fixtures';
 import {
 	CK_APP,
 	CK_ENVS,
@@ -73,7 +73,7 @@ let at: DepsStep = 'arm';
 const touched = new Set<string>();
 
 export function resetDepsStory(scenario: HwvScenario = 'calm'): void {
-	deps = structuredClone(mockDependencies) as Obj[];
+	deps = structuredClone([...mockDependencies, ...extraDependencies()]) as Obj[];
 	// hello-waves is the one app whose Environments follow the scenario (mock-data.ts FIXTURE E).
 	envs = structuredClone([...mockDepEnvironments, ...mkHwvEnvironments(scenario), ...extraEnvironments()]) as Obj[];
 	at = 'arm';

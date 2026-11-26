@@ -359,6 +359,7 @@
 					pending: h.pending
 				})),
 				heldConstraints: heldConstraintsFor(n),
+				rollbackNotes: n.rollbackNotes ?? [],
 				href: n.unresolved ? null : hrefOf(n),
 				focused: n.id === focus,
 				title: nodeTitle(n)

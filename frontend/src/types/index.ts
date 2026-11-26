@@ -1,6 +1,8 @@
 import type { components } from './rollout-types';
 import type { ManagedResourceStatus as ManagedResourceStatusType } from './managed-resource';
 
+export type { DependencyBreak, RollbackSelection, AutoRollbackStatus, SkippedRollbackTarget } from './rollout-types';
+
 type RolloutSchema = components['schemas']['Rollout'];
 /** The old status lists rollout-controller no longer writes: releases come from the ReleaseSlice catalogue (src/lib/releases/catalogue.ts). Absent here so svelte-check refuses any read of them. */
 type RetiredReleaseLists = 'availableReleases' | 'releaseCandidates' | 'gatedReleaseCandidates';

@@ -16,6 +16,8 @@
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
 	import { autoRollbackView, notRolledBackSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
+	import { consumerNowLookup, nowSafeView, breakDetailRows } from '$lib/view-models/rollback-deps';
+	import { rolloutPath } from '$lib/source-dashboard';
 	import { poolOf, worstOf, failingNowList, failingSummary, type SnapCheck } from '$lib/view-models/health-failures';
 
 	interface Props {
@@ -32,6 +34,8 @@
 		 *  `canModify` as true so the action row is drawn at its final height from the first paint
 		 *  (it grew 56px, 144 -> 200, when the answer landed); both buttons stay disabled until then. */
 		actionsPending?: boolean;
+		/** the fleet list, to read where a consumer's build is now ("Rollback to 5.1.0 is now safe") */
+		fleet?: Rollout[];
 		isDashboardManagingWantedVersion: boolean;
 		cluster?: string;
 		/**
@@ -60,6 +64,7 @@
 		canUpdate,
 		canModify,
 		actionsPending = false,
+		fleet = [],
 		isDashboardManagingWantedVersion,
 		cluster,
 		environmentName = null,
@@ -164,13 +169,12 @@
 		onRequestHandled();
 	});
 
-	function handleRollback() {
+	function handleRollback(tag?: string) {
 		if (!isDashboardManagingWantedVersion) return;
 		const history = rollout?.status?.history;
 		if (!history || history.length < 2) return;
-		const current = history[0];
 		const previous = history[1];
-		rollbackVersionTag = previous.version.tag;
+		rollbackVersionTag = tag || previous.version.tag;
 		rollbackExplanation = ''; // the operator writes the reason; nothing is pre-asserted
 		showRollbackModal = true;
 	}
@@ -202,11 +206,30 @@
 	/* AUTO-ROLLBACK PREVIEW: the controller's decision for this failed bake (condition AutoRollback=False): the sentence, then which failures would or would not roll back */
 	const autoView = $derived(autoRollbackView(rollout));
 	const notRolled = $derived(autoView?.state === 'not-rolled-back' ? autoView : null);
-	/* the banner's one sentence (12 words or fewer, no age: the page header has it): why it was not rolled back, else what is failing */
-	const sentence = $derived(notRolled ? notRolledBackSentence(notRolled.reason, notRolled.failed, notRolled.rows) : allRecovered ? '`' + (worst?.row?.name ?? worst?.check.name ?? 'The check') + '` recovered' : bannerMessage);
+	/* ROLLBACK DEPENDENCY SAFETY: a block (ConsumerRequires | TargetRequires) names what the usual target would break; once it lifts, the same banner offers the rollback as the primary */
+	const dependencyBlock = $derived(notRolled && (notRolled.reason === 'ConsumerRequires' || notRolled.reason === 'TargetRequires') ? notRolled : null);
+	const nowSafe = $derived(dependencyBlock ? nowSafeView(rollout, consumerNowLookup(fleet)) : null);
+	/* the banner's one sentence (12 words or fewer, no age: the page header has it): why it was not rolled back (or that it is safe now), else what is failing */
+	const sentence = $derived(
+		nowSafe ? nowSafe.headline
+		: dependencyBlock ? dependencyBlock.why
+		: notRolled ? notRolledBackSentence(notRolled.reason, notRolled.failed, notRolled.rows)
+		: allRecovered ? '`' + (worst?.row?.name ?? worst?.check.name ?? 'The check') + '` recovered'
+		: bannerMessage
+	);
+	/* Details: the failing checks, then what the usual target would break (each consumer links to its rollout) */
+	const detailRows = $derived(
+		notRolled ? [...verdictDetailRows(notRolled.rows), ...(dependencyBlock && !nowSafe ? breakDetailRows(dependencyBlock.breaks, cluster ?? '', rollout?.metadata?.name ?? '') : [])] : undefined
+	);
 	const retryFirst = $derived(allRecovered);
 	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
-	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback, ...(isDashboardManagingWantedVersion ? {} : { ...(canHover.current ? {} : { title: WANTED_VERSION_OWNED_REASON }), describedBy: 'failure-owned-reason' }) });
+	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: () => handleRollback(), ...(isDashboardManagingWantedVersion ? {} : { ...(canHover.current ? {} : { title: WANTED_VERSION_OWNED_REASON }), describedBy: 'failure-owned-reason' }) });
+	const anywayAct = $derived({ label: nowSafe ? 'Roll back' : 'Roll back anyway\u2026', ...(nowSafe ? { title: `Roll back to ${nowSafe.target}`, ariaLabel: `Roll back to ${nowSafe.target}` } : {}), icon: UndoOutline, id: 'failure-rollback-btn', key: nowSafe ? 'rollback-safe' : 'rollback-anyway', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: () => handleRollback(nowSafe?.targetTag ?? dependencyBlock?.usualTag) });
+	const openConsumerAct = $derived(
+		dependencyBlock && dependencyBlock.breaks.length === 1 && dependencyBlock.breaks[0].namespace
+			? { label: `Open ${dependencyBlock.breaks[0].name}`, href: rolloutPath(cluster ?? '', dependencyBlock.breaks[0].namespace, dependencyBlock.breaks[0].name), key: 'open-consumer', quiet: true }
+			: null
+	);
 	const rollbackShown = $derived(!!(rollout?.status?.history && rollout.status.history.length > 1 && canModify));
 </script>
 
@@ -248,10 +271,11 @@
 	icon={ExclamationCircleOutline}
 	title="Failed, not rolled back"
 	line={sentence}
-	rows={notRolled ? verdictDetailRows(notRolled.rows) : undefined}
+	rows={detailRows}
 	detailsBody={notRolled ? undefined : evidenceBody}
-	primary={retryFirst ? (canUpdate ? retryAct : undefined) : rollbackShown ? rollbackAct : undefined}
-	secondary={retryFirst ? (rollbackShown ? rollbackAct : undefined) : canUpdate ? retryAct : undefined}
+	primary={dependencyBlock ? (nowSafe ? (rollbackShown ? anywayAct : undefined) : canUpdate ? retryAct : undefined) : retryFirst ? (canUpdate ? retryAct : undefined) : rollbackShown ? rollbackAct : undefined}
+	secondary={dependencyBlock ? (nowSafe ? (canUpdate ? retryAct : undefined) : openConsumerAct ?? undefined) : retryFirst ? (rollbackShown ? rollbackAct : undefined) : canUpdate ? retryAct : undefined}
+	more={dependencyBlock && !nowSafe && rollbackShown ? [anywayAct] : undefined}
 	tooltips={{
 		...(canUpdate ? { 'failure-retry-btn': 'Reset health checks and failed tests, then retry the deployment.' } : {}),
 		...(rollbackShown ? { 'failure-rollback-btn': rollbackTooltip(isDashboardManagingWantedVersion) } : {})
