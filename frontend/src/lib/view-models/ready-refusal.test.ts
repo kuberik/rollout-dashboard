@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { OWNED_ELSEWHERE, CONFLICT_NEXT_STEP, managerName, pathParts, readyIssue } from './ready-refusal';
+import { OWNED_ELSEWHERE, CONFLICT_NEXT_STEP, managerName, pathParts, readyIssue, REMEDIATION_NEXT_STEP } from './ready-refusal';
 
 const ready = (reason: string, message: string, status = 'False') => [
 	{ type: 'DeploymentBlocked', status: 'False', reason: 'HealthChecksHealthy', message: '' },
@@ -61,6 +61,19 @@ describe('readyIssue: which Ready=False reasons the banner speaks for', () => {
 		}
 		expect(readyIssue(ready('HelmReleaseInvalidAnnotation', 'HelmRelease a/b: x needs y.'))!.nextStep).toBeNull();
 		expect(readyIssue(ready('RolloutFailed', 'boom'))!.nextStep).toBeNull();
+	});
+
+	test('HelmReleaseRemediationConflict is "Deploy refused" with its own next step', () => {
+		const msg =
+			'HelmRelease shop-dev/shop: spec.upgrade.remediation.remediateLastFailure is also set by "kustomize-controller". kuberik turns off Helm\'s upgrade remediation so that only the Rollout rolls back; have "kustomize-controller" set spec.upgrade.remediation.retries: 0 and remediateLastFailure: false, or remove them, and the deploy continues (kuberik retries every minute).';
+		expect(readyIssue(ready('HelmReleaseRemediationConflict', msg))).toMatchObject({
+			kind: 'refused',
+			title: 'Deploy refused',
+			line: 'HelmReleaseRemediationConflict on spec.upgrade.remediation.remediateLastFailure, also set by kustomize-controller',
+			conflict: { path: 'spec.upgrade.remediation.remediateLastFailure', by: 'kustomize-controller' },
+			nextStep: REMEDIATION_NEXT_STEP,
+			detail: msg
+		});
 	});
 
 	test('RolloutFailed and other reasons are "Not ready" with reason and message, nothing disclosed', () => {

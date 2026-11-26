@@ -17,8 +17,8 @@
  * ReleaseCatalogueUnavailable (the release-controller CRDs are not installed) has no other surface, so this banner
  * states it ("Not ready").
  *
- * Kinds: a write the controller refused to make (a field conflict, an annotation it cannot apply) is
- * "Deploy refused"; any other reason (RolloutFailed, GateListFailed, HealthCheckListFailed, a reason a newer
+ * Kinds: a write the controller refused to make (a field conflict, a HelmRelease whose Helm upgrade remediation another
+ * tool keeps on, an annotation it cannot apply) is "Deploy refused"; any other reason (RolloutFailed, GateListFailed, HealthCheckListFailed, a reason a newer
  * controller adds) is "Not ready". The first line is short; the controller's whole message (object, fix hint)
  * is the banner's disclosed footnote when the line shortened it.
  *
@@ -38,7 +38,8 @@ export type ReadyIssue = {
 	line: string;
 	/** a field conflict's path and who else sets it, so the page can mark up the path's break points (`pathParts`); null otherwise */
 	conflict: { path: string; by: string } | null;
-	/** one generic next-step sentence for a field conflict (owner 2026-11-25: keep it generic, no per-writer advice); null for every other reason */
+	/** one generic next-step sentence for a field conflict (owner 2026-11-25: keep it generic, no per-writer advice), its own for a
+	 * remediation conflict (owner 2026-11-26); null for every other reason */
 	nextStep: string | null;
 	/** the controller's full message, disclosed; null when `line` already is the whole message */
 	detail: string | null;
@@ -50,9 +51,14 @@ export const OWNED_ELSEWHERE: ReadonlySet<string> = new Set(['BakeTimeFailed', '
 /** the three conflict reasons the controller writes; deliberately one sentence for all of them */
 const FIELD_CONFLICT = /FieldConflict$/;
 export const CONFLICT_NEXT_STEP = "Another tool also sets this field. kuberik won't overwrite it \u2014 stop that tool from setting it and the deploy continues on its own.";
+/** HelmReleaseRemediationConflict: kuberik turns Helm's upgrade remediation off, and another tool sets it to something else.
+ * Setting the same values is a fix too, so the generic "stop setting it" is only half the answer. */
+const REMEDIATION_CONFLICT = /RemediationConflict$/;
+export const REMEDIATION_NEXT_STEP =
+	'Set spec.upgrade.remediation.retries: 0 and remediateLastFailure: false, or remove them, and the deploy continues on its own.';
 const LEGACY_NO_RELEASES = { reason: 'RolloutSucceeded', message: 'No releases available' };
 /** the controller's write refusals: rollout-controller `deployWriteIssue` reasons */
-const REFUSED = /(?:FieldConflict|InvalidAnnotation)$/;
+const REFUSED = /(?:FieldConflict|RemediationConflict|InvalidAnnotation)$/;
 /** describeFieldConflict's shape */
 const CONFLICT = /^(\S+) (\S+): (\S+) is also set by (?:"([^"]+)"|another field manager)\.\s*([\s\S]*)$/;
 /** a "<Kind> <ns/name>: " lead the controller puts on every write issue */
@@ -86,7 +92,7 @@ export function readyIssue(conditions: readonly Cond[] | null | undefined, o: { 
 
 	const since = c.lastTransitionTime ?? null;
 	const refused = REFUSED.test(reason);
-	const nextStep = FIELD_CONFLICT.test(reason) ? CONFLICT_NEXT_STEP : null;
+	const nextStep = REMEDIATION_CONFLICT.test(reason) ? REMEDIATION_NEXT_STEP : FIELD_CONFLICT.test(reason) ? CONFLICT_NEXT_STEP : null;
 	const title = refused ? 'Deploy refused' : 'Not ready';
 	const conflict = CONFLICT.exec(message);
 	if (conflict) {

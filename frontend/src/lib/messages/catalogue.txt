@@ -1847,6 +1847,7 @@ lib/view-models/ready-refusal.ts	code	Deploy refused
 lib/view-models/ready-refusal.ts	code	No releases available
 lib/view-models/ready-refusal.ts	code	Not ready
 lib/view-models/ready-refusal.ts	code	Rollout …
+lib/view-models/ready-refusal.ts	code	Set spec.upgrade.remediation.retries: 0 and remediateLastFailure: false, or remove them, and the deploy continues on its own.
 lib/view-models/regions.ts	code	… … across … builds
 lib/view-models/regions.ts	code	… … with no deploy yet
 lib/view-models/regions.ts	code	… …regions
