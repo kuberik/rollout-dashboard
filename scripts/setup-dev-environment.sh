@@ -3,6 +3,8 @@ set -e
 set -x
 
 SCRIPT_DIR=$(dirname "$0")
+# Flux release installed on the dev cluster.
+FLUX_VERSION=${FLUX_VERSION:-v2.10.1}
 # Tracing is paused wherever the token is expanded, so it never lands in a set -x log.
 { set +x; } 2>/dev/null
 GITHUB_TOKEN=${GITHUB_TOKEN:-$(gh auth token)}
@@ -42,7 +44,7 @@ fi
 kubectl config use-context "kind-${CLUSTER_NAME}"
 
 # Apply Flux
-kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
+kubectl apply -f "https://github.com/fluxcd/flux2/releases/download/${FLUX_VERSION}/install.yaml"
 
 # Add Helm repositories
 helm repo add openkruise https://openkruise.github.io/charts/

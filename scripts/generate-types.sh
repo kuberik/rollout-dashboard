@@ -29,8 +29,8 @@ else
   curl -fsS -o $TEMP_DIR/environment.yaml https://raw.githubusercontent.com/kuberik/environment-controller/main/config/crd/bases/environments.kuberik.com_environments.yaml
   curl -fsS -o $TEMP_DIR/rollouttest.yaml https://raw.githubusercontent.com/kuberik/openkruise-controller/main/config/crd/bases/rollout.kuberik.com_rollouttests.yaml
 fi
-curl -fsS -o $TEMP_DIR/kustomization.yaml https://raw.githubusercontent.com/fluxcd/kustomize-controller/v1.6.1/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
-curl -fsS -o $TEMP_DIR/ocirepository.yaml https://raw.githubusercontent.com/fluxcd/source-controller/v1.6.2/config/crd/bases/source.toolkit.fluxcd.io_ocirepositories.yaml
+curl -fsS -o $TEMP_DIR/kustomization.yaml https://raw.githubusercontent.com/fluxcd/kustomize-controller/v1.10.2/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
+curl -fsS -o $TEMP_DIR/ocirepository.yaml https://raw.githubusercontent.com/fluxcd/source-controller/v1.10.2/config/crd/bases/source.toolkit.fluxcd.io_ocirepositories.yaml
 curl -fsS -o $TEMP_DIR/kruise-rollout.yaml https://raw.githubusercontent.com/openkruise/charts/refs/tags/kruise-rollout-0.6.1/versions/kruise-rollout/0.6.1/templates/rollouts.kruise.io_rollouts.yaml
 
 # Extract the schemas and manually fix metadata
