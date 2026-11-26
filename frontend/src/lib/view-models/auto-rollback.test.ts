@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rollout } from '../../types';
-import { autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
+import { autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, glanceRows, rolledBackLine, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
 
 const v = (tag: string) => ({ tag, version: `1.${tag.slice(-1)}.0`, revision: 'a'.repeat(40), created: '2026-11-21T10:00:00Z' });
 const failed = {
@@ -80,15 +80,24 @@ describe('auto-rollback view-model', () => {
 	});
 	it('names the trigger in one line', () => {
 		const rows = verdictRows(failed as never).filter((x) => x.rollsBack);
-		expect(triggerLine(rows)).toBe('Triggered by smoke');
-		expect(triggerLine([...rows, ...rows])).toBe('Triggered by smoke and 1 more');
+		expect(triggerLine(rows)).toBe('smoke failed');
+		expect(triggerLine([...rows, ...rows])).toBe('smoke and 1 more failed');
 		expect(triggerLine([])).toBe('');
+		expect(rolledBackLine(rows, '1.4.0', true)).toBe("smoke failed · 1.4.0 won't auto-deploy again");
+		expect(rolledBackLine(rows, '1.4.0', false)).toBe('smoke failed');
+		expect(rolledBackLine([...rows, ...rows], 'build-name-of-some-length', true).split(/\s+/).length).toBeLessThanOrEqual(12);
 	});
 	it('NotATrigger names the one source that did not trigger', () => {
 		const only = { ...failed, failedHealthChecks: [{ ...failed.failedHealthChecks[0], failures: [failed.failedHealthChecks[0].failures[0]] }] };
 		const rows = verdictRows(only as never);
 		expect(notRolledBackWhy('NotATrigger', only as never, rows)).toBe('flaky-ui is opted out');
 		expect(notRolledBackHeadline('NotATrigger', only as never, rows)).toBe('Not rolled back · flaky-ui is opted out');
+	});
+	it('glance rows: a glyph, a name and a verdict word, never a sentence', () => {
+		const rows = verdictRows(failed as never);
+		expect(glanceRows(rows, true).map((r) => [r.name, r.verdict, r.tone])).toEqual([['smoke', 'Rolled back', 'danger'], ['flaky-ui', 'Opted out', 'muted']]);
+		expect(glanceRows(rows, false)[0].verdict).toBe('Would trigger');
+		for (const r of glanceRows(rows, false)) expect(r.verdict.length).toBeLessThanOrEqual(14);
 	});
 	it('reads the hold from candidates[].failedBake', () => {
 		expect(failedBakeHeld(rolledBack(), 'r4')).toBe(true);
@@ -108,7 +117,7 @@ describe('entryRollbackNote: verdicts follow what the controller decided', () =>
 		const e = failed();
 		const r = ro(true, [ok({ id: 8, deployKind: 'AutoRollback', rollbackOf: 7 }), e, ok()]);
 		expect(entryRolledBack(r, e)).toBe(true);
-		expect(entryRollbackNote(r, e)).toEqual({ ran: true, word: 'Rolled back', why: 'Triggered by smoke', note: 'Rolled back · Triggered by smoke' });
+		expect(entryRollbackNote(r, e)).toEqual({ ran: true, word: 'Rolled back', why: 'smoke failed', note: 'Rolled back · smoke failed' });
 	});
 	it('rollout not opted in: never "rolls back"', () => {
 		const e = failed();

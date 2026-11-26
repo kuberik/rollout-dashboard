@@ -1592,7 +1592,7 @@
 					{:else}
 						<span
 							title={atLimit
-								? `Showing the last ${totalDeploys - heldKept} deploys — the retention limit (spec.versionHistoryLimit). Earlier deploys have already been evicted.${heldKept > 0 ? ` ${heldKept} older failed ${heldKept === 1 ? 'build is' : 'builds are'} kept past the limit because ${heldKept === 1 ? 'it is' : 'they are'} held.` : ''}`
+								? `Showing the last ${totalDeploys - heldKept} deploys — the retention limit (spec.versionHistoryLimit). Earlier deploys have already been evicted.${heldKept > 0 ? ` ${heldKept} older failed ${heldKept === 1 ? 'build is' : 'builds are'} kept past the limit because automatic deploys still skip ${heldKept === 1 ? 'it' : 'them'}.` : ''}`
 								: undefined}
 						>
 							{#if atLimit}
@@ -1601,7 +1601,7 @@
 							<span class="text-fg tabular-nums">{totalDeploys - heldKept}</span>
 							{totalDeploys - heldKept === 1 ? 'deploy' : 'deploys'}
 							{#if atLimit}
-								<span class="text-fg-subtle">(retention limit{heldKept > 0 ? `, + ${heldKept} held` : ''})</span>
+								<span class="text-fg-subtle">(retention limit{heldKept > 0 ? `, + ${heldKept} failed kept` : ''})</span>
 							{/if}
 						</span>
 					{/if}

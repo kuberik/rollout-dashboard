@@ -204,11 +204,37 @@ export function notRolledBackHeadline(reason: string, failed: HistoryEntry, rows
 	return why ? `Not rolled back · ${why}` : 'Not rolled back';
 }
 
-/** the one line under a rolled-back banner's chips: which failure triggered it */
+/** one compact row for a banner's right column: glyph, name, verdict chip (never a sentence) */
+export type GlanceRow = { key: string; cls: string; name: string; verdict: string; tone: 'danger' | 'muted' | 'neutral'; title?: string };
+
+/**
+ * Verdict rows as glance rows. `ran`: the rollback happened, so a trigger reads "Rolled back"; otherwise "Would trigger".
+ * Chip words stay within the chip's 14-character vocabulary budget.
+ */
+export function glanceRows(rows: VerdictRow[], ran: boolean): GlanceRow[] {
+	return rows.map((r) => ({
+		key: r.key,
+		cls: r.cls,
+		name: shortRef(r.ref),
+		verdict: r.rollsBack ? (ran ? 'Rolled back' : 'Would trigger') : r.rule === 'SourceOptedOut' ? 'Opted out' : 'No rollback',
+		tone: r.rollsBack ? (ran ? 'danger' : 'neutral') : 'muted',
+		title: `${r.type ? `${r.type} ${r.ref}` : r.ref} · ${r.why}${r.message ? ` · ${r.message}` : ''}`
+	}));
+}
+
+/** which failure triggered a rollback, in a few words: `smoke failed`, `smoke and 1 more failed` */
 export function triggerLine(triggers: VerdictRow[]): string {
 	if (triggers.length === 0) return '';
 	const first = shortRef(triggers[0].ref);
-	return triggers.length === 1 ? `Triggered by ${first}` : `Triggered by ${first} and ${triggers.length - 1} more`;
+	return triggers.length === 1 ? `${first} failed` : `${first} and ${triggers.length - 1} more failed`;
+}
+
+/**
+ * The one line under a rolled-back banner's chips: the trigger, then what the hold DOES (owner, 2026-11-26: "held" does
+ * not say what is happening; say it where it acts). At most 12 words.
+ */
+export function rolledBackLine(triggers: VerdictRow[], failedName: string, held: boolean): string {
+	return [triggerLine(triggers), held ? `${failedName} won't auto-deploy again` : ''].filter(Boolean).join(' · ');
 }
 
 /** `ns/name` -> `name` */

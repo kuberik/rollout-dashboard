@@ -19,8 +19,8 @@
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
 	import AutoRollbackVerdicts from './AutoRollbackVerdicts.svelte';
-	import RollbackGlance from './RollbackGlance.svelte';
-	import { autoRollbackView } from '$lib/view-models/auto-rollback';
+	import RollbackGlance, { glanceWide } from './RollbackGlance.svelte';
+	import { autoRollbackView, glanceRows } from '$lib/view-models/auto-rollback';
 	import { poolOf, worstOf, bannerEvidence, failingNowList, failingSummary, checkView, failureSince as checksFailingSince, type SnapCheck } from '$lib/view-models/health-failures';
 
 	interface Props {
@@ -293,12 +293,12 @@
 			<!-- GLANCEABLE (owner rule, 2026-11-26): the headline carries both states, so the body is the reason in one short line;
 			     the failing check, its figures and the verdict rows sit behind Details -->
 			<div data-not-rolled-back={notRolled.reason} title={notRolled.headline}>
-				<RollbackGlance line={[notRolled.why, failureAgo ? `${failureAgo} ago` : ''].filter(Boolean).join(' · ')} />
+				<RollbackGlance line={[notRolled.why, failureAgo ? `${failureAgo} ago` : ''].filter(Boolean).join(' · ')} rows={glanceRows(notRolled.rows, false)} />
 			</div>
 		{/if}
 	{/snippet}
 	{#snippet footnoteBody()}
-		{#if notRolled && notRolled.rows.length > 0}<div class="mb-2"><AutoRollbackVerdicts rows={notRolled.rows} would={notRolled.reason !== 'NotATrigger'} /></div>{/if}
+		{#if notRolled && notRolled.rows.length > 0 && !glanceWide.current}<div class="mb-2"><AutoRollbackVerdicts rows={notRolled.rows} would={notRolled.reason !== 'NotATrigger'} /></div>{/if}
 		{#if notRolled && !evidence && bannerMessage}<p class="mb-1 break-words">{bannerMessage}</p>{/if}
 		{#if evidence}
 			<FailureDetails {pool} />

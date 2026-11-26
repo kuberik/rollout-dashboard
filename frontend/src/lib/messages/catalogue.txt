@@ -1181,6 +1181,8 @@ lib/components/RetryTestsModal.svelte	text	Re-run tests. Pipeline stays paused u
 lib/components/RetryTestsModal.svelte	text	Retry tests
 lib/components/RetryTestsModal.svelte	text	Skip tests
 lib/components/RetryTestsModal.svelte	code	Unknown test
+lib/components/RollbackGlance.svelte	code	(min-width: 1280px)
+lib/components/RollbackGlance.svelte	text	+ … more
 lib/components/RollbackGlance.svelte	aria-label	replaced by
 lib/components/RolloutHeaderFlows.svelte	code	… · Check restarted
 lib/components/RolloutHeaderFlows.svelte	code	Failed to retry
@@ -1275,7 +1277,7 @@ lib/history-marks.ts	code	Redeployed the same release, ….
 lib/history-marks.ts	code	Rolled back
 lib/history-marks.ts	code	Rolled back … release…: … → ….
 lib/history-marks.ts	code	What … replaced is unknown — it is the oldest deploy the retained history (last …) still holds.
-lib/history-marks.ts	code	What … replaced is unknown — this entry is kept past the retention limit because the build is held.
+lib/history-marks.ts	code	What … replaced is unknown — this entry is kept past the retention limit because automatic deploys still skip this build.
 lib/MobileTabBar.svelte	aria-label	Main navigation
 lib/Navbar.svelte	title	Open app …
 lib/Navbar.svelte	code	Times shown in local time (…). Switch to UTC
@@ -1388,9 +1390,14 @@ lib/view-models/auto-deploy.ts	code	Nothing moves off … until the pin is clear
 lib/view-models/auto-deploy.ts	code	the last deploy failed its checks
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there.
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there.
+lib/view-models/auto-rollback.ts	code	: r.ref} · …${r.message ?
+lib/view-models/auto-rollback.ts	code	… and … more failed
 lib/view-models/auto-rollback.ts	code	… does not roll back
+lib/view-models/auto-rollback.ts	code	… failed
 lib/view-models/auto-rollback.ts	code	… failed for a reason that does not roll back
 lib/view-models/auto-rollback.ts	code	… is opted out
+lib/view-models/auto-rollback.ts	code	… won't auto-deploy again
+lib/view-models/auto-rollback.ts	code	${r.type ?
 lib/view-models/auto-rollback.ts	code	a check that cannot run never rolls back
 lib/view-models/auto-rollback.ts	code	A deploy was already requested by hand
 lib/view-models/auto-rollback.ts	code	Apply failed
@@ -1405,6 +1412,7 @@ lib/view-models/auto-rollback.ts	code	Deployed by hand
 lib/view-models/auto-rollback.ts	code	does not roll back
 lib/view-models/auto-rollback.ts	code	Force deployed
 lib/view-models/auto-rollback.ts	code	No earlier build passed its bake
+lib/view-models/auto-rollback.ts	code	No rollback
 lib/view-models/auto-rollback.ts	code	None of the … failures roll back
 lib/view-models/auto-rollback.ts	code	not a rollback kind
 lib/view-models/auto-rollback.ts	code	Not ready
@@ -1413,6 +1421,7 @@ lib/view-models/auto-rollback.ts	code	Not rolled back · …
 lib/view-models/auto-rollback.ts	code	opted in
 lib/view-models/auto-rollback.ts	code	opted in with rollout.kuberik.com/rollback: true
 lib/view-models/auto-rollback.ts	code	opted out
+lib/view-models/auto-rollback.ts	code	Opted out
 lib/view-models/auto-rollback.ts	code	opted out with rollout.kuberik.com/rollback: false
 lib/view-models/auto-rollback.ts	code	resources that are not ready
 lib/view-models/auto-rollback.ts	code	Rolled back
@@ -1425,10 +1434,9 @@ lib/view-models/auto-rollback.ts	code	the check rolls back on …
 lib/view-models/auto-rollback.ts	code	The rollback deploy could not be written
 lib/view-models/auto-rollback.ts	code	these failures
 lib/view-models/auto-rollback.ts	code	this build
-lib/view-models/auto-rollback.ts	code	Triggered by …
-lib/view-models/auto-rollback.ts	code	Triggered by … and … more
 lib/view-models/auto-rollback.ts	code	unclassified failures
 lib/view-models/auto-rollback.ts	code	Would roll back
+lib/view-models/auto-rollback.ts	code	Would trigger
 lib/view-models/banner.ts	code	… … in …${place ?
 lib/view-models/blocking-story.ts	code	— it is on
 lib/view-models/blocking-story.ts	code	, not 1

@@ -133,7 +133,7 @@ export function deployActs(r: Rollout | null | undefined): DeployAct[] {
 			return {
 				kind: 'unknown' as const,
 				word: 'Unknown',
-				sentence: `What ${to} replaced is unknown — this entry is kept past the retention limit because the build is held.`
+				sentence: `What ${to} replaced is unknown — this entry is kept past the retention limit because automatic deploys still skip this build.`
 			};
 		}
 		// Past the contiguous window the next entry is a kept hold, not the predecessor.

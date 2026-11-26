@@ -109,8 +109,8 @@
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import AutoRollbackVerdicts from '$lib/components/AutoRollbackVerdicts.svelte';
-	import { autoRollbackView, failedBakeHeld, triggerLine } from '$lib/view-models/auto-rollback';
-	import RollbackGlance from '$lib/components/RollbackGlance.svelte';
+	import { autoRollbackView, failedBakeHeld, glanceRows, rolledBackLine } from '$lib/view-models/auto-rollback';
+	import RollbackGlance, { glanceWide } from '$lib/components/RollbackGlance.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import { readyIssue, readyFacts, type ReadyIssue } from '$lib/view-models/ready-refusal';
@@ -3778,7 +3778,7 @@
 						     control stays `Details`, because nobody opens a banner to
 						     find an email address and ONE record is not a set. -->
 						{#snippet rollbackDetail()}
-							{#if autoRolled}<div class="mb-2"><AutoRollbackVerdicts rows={[...autoRolled.triggers, ...autoRolled.spared]} /></div>{/if}
+							{#if autoRolled && !glanceWide.current}<div class="mb-2"><AutoRollbackVerdicts rows={[...autoRolled.triggers, ...autoRolled.spared]} /></div>{/if}
 							<p class="break-words">{rollbackNext(rolledBack, autoDeploy)}</p>
 							{#if author}
 								<FactList
@@ -3819,32 +3819,35 @@
 							{#if autoRolled}
 								{@const failedName = getDisplayVersion(autoRolled.failed.version)}
 								{@const held = failedBakeHeld(rollout, autoRolled.failed.version.tag)}
-								<!-- GLANCEABLE (owner rule, 2026-11-26): the shaped fact as chips, one line naming the trigger; the verdict rows sit behind Details -->
+								<!-- GLANCEABLE (owner rule, 2026-11-26): the shaped fact as chips, one line naming the trigger and what the hold does
+								     (no "Held" word: it says nothing about what is happening); the verdict rows sit behind Details -->
 								<RollbackGlance
 									from={failedName}
 									to={autoRolled.target}
-									states={held ? [{ role: 'held', label: 'Held', title: `${failedName} is skipped by automatic deploys until someone deploys it by name` }] : []}
-									line={triggerLine(autoRolled.triggers)}
-								/>
-								{#if canModify && failedBakeHeld(rollout, autoRolled.failed.version.tag)}
-									<!-- the release for the hold: the same `Deploy anyway` the held build's row in Newer builds carries, here where the hold is stated -->
-									<div class="mt-3">
-										<button
-											type="button"
-											class="btn btn-secondary btn-sm"
-											data-release-hold
-											disabled={!isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout)}
-											onclick={() => {
-												const tag = autoRolled.failed.version.tag;
-												selectedVersion = tag;
-												isPinVersionMode = isOlderThanCurrent(tag) || isSelectedVersionCustom(tag);
-												deployExplanation = '';
-												requestChangeVersionModal();
-											}}
-											aria-label={`Deploy ${failedName} anyway`}>Deploy anyway</button
-										>
-									</div>
-								{/if}
+									line={rolledBackLine(autoRolled.triggers, failedName, held)}
+									rows={glanceRows([...autoRolled.triggers, ...autoRolled.spared], true)}
+									moreHref={rolloutPath(cluster, namespace, name, 'history')}
+								>
+									{#snippet actions()}
+										{#if canModify && held}
+											<!-- the release for the hold: the same `Deploy anyway` the held build's row in Newer builds carries, here where the hold is stated -->
+											<button
+												type="button"
+												class="btn btn-secondary btn-sm"
+												data-release-hold
+												disabled={!isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout)}
+												onclick={() => {
+													const tag = autoRolled.failed.version.tag;
+													selectedVersion = tag;
+													isPinVersionMode = isOlderThanCurrent(tag) || isSelectedVersionCustom(tag);
+													deployExplanation = '';
+													requestChangeVersionModal();
+												}}
+												aria-label={`Deploy ${failedName} anyway`}>Deploy anyway</button
+											>
+										{/if}
+									{/snippet}
+								</RollbackGlance>
 							{:else}
 							<p>
 								{justClearedPin
@@ -3861,7 +3864,7 @@
 							icon={UndoOutline}
 							title={autoRolled ? 'Rolled back automatically' : 'Rolled back'}
 							messageBody={rollbackMessage}
-							footnoteBody={rollbackDetail}
+							footnoteBody={autoRolled && glanceWide.current ? undefined : rollbackDetail}
 						>
 							{#snippet extra()}
 								<!-- ⭐ THE PANEL CARRIES ITS OWN AGE. (P4, operator-walk
@@ -4363,7 +4366,7 @@
 																<span
 																	class="inline-flex min-w-0 items-center gap-1"
 																	title={failedBakeHeld(rollout, version)
-										? 'This build failed its bake here, so automatic deploys skip it. Deploy anyway names it and releases the hold.'
+										? 'Failed its bake here, so automatic deploys skip it until someone deploys it.'
 										: 'The last deploy of this build on this rollout failed its checks. Nothing has re-checked it since; deploying again tries it fresh.'}
 																>
 																	<span class="t-meta text-danger shrink-0">failed here</span>

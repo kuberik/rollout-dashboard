@@ -129,7 +129,7 @@ describe('deployActs', () => {
 			expect(acts[4]).toMatchObject({ kind: 'unknown' });
 			expect(acts[4]?.sentence).toContain('last 5');
 			expect(acts[5]).toMatchObject({ kind: 'unknown' });
-			expect(acts[5]?.sentence).toContain('held');
+			expect(acts[5]?.sentence).toContain('still skip');
 			expect(acts[6]).toMatchObject({ kind: 'unknown' });
 			expect(heldPastLimit(rollout(['T', 'D'], { versionHistoryLimit: 5 }))).toBe(0);
 		});
