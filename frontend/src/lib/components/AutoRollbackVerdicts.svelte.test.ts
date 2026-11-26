@@ -3,7 +3,7 @@ import { render } from '@testing-library/svelte';
 import AutoRollbackVerdicts from './AutoRollbackVerdicts.svelte';
 import type { VerdictRow } from '$lib/view-models/auto-rollback';
 
-const row = (over: Partial<VerdictRow>): VerdictRow => ({ key: 'k', cls: 'kustomization', type: 'RolloutTest', ref: 'ns/smoke', kind: 'TestFailed', rollsBack: true, word: 'rolls back', why: 'Test failed · the check rolls back on test failures', rule: 'CheckRollbackOn', short: '', ...over });
+const row = (over: Partial<VerdictRow>): VerdictRow => ({ key: 'k', cls: 'kustomization', type: 'RolloutTest', ref: 'ns/smoke', kind: 'TestFailed', rollsBack: true, word: 'rolls back', why: 'Test failed · the check rolls back on test failures', severity: 'Critical', rule: 'AtOrAboveThreshold', short: 'Critical', ...over });
 
 describe('AutoRollbackVerdicts', () => {
 	test('a failure that rolls back reads in danger ink, one that does not is muted', () => {
@@ -18,9 +18,9 @@ describe('AutoRollbackVerdicts', () => {
 		expect(container.querySelector('.t-code-sm')?.textContent).toBe('smoke');
 		expect(container.querySelector('[title]')?.getAttribute('title')).toBe('RolloutTest ns/smoke · Test failed · the check rolls back on test failures');
 	});
-	test('an unusual reason gets two words on the row; the ordinary case says nothing', () => {
-		const { container } = render(AutoRollbackVerdicts, { rows: [row({}), row({ key: 'j', ref: 'ns/flaky', rollsBack: false, word: 'does not roll back', short: 'opted out' })] });
-		expect([...container.querySelectorAll('[data-testid="verdict-short"]')].map((e) => e.textContent)).toEqual(['opted out']);
+	test('each row names its severity beside the verdict', () => {
+		const { container } = render(AutoRollbackVerdicts, { rows: [row({}), row({ key: 'j', ref: 'ns/flaky', rollsBack: false, word: 'does not roll back', severity: 'Warning', short: 'Warning' })] });
+		expect([...container.querySelectorAll('[data-testid="verdict-short"]')].map((e) => e.textContent)).toEqual(['Critical', 'Warning']);
 	});
 	test('when the rollback did not run, a failure that rolls back says "would roll back"', () => {
 		const { container } = render(AutoRollbackVerdicts, { rows: [row({})], would: true });

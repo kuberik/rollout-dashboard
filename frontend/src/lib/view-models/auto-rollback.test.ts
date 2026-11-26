@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rollout } from '../../types';
-import { autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, glanceRows, rolledBackLine, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
+import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, glanceRows, rolledBackLine, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
 
 const v = (tag: string) => ({ tag, version: `1.${tag.slice(-1)}.0`, revision: 'a'.repeat(40), created: '2026-11-21T10:00:00Z' });
 const failed = {
@@ -15,8 +15,8 @@ const failed = {
 			namespace: 'ns',
 			class: 'kustomization',
 			failures: [
-				{ source: 'RolloutTest ns/flaky-ui', kind: 'TestFailed', rollsBack: false, why: 'SourceOptedOut' },
-				{ source: 'RolloutTest ns/smoke', kind: 'TestFailed', rollsBack: true, why: 'CheckRollbackOn' }
+				{ source: 'RolloutTest ns/flaky-ui', kind: 'TestFailed', severity: 'Warning', rollsBack: false, why: 'BelowThreshold' },
+				{ source: 'RolloutTest ns/smoke', kind: 'TestFailed', severity: 'Critical', rollsBack: true, why: 'AtOrAboveThreshold' }
 			]
 		}
 	]
@@ -37,11 +37,16 @@ describe('auto-rollback view-model', () => {
 		expect(deployKindLabel('Automatic')).toBeNull();
 		expect(deployKindLabel(undefined)).toBeNull();
 	});
-	it('words each why from kind + why, naming the opt-out annotation', () => {
-		expect(whyWords({ kind: 'TestFailed', why: 'SourceOptedOut', rollsBack: false })).toContain('rollout.kuberik.com/rollback: false');
-		expect(whyWords({ kind: 'Incident', why: 'NotInRollbackOn', rollsBack: false })).toBe('the check does not roll back on incidents');
-		expect(whyWords({ kind: 'TestFailed', why: 'CheckRollbackOn', rollsBack: true })).toBe('the check rolls back on test failures');
-		expect(whyWords({ kind: 'CheckError', why: 'CheckErrorNever', rollsBack: false })).toMatch(/never rolls back/);
+	it('words each why from severity + rule', () => {
+		expect(whyWords({ why: 'BelowThreshold', severity: 'Warning', rollsBack: false })).toBe("Warning, below the rollout's severity");
+		expect(whyWords({ why: 'AtOrAboveThreshold', severity: 'Critical', rollsBack: true })).toBe("Critical, at or above the rollout's severity");
+		expect(whyWords({ why: 'CheckErrorNever', rollsBack: false })).toMatch(/never rolls back/);
+		expect(whyWords({ why: 'PredatesDeploy', rollsBack: false })).toMatch(/before this deploy/);
+	});
+	it('an entry without a severity counts as Critical', () => {
+		expect(severityOf({})).toBe('Critical');
+		expect(shortWhy({ why: 'BelowThreshold', severity: 'Warning' })).toBe('Warning');
+		expect(shortWhy({ why: 'CheckErrorNever' })).toBe('check error');
 	});
 	it('splits a source into type and ref', () => {
 		expect(splitSource('RolloutTest ns/t')).toEqual({ type: 'RolloutTest', ref: 'ns/t' });
@@ -50,7 +55,7 @@ describe('auto-rollback view-model', () => {
 	it('puts the failures that roll back first', () => {
 		const rows = verdictRows(failed as never);
 		expect(rows.map((r) => [r.ref, r.word])).toEqual([['ns/smoke', 'rolls back'], ['ns/flaky-ui', 'does not roll back']]);
-		expect(rows[1].why).toBe('Test failed · opted out with rollout.kuberik.com/rollback: false');
+		expect(rows[1].why).toBe("Test failed · Warning, below the rollout's severity");
 	});
 	it('rolled back: the failed entry is found by rollbackOf, triggers and spared split', () => {
 		const a = autoRollbackView(rolledBack());
@@ -90,13 +95,14 @@ describe('auto-rollback view-model', () => {
 	it('NotATrigger names the one source that did not trigger', () => {
 		const only = { ...failed, failedHealthChecks: [{ ...failed.failedHealthChecks[0], failures: [failed.failedHealthChecks[0].failures[0]] }] };
 		const rows = verdictRows(only as never);
-		expect(notRolledBackWhy('NotATrigger', only as never, rows)).toBe('flaky-ui is opted out');
-		expect(notRolledBackHeadline('NotATrigger', only as never, rows)).toBe('Not rolled back · flaky-ui is opted out');
+		expect(notRolledBackWhy('NotATrigger', only as never, rows)).toBe('flaky-ui failed · Warning');
+		expect(notRolledBackHeadline('NotATrigger', only as never, rows)).toBe('Not rolled back · flaky-ui failed · Warning');
+		expect(notRolledBackWhy('Blocked', only as never, rows)).toBe('No earlier build is safe to roll back to');
 	});
 	it('glance rows: a glyph, a name and a verdict word, never a sentence', () => {
 		const rows = verdictRows(failed as never);
-		expect(glanceRows(rows, true).map((r) => [r.name, r.verdict, r.tone])).toEqual([['smoke', 'Rolled back', 'danger'], ['flaky-ui', 'Opted out', 'muted']]);
-		expect(glanceRows(rows, false)[0].verdict).toBe('Would trigger');
+		expect(glanceRows(rows, true).map((r) => [r.name, r.verdict, r.tone])).toEqual([['smoke', 'Critical', 'danger'], ['flaky-ui', 'Warning', 'muted']]);
+		expect(glanceRows(rows, false)[0].tone).toBe('neutral');
 		for (const r of glanceRows(rows, false)) expect(r.verdict.length).toBeLessThanOrEqual(14);
 	});
 	it('reads the hold from candidates[].failedBake', () => {
@@ -106,12 +112,12 @@ describe('auto-rollback view-model', () => {
 });
 
 describe('entryRollbackNote: verdicts follow what the controller decided', () => {
-	const failure = { source: 'RolloutTest ns/smoke', kind: 'TestFailed', reason: 'RolloutTestFailed', rollsBack: true, why: 'CheckRollbackOn' };
+	const failure = { source: 'RolloutTest ns/smoke', kind: 'TestFailed', reason: 'RolloutTestFailed', severity: 'Critical', rollsBack: true, why: 'AtOrAboveThreshold' };
 	const failed = (over: Record<string, unknown> = {}) =>
 		({ id: 7, version: { tag: 'b7' }, bakeStatus: 'Failed', deployKind: 'Automatic', failedHealthChecks: [{ name: 'k', namespace: 'ns', class: 'kustomization', failures: [failure] }], ...over }) as never;
 	const ok = (over: Record<string, unknown> = {}) => ({ id: 6, version: { tag: 'b6' }, bakeStatus: 'Succeeded', deployKind: 'Automatic', ...over }) as never;
 	const ro = (enabled: boolean | undefined, history: unknown[], conditions: unknown[] = []) =>
-		({ spec: enabled === undefined ? {} : { autoRollback: { enabled } }, status: { history, conditions } }) as unknown as Rollout;
+		({ spec: enabled === undefined ? {} : { autoRollback: { severity: enabled ? 'Critical' : 'Never' } }, status: { history, conditions } }) as unknown as Rollout;
 
 	it('rolled back: only when a later AutoRollback entry names this entry', () => {
 		const e = failed();

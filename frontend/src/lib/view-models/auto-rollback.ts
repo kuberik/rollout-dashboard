@@ -40,15 +40,6 @@ export function deployKindLabel(kind: string | undefined | null): string | null 
 /** deployed by a person's explicit choice: the controller never rolls these back (force deploy, pin) */
 export const deployedByHand = (kind: string | undefined | null): boolean => kind === 'ForceDeploy' || kind === 'Pin';
 
-const KIND_PLURAL: Record<string, string> = {
-	Alert: 'alerts',
-	Incident: 'incidents',
-	ApplyFailed: 'apply failures',
-	NotReady: 'resources that are not ready',
-	TestFailed: 'test failures',
-	CheckError: 'check errors',
-	Unclassified: 'unclassified failures'
-};
 const KIND_WORD: Record<string, string> = {
 	Alert: 'Alert',
 	Incident: 'Incident',
@@ -58,40 +49,37 @@ const KIND_WORD: Record<string, string> = {
 	CheckError: 'Check error',
 	Unclassified: 'Failed'
 };
-export const kindWord = (k: string): string => KIND_WORD[k] ?? k;
+/** the failure kind as display text; the controller keeps `kind` as a hint only, so a missing one reads "Failed" */
+export const kindWord = (k: string | undefined): string => (k ? (KIND_WORD[k] ?? k) : 'Failed');
 
-/** WHY a failure does or does not roll back, in the user's words; the opt-out names the annotation that did it */
-export function whyWords(f: Pick<Failure, 'kind' | 'why' | 'rollsBack'>): string {
-	const plural = KIND_PLURAL[f.kind] ?? 'these failures';
+/** a failure's severity; the controller fills it, and an entry written before severities existed counts as Critical */
+export const severityOf = (f: Pick<Failure, 'severity'>): 'Critical' | 'Warning' => (f.severity === 'Warning' ? 'Warning' : 'Critical');
+
+/** WHY a failure does or does not roll back, in the user's words (the row's title) */
+export function whyWords(f: Pick<Failure, 'why' | 'rollsBack' | 'severity'>): string {
 	switch (f.why) {
-		case 'SourceOptedOut':
-			return 'opted out with rollout.kuberik.com/rollback: false';
-		case 'SourceOptedIn':
-			return 'opted in with rollout.kuberik.com/rollback: true';
+		case 'AtOrAboveThreshold':
+			return `${severityOf(f)}, at or above the rollout's severity`;
+		case 'BelowThreshold':
+			return `${severityOf(f)}, below the rollout's severity`;
 		case 'CheckErrorNever':
 			return 'a check that cannot run never rolls back';
-		case 'NotInRollbackOn':
-			return `the check does not roll back on ${plural}`;
-		case 'CheckRollbackOn':
-			return `the check rolls back on ${plural}`;
+		case 'PredatesDeploy':
+			return 'it started failing before this deploy';
 		default:
 			return f.rollsBack ? 'rolls back' : 'does not roll back';
 	}
 }
 
-/** the rule in two or three words; the ordinary case (the check rolls back on this kind) says nothing */
-export function shortWhy(why: string): string {
-	switch (why) {
-		case 'SourceOptedOut':
-			return 'opted out';
-		case 'SourceOptedIn':
-			return 'opted in';
+/** the reason in one or two words beside a verdict: the severity, or the rule when the severity did not decide */
+export function shortWhy(f: Pick<Failure, 'why' | 'severity'>): string {
+	switch (f.why) {
 		case 'CheckErrorNever':
-			return 'check could not run';
-		case 'NotInRollbackOn':
-			return 'not a rollback kind';
+			return 'check error';
+		case 'PredatesDeploy':
+			return 'before deploy';
 		default:
-			return '';
+			return severityOf(f);
 	}
 }
 
@@ -103,15 +91,17 @@ export type VerdictRow = {
 	type: string;
 	/** `namespace/name` of the source, verbatim */
 	ref: string;
-	kind: string;
+	kind?: string;
+	/** Critical | Warning */
+	severity: 'Critical' | 'Warning';
 	rollsBack: boolean;
 	/** "rolls back" | "does not roll back" */
 	word: string;
-	/** "Test failed · opted out with ..." */
+	/** "Test failed · Warning, below the rollout's severity" */
 	why: string;
-	/** the controller's rule, verbatim (`SourceOptedOut`, `CheckRollbackOn`, ...) */
+	/** the controller's rule, verbatim (`AtOrAboveThreshold`, `BelowThreshold`, `CheckErrorNever`, `PredatesDeploy`) */
 	rule: string;
-	/** the reason in two or three words, printed only when it is not the ordinary case ("opted out", "check error") */
+	/** one or two words beside the verdict: the severity, or "check error" / "before deploy" */
 	short: string;
 	message?: string;
 };
@@ -134,11 +124,12 @@ export function verdictRows(entry: HistoryEntry | null | undefined): VerdictRow[
 				type,
 				ref,
 				kind: f.kind,
+				severity: severityOf(f),
 				rollsBack: f.rollsBack,
 				word: f.rollsBack ? 'rolls back' : 'does not roll back',
 				why: `${kindWord(f.kind)} · ${whyWords(f)}`,
 				rule: f.why,
-				short: shortWhy(f.why),
+				short: shortWhy(f),
 				message: f.message
 			});
 		}
@@ -162,7 +153,7 @@ export type AutoRollbackView =
 	  }
 	| {
 			state: 'not-rolled-back';
-			/** the condition's reason: NotATrigger | ManualDeploy | ManualIntent | NoTarget | DeployError */
+			/** the condition's reason: NotATrigger | Blocked | ManualDeploy | ManualIntent | NoTarget | DeployError */
 			reason: string;
 			/** the sentence the banner leads with */
 			headline: string;
@@ -187,10 +178,12 @@ export function notRolledBackWhy(reason: string, failed: HistoryEntry, rows: Ver
 			return 'No earlier build passed its bake';
 		case 'DeployError':
 			return 'The rollback deploy could not be written';
+		case 'Blocked':
+			return 'No earlier build is safe to roll back to';
 		case 'NotATrigger': {
 			const names = rows.filter((r) => !r.rollsBack);
-			if (names.length === 1) return names[0].rule === 'SourceOptedOut' ? `${shortRef(names[0].ref)} is opted out` : `${shortRef(names[0].ref)} does not roll back`;
-			if (names.length > 1) return `None of the ${names.length} failures roll back`;
+			if (names.length === 1) return `${shortRef(names[0].ref)} failed · ${names[0].short}`;
+			if (names.length > 1) return `${names.length} failures, none severe enough`;
 			return `${display(failed)} failed for a reason that does not roll back`;
 		}
 		default:
@@ -208,15 +201,15 @@ export function notRolledBackHeadline(reason: string, failed: HistoryEntry, rows
 export type GlanceRow = { key: string; cls: string; name: string; verdict: string; tone: 'danger' | 'muted' | 'neutral'; title?: string };
 
 /**
- * Verdict rows as glance rows. `ran`: the rollback happened, so a trigger reads "Rolled back"; otherwise "Would trigger".
- * Chip words stay within the chip's 14-character vocabulary budget.
+ * Verdict rows as glance rows: the chip is the failure's severity (or "check error" / "before deploy" when the severity
+ * did not decide). `ran`: the rollback happened, so a trigger is drawn in danger ink; otherwise neutral.
  */
 export function glanceRows(rows: VerdictRow[], ran: boolean): GlanceRow[] {
 	return rows.map((r) => ({
 		key: r.key,
 		cls: r.cls,
 		name: shortRef(r.ref),
-		verdict: r.rollsBack ? (ran ? 'Rolled back' : 'Would trigger') : r.rule === 'SourceOptedOut' ? 'Opted out' : 'No rollback',
+		verdict: r.short,
 		tone: r.rollsBack ? (ran ? 'danger' : 'neutral') : 'muted',
 		title: `${r.type ? `${r.type} ${r.ref}` : r.ref} · ${r.why}${r.message ? ` · ${r.message}` : ''}`
 	}));
@@ -285,7 +278,7 @@ const noteOf = (ran: boolean, word: string, why = ''): EntryRollbackNote => ({ r
 export function entryRollbackNote(r: Rollout | null | undefined, entry: HistoryEntry): EntryRollbackNote {
 	const rows = verdictRows(entry);
 	if (entryRolledBack(r, entry)) return noteOf(true, 'Rolled back', triggerLine(rows.filter((x) => x.rollsBack)));
-	if (!r?.spec?.autoRollback?.enabled) return noteOf(false, rows.some((x) => x.rollsBack) ? 'Would roll back' : 'Not rolled back', 'Automatic rollback is off');
+	if ((r?.spec?.autoRollback?.severity ?? 'Never') === 'Never') return noteOf(false, rows.some((x) => x.rollsBack) ? 'Would roll back' : 'Not rolled back', 'Automatic rollback is off');
 	if (deployedByHand(entry.deployKind)) return noteOf(false, 'Not rolled back', 'Deployed by hand');
 	if (!entry.deployKind) return noteOf(false, 'Not rolled back', 'Deployed before rollback decisions were recorded');
 	const head = r.status?.history?.[0];

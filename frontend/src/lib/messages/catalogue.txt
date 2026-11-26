@@ -1391,51 +1391,39 @@ lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and i
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there.
 lib/view-models/auto-rollback.ts	code	: r.ref} · …${r.message ?
 lib/view-models/auto-rollback.ts	code	… and … more failed
-lib/view-models/auto-rollback.ts	code	… does not roll back
 lib/view-models/auto-rollback.ts	code	… failed
+lib/view-models/auto-rollback.ts	code	… failed · …
 lib/view-models/auto-rollback.ts	code	… failed for a reason that does not roll back
-lib/view-models/auto-rollback.ts	code	… is opted out
+lib/view-models/auto-rollback.ts	code	… failures, none severe enough
 lib/view-models/auto-rollback.ts	code	… won't auto-deploy again
+lib/view-models/auto-rollback.ts	code	…, at or above the rollout's severity
+lib/view-models/auto-rollback.ts	code	…, below the rollout's severity
 lib/view-models/auto-rollback.ts	code	${r.type ?
 lib/view-models/auto-rollback.ts	code	a check that cannot run never rolls back
 lib/view-models/auto-rollback.ts	code	A deploy was already requested by hand
 lib/view-models/auto-rollback.ts	code	Apply failed
-lib/view-models/auto-rollback.ts	code	apply failures
 lib/view-models/auto-rollback.ts	code	Automatic rollback
 lib/view-models/auto-rollback.ts	code	Automatic rollback is off
-lib/view-models/auto-rollback.ts	code	check could not run
+lib/view-models/auto-rollback.ts	code	before deploy
+lib/view-models/auto-rollback.ts	code	check error
 lib/view-models/auto-rollback.ts	code	Check error
-lib/view-models/auto-rollback.ts	code	check errors
 lib/view-models/auto-rollback.ts	code	Deployed before rollback decisions were recorded
 lib/view-models/auto-rollback.ts	code	Deployed by hand
 lib/view-models/auto-rollback.ts	code	does not roll back
 lib/view-models/auto-rollback.ts	code	Force deployed
+lib/view-models/auto-rollback.ts	code	it started failing before this deploy
+lib/view-models/auto-rollback.ts	code	No earlier build is safe to roll back to
 lib/view-models/auto-rollback.ts	code	No earlier build passed its bake
-lib/view-models/auto-rollback.ts	code	No rollback
-lib/view-models/auto-rollback.ts	code	None of the … failures roll back
-lib/view-models/auto-rollback.ts	code	not a rollback kind
 lib/view-models/auto-rollback.ts	code	Not ready
 lib/view-models/auto-rollback.ts	code	Not rolled back
 lib/view-models/auto-rollback.ts	code	Not rolled back · …
-lib/view-models/auto-rollback.ts	code	opted in
-lib/view-models/auto-rollback.ts	code	opted in with rollout.kuberik.com/rollback: true
-lib/view-models/auto-rollback.ts	code	opted out
-lib/view-models/auto-rollback.ts	code	Opted out
-lib/view-models/auto-rollback.ts	code	opted out with rollout.kuberik.com/rollback: false
-lib/view-models/auto-rollback.ts	code	resources that are not ready
 lib/view-models/auto-rollback.ts	code	Rolled back
 lib/view-models/auto-rollback.ts	code	rolls back
 lib/view-models/auto-rollback.ts	code	Rules bypassed
 lib/view-models/auto-rollback.ts	code	Test failed
-lib/view-models/auto-rollback.ts	code	test failures
-lib/view-models/auto-rollback.ts	code	the check does not roll back on …
-lib/view-models/auto-rollback.ts	code	the check rolls back on …
 lib/view-models/auto-rollback.ts	code	The rollback deploy could not be written
-lib/view-models/auto-rollback.ts	code	these failures
 lib/view-models/auto-rollback.ts	code	this build
-lib/view-models/auto-rollback.ts	code	unclassified failures
 lib/view-models/auto-rollback.ts	code	Would roll back
-lib/view-models/auto-rollback.ts	code	Would trigger
 lib/view-models/banner.ts	code	… … in …${place ?
 lib/view-models/blocking-story.ts	code	— it is on
 lib/view-models/blocking-story.ts	code	, not 1

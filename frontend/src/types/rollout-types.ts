@@ -105,9 +105,10 @@ export interface components {
                  *     If not specified, the rollout will wait indefinitely for bake to start.
                  */
                 deployTimeout?: string;
-                /** @description AutoRollback opts this Rollout in to rolling back a failed bake automatically (preview). */
+                /** @description AutoRollback rolls a failed bake back automatically (preview). Severity is the lowest failure severity that rolls back; Never (default) turns it off. */
                 autoRollback?: {
-                    enabled?: boolean;
+                    /** @enum {string} */
+                    severity?: "Never" | "Critical" | "Warning";
                 };
                 /** @description HealthCheckSelector specifies how to select HealthChecks for this rollout */
                 healthCheckSelector?: {
@@ -458,17 +459,18 @@ export interface components {
                         namespace: string;
                         /** @description Class is the health check's class (kustomization, prometheus-alert, ...). */
                         class?: string;
-                        /** @description RollbackOn is the resolved list of failure kinds that roll back (class default applied). */
-                        rollbackOn?: string[];
                         /** @description Failures is one verdict per failed source: whether it rolls the Rollout back, and why. */
                         failures?: {
                             source: string;
-                            kind: "Alert" | "Incident" | "ApplyFailed" | "NotReady" | "TestFailed" | "CheckError" | "Unclassified";
+                            /** @description Kind is a display hint only. */
+                            kind?: "Alert" | "Incident" | "ApplyFailed" | "NotReady" | "TestFailed" | "CheckError" | "Unclassified";
+                            /** @enum {string} */
+                            severity?: "Critical" | "Warning";
                             reason?: string;
                             message?: string;
                             rollsBack: boolean;
                             /** @enum {string} */
-                            why: "CheckRollbackOn" | "NotInRollbackOn" | "SourceOptedOut" | "SourceOptedIn" | "CheckErrorNever";
+                            why: "AtOrAboveThreshold" | "BelowThreshold" | "CheckErrorNever" | "PredatesDeploy";
                         }[];
                         /**
                          * @description Observations is a snapshot of the health check's status.observations taken

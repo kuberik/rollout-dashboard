@@ -7,10 +7,10 @@
  *
  *   app               prod rollout state
  *   cart-service      (a) rolled back automatically: 2.4.0 failed on cart-smoke-test (rolls back); cart-flaky-ui-test
- *                         also failed but opted out. 2.3.0 runs again; 2.4.0 is held (candidates[].failedBake).
- *   catalog-sync      (b) failed bake, NOT rolled back: only the opted-out catalog-flaky-ui-test failed (NotATrigger).
+ *                         also failed but is marked Warning (kuberik.com/severity). 2.3.0 runs again; 2.4.0 is held (candidates[].failedBake).
+ *   catalog-sync      (b) failed bake, NOT rolled back: only the Warning-severity catalog-flaky-ui-test failed (NotATrigger).
  *   payments-gateway  (c) force-deployed build failed: not rolled back automatically (ManualDeploy), Roll back is the primary action.
- *   search-indexer    (d) NOT opted in (no spec.autoRollback): an automatic build failed on a test the check would roll back
+ *   search-indexer    (d) NOT opted in (no spec.autoRollback): an automatic build failed on a Critical test that would roll back
  *                         on; nothing rolled back, so History reads "would roll back", never "rolls back".
  *
  * Every time is relative to the read (`restamp`), so a capture at any moment reads the same ages.
@@ -74,8 +74,7 @@ function shape(f: Fixture, r: Obj): Obj {
 								namespace: NS(f.app),
 								class: 'kustomization',
 								message: '1 test failed',
-								rollbackOn: ['ApplyFailed', 'NotReady', 'TestFailed', 'Unclassified'],
-								failures: [{ source: `RolloutTest ${NS(f.app)}/search-smoke-test`, kind: 'TestFailed', reason: 'RolloutTestFailed', message: 'GET /search?q=boots returned 503', rollsBack: true, why: 'CheckRollbackOn' }]
+								failures: [{ source: `RolloutTest ${NS(f.app)}/search-smoke-test`, kind: 'TestFailed', reason: 'RolloutTestFailed', message: 'GET /search?q=boots returned 503', severity: 'Critical', rollsBack: true, why: 'AtOrAboveThreshold' }]
 							}
 						]
 					},
@@ -86,7 +85,7 @@ function shape(f: Fixture, r: Obj): Obj {
 			}
 		};
 	}
-	const spec = { ...(r.spec as Obj), autoRollback: { enabled: true }, healthCheckSelector: { matchLabels: { app: f.app } } };
+	const spec = { ...(r.spec as Obj), autoRollback: { severity: 'Critical' }, healthCheckSelector: { matchLabels: { app: f.app } } };
 	if (f === CART) {
 		const tag = (n: number) => f.releases[n - 1].tag;
 		const failedChecks = [
@@ -95,10 +94,9 @@ function shape(f: Fixture, r: Obj): Obj {
 				namespace: NS(f.app),
 				class: 'kustomization',
 				message: '2 tests failed',
-				rollbackOn: ['ApplyFailed', 'NotReady', 'TestFailed', 'Unclassified'],
 				failures: [
-					{ source: `RolloutTest ${NS(f.app)}/cart-smoke-test`, kind: 'TestFailed', reason: 'RolloutTestFailed', message: 'POST /cart returned 500 for 3 of 3 attempts', rollsBack: true, why: 'CheckRollbackOn' },
-					{ source: `RolloutTest ${NS(f.app)}/cart-flaky-ui-test`, kind: 'TestFailed', reason: 'RolloutTestFailed', message: 'timed out waiting for the checkout button', rollsBack: false, why: 'SourceOptedOut' }
+					{ source: `RolloutTest ${NS(f.app)}/cart-smoke-test`, kind: 'TestFailed', reason: 'RolloutTestFailed', message: 'POST /cart returned 500 for 3 of 3 attempts', severity: 'Critical', rollsBack: true, why: 'AtOrAboveThreshold' },
+					{ source: `RolloutTest ${NS(f.app)}/cart-flaky-ui-test`, kind: 'TestFailed', reason: 'RolloutTestFailed', message: 'timed out waiting for the checkout button', severity: 'Warning', rollsBack: false, why: 'BelowThreshold' }
 				]
 			}
 		];
@@ -128,7 +126,7 @@ function shape(f: Fixture, r: Obj): Obj {
 			status: {
 				...st,
 				candidates: [{ tag: f.releases[4].tag, gated: true, created: f.releases[4].created, firstSeen: f.releases[4].created }],
-				conditions: [cond('AutoRollback', 'False', 'NotATrigger', `Not rolled back: RolloutTest ${NS(f.app)}/catalog-flaky-ui-test failed and opted out (rollout.kuberik.com/rollback: false)`)],
+				conditions: [cond('AutoRollback', 'False', 'NotATrigger', `Not rolled back: RolloutTest ${NS(f.app)}/catalog-flaky-ui-test failed (Warning), below the rollout severity Critical`)],
 				history: [
 					{
 						id: 4,
@@ -146,8 +144,7 @@ function shape(f: Fixture, r: Obj): Obj {
 								namespace: NS(f.app),
 								class: 'kustomization',
 								message: '1 test failed',
-								rollbackOn: ['ApplyFailed', 'NotReady', 'TestFailed', 'Unclassified'],
-								failures: [{ source: `RolloutTest ${NS(f.app)}/catalog-flaky-ui-test`, kind: 'TestFailed', reason: 'RolloutTestFailed', message: 'screenshot differs from baseline by 0.4%', rollsBack: false, why: 'SourceOptedOut' }]
+								failures: [{ source: `RolloutTest ${NS(f.app)}/catalog-flaky-ui-test`, kind: 'TestFailed', reason: 'RolloutTestFailed', message: 'screenshot differs from baseline by 0.4%', severity: 'Warning', rollsBack: false, why: 'BelowThreshold' }]
 							}
 						]
 					},
@@ -182,8 +179,7 @@ function shape(f: Fixture, r: Obj): Obj {
 							namespace: NS(f.app),
 							class: 'kustomization',
 							message: '1 of 9 resources unhealthy',
-							rollbackOn: ['ApplyFailed', 'NotReady', 'TestFailed', 'Unclassified'],
-							failures: [{ source: `Deployment ${NS(f.app)}/payments-gateway`, kind: 'NotReady', reason: 'ProgressDeadlineExceeded', message: 'ReplicaSet "payments-gateway-6d9f" has timed out progressing', rollsBack: true, why: 'CheckRollbackOn' }]
+							failures: [{ source: `Deployment ${NS(f.app)}/payments-gateway`, kind: 'NotReady', reason: 'ProgressDeadlineExceeded', message: 'ReplicaSet "payments-gateway-6d9f" has timed out progressing', severity: 'Critical', rollsBack: true, why: 'AtOrAboveThreshold' }]
 						}
 					]
 				},
