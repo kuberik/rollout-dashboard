@@ -117,7 +117,7 @@ describe('entryRollbackNote: verdicts follow what the controller decided', () =>
 		({ id: 7, version: { tag: 'b7' }, bakeStatus: 'Failed', deployKind: 'Automatic', failedHealthChecks: [{ name: 'k', namespace: 'ns', class: 'kustomization', failures: [failure] }], ...over }) as never;
 	const ok = (over: Record<string, unknown> = {}) => ({ id: 6, version: { tag: 'b6' }, bakeStatus: 'Succeeded', deployKind: 'Automatic', ...over }) as never;
 	const ro = (enabled: boolean | undefined, history: unknown[], conditions: unknown[] = []) =>
-		({ spec: enabled === undefined ? {} : { autoRollback: { severity: enabled ? 'Critical' : 'Never' } }, status: { history, conditions } }) as unknown as Rollout;
+		({ spec: enabled ? { autoRollback: { minSeverity: 'Critical' } } : {}, status: { history, conditions } }) as unknown as Rollout;
 
 	it('rolled back: only when a later AutoRollback entry names this entry', () => {
 		const e = failed();

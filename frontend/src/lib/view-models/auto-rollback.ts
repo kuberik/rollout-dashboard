@@ -280,7 +280,7 @@ const noteOf = (ran: boolean, word: string, why = ''): EntryRollbackNote => ({ r
 export function entryRollbackNote(r: Rollout | null | undefined, entry: HistoryEntry): EntryRollbackNote {
 	const rows = verdictRows(entry);
 	if (entryRolledBack(r, entry)) return noteOf(true, 'Rolled back', triggerLine(rows.filter((x) => x.rollsBack)));
-	if ((r?.spec?.autoRollback?.severity ?? 'Never') === 'Never') return noteOf(false, rows.some((x) => x.rollsBack) ? 'Would roll back' : 'Not rolled back', 'Automatic rollback is off');
+	if (!r?.spec?.autoRollback) return noteOf(false, rows.some((x) => x.rollsBack) ? 'Would roll back' : 'Not rolled back', 'Automatic rollback is off');
 	if (deployedByHand(entry.deployKind)) return noteOf(false, 'Not rolled back', 'Deployed by hand');
 	if (!entry.deployKind) return noteOf(false, 'Not rolled back', 'Deployed before rollback decisions were recorded');
 	const head = r?.status?.history?.[0];

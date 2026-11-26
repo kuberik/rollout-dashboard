@@ -105,10 +105,10 @@ export interface components {
                  *     If not specified, the rollout will wait indefinitely for bake to start.
                  */
                 deployTimeout?: string;
-                /** @description AutoRollback rolls a failed bake back automatically (preview). Severity is the lowest failure severity that rolls back; Never (default) turns it off. */
+                /** @description AutoRollback rolls a failed bake back automatically (preview). Present means on, absent means off. MinSeverity is the lowest failure severity that rolls back (default Critical). */
                 autoRollback?: {
                     /** @enum {string} */
-                    severity?: "Never" | "Critical" | "Warning";
+                    minSeverity?: "Critical" | "Warning";
                 };
                 /** @description HealthCheckSelector specifies how to select HealthChecks for this rollout */
                 healthCheckSelector?: {

@@ -85,7 +85,7 @@ function shape(f: Fixture, r: Obj): Obj {
 			}
 		};
 	}
-	const spec = { ...(r.spec as Obj), autoRollback: { severity: 'Critical' }, healthCheckSelector: { matchLabels: { app: f.app } } };
+	const spec = { ...(r.spec as Obj), autoRollback: { minSeverity: 'Critical' }, healthCheckSelector: { matchLabels: { app: f.app } } };
 	if (f === CART) {
 		const tag = (n: number) => f.releases[n - 1].tag;
 		const failedChecks = [
