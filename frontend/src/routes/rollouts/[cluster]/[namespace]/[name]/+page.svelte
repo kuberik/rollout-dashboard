@@ -108,9 +108,8 @@
 	import { ledgerSpine } from '$lib/ledger-spine';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
-	import AutoRollbackVerdicts from '$lib/components/AutoRollbackVerdicts.svelte';
 	import { autoRollbackView, failedBakeHeld, glanceRows, rolledBackLine } from '$lib/view-models/auto-rollback';
-	import RollbackGlance, { glanceWide } from '$lib/components/RollbackGlance.svelte';
+	import RollbackGlance from '$lib/components/RollbackGlance.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import { readyIssue, readyFacts, type ReadyIssue } from '$lib/view-models/ready-refusal';
@@ -3778,7 +3777,6 @@
 						     control stays `Details`, because nobody opens a banner to
 						     find an email address and ONE record is not a set. -->
 						{#snippet rollbackDetail()}
-							{#if autoRolled && !glanceWide.current}<div class="mb-2"><AutoRollbackVerdicts rows={[...autoRolled.triggers, ...autoRolled.spared]} /></div>{/if}
 							<p class="break-words">{rollbackNext(rolledBack, autoDeploy)}</p>
 							{#if author}
 								<FactList
@@ -3864,7 +3862,7 @@
 							icon={UndoOutline}
 							title={autoRolled ? 'Rolled back automatically' : 'Rolled back'}
 							messageBody={rollbackMessage}
-							footnoteBody={autoRolled && glanceWide.current ? undefined : rollbackDetail}
+							footnoteBody={autoRolled ? undefined : rollbackDetail}
 						>
 							{#snippet extra()}
 								<!-- ⭐ THE PANEL CARRIES ITS OWN AGE. (P4, operator-walk

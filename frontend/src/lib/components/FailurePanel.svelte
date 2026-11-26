@@ -18,8 +18,7 @@
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
-	import AutoRollbackVerdicts from './AutoRollbackVerdicts.svelte';
-	import RollbackGlance, { glanceWide } from './RollbackGlance.svelte';
+	import RollbackGlance from './RollbackGlance.svelte';
 	import { autoRollbackView, glanceRows } from '$lib/view-models/auto-rollback';
 	import { poolOf, worstOf, bannerEvidence, failingNowList, failingSummary, checkView, failureSince as checksFailingSince, type SnapCheck } from '$lib/view-models/health-failures';
 
@@ -298,7 +297,6 @@
 		{/if}
 	{/snippet}
 	{#snippet footnoteBody()}
-		{#if notRolled && notRolled.rows.length > 0 && !glanceWide.current}<div class="mb-2"><AutoRollbackVerdicts rows={notRolled.rows} would={notRolled.reason !== 'NotATrigger'} /></div>{/if}
 		{#if notRolled && !evidence && bannerMessage}<p class="mb-1 break-words">{bannerMessage}</p>{/if}
 		{#if evidence}
 			<FailureDetails {pool} />
