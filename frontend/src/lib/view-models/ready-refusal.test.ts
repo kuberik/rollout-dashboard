@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { OWNED_ELSEWHERE, CONFLICT_NEXT_STEP, managerName, pathParts, readyIssue, REMEDIATION_NEXT_STEP } from './ready-refusal';
+import { OWNED_ELSEWHERE, CONFLICT_NEXT_STEP, managerName, pathParts, readyIssue, REMEDIATION_NEXT_STEP, REMEDIATION_LAST_FAILURE_NEXT_STEP, readyFacts, firstClause } from './ready-refusal';
 
 const ready = (reason: string, message: string, status = 'False') => [
 	{ type: 'DeploymentBlocked', status: 'False', reason: 'HealthChecksHealthy', message: '' },
@@ -18,10 +18,17 @@ describe('readyIssue: which Ready=False reasons the banner speaks for', () => {
 			kind: 'refused',
 			reason: 'HelmReleaseFieldConflict',
 			title: 'Deploy refused',
-			line: 'HelmReleaseFieldConflict on spec.values.image.tag, also set by gitops-demo',
-			conflict: { path: 'spec.values.image.tag', by: 'gitops-demo' },
+			line: 'HelmRelease hello-helm spec.values.image.tag, also set by gitops-demo',
+			conflict: {
+				kind: 'HelmRelease',
+				name: 'hello-helm',
+				path: 'spec.values.image.tag',
+				by: 'gitops-demo',
+				manager: 'gitops-demo',
+				hint: "Remove it from the manifest in Git so kuberik owns it (set the default in the chart's values.yaml instead)."
+			},
 			nextStep: CONFLICT_NEXT_STEP,
-			detail: HELM,
+			detail: `HelmReleaseFieldConflict: ${HELM}`,
 			since: '2026-11-21T10:00:00Z'
 		});
 	});
@@ -29,21 +36,22 @@ describe('readyIssue: which Ready=False reasons the banner speaks for', () => {
 	test('a Kustomization conflict names the variable path and the other manager', () => {
 		const i = readyIssue(ready('KustomizationFieldConflict', KUST))!;
 		expect(i.title).toBe('Deploy refused');
-		expect(i.line).toBe('KustomizationFieldConflict on spec.postBuild.substitute.IMAGE_TAG, also set by gitops-demo');
-		expect(i.detail).toBe(KUST);
+		expect(i.line).toBe('Kustomization hello-dep spec.postBuild.substitute.IMAGE_TAG, also set by gitops-demo');
+		expect(i.conflict).toMatchObject({ kind: 'Kustomization', name: 'hello-dep', path: 'spec.postBuild.substitute.IMAGE_TAG', by: 'gitops-demo' });
+		expect(i.detail).toBe(`KustomizationFieldConflict: ${KUST}`);
 	});
 
 	test('a conflict with another rollout names that rollout', () => {
 		const msg =
 			'Kustomization hello-dep-dev/hello-dep: spec.postBuild.substitute.API_TAG is also set by "rollout-controller/hello-dep-dev/hello-api". Rollout hello-api wrote it before the annotation moved and still owns it.';
 		expect(readyIssue(ready('KustomizationFieldConflict', msg))!.line).toBe(
-			'KustomizationFieldConflict on spec.postBuild.substitute.API_TAG, also set by Rollout hello-api'
+			'Kustomization hello-dep spec.postBuild.substitute.API_TAG, also set by Rollout hello-api'
 		);
 	});
 
 	test('an unnamed manager reads "another field manager"', () => {
 		const msg = 'HelmRelease a/b: spec.values.x is also set by another field manager. Remove it.';
-		expect(readyIssue(ready('HelmReleaseFieldConflict', msg))!.line).toBe('HelmReleaseFieldConflict on spec.values.x, also set by another field manager');
+		expect(readyIssue(ready('HelmReleaseFieldConflict', msg))!.conflict!.by).toBe('another field manager');
 		expect(managerName(undefined)).toBe('another field manager');
 	});
 
@@ -63,16 +71,25 @@ describe('readyIssue: which Ready=False reasons the banner speaks for', () => {
 		expect(readyIssue(ready('RolloutFailed', 'boom'))!.nextStep).toBeNull();
 	});
 
+	test('every printed next step is one sentence of 12 words or fewer (glanceable-UI rule)', () => {
+		for (const t of [CONFLICT_NEXT_STEP, REMEDIATION_NEXT_STEP, REMEDIATION_LAST_FAILURE_NEXT_STEP]) {
+			expect(t.split(/\s+/).length).toBeLessThanOrEqual(12);
+		}
+		const retries = readyIssue(
+			ready('HelmReleaseRemediationConflict', 'HelmRelease a/b: spec.upgrade.remediation.retries is also set by "kustomize-controller". x')
+		)!;
+		expect(retries.nextStep).toBe(REMEDIATION_NEXT_STEP);
+	});
+
 	test('HelmReleaseRemediationConflict is "Deploy refused" with its own next step', () => {
 		const msg =
 			'HelmRelease shop-dev/shop: spec.upgrade.remediation.remediateLastFailure is also set by "kustomize-controller". kuberik turns off Helm\'s upgrade remediation so that only the Rollout rolls back; have "kustomize-controller" set spec.upgrade.remediation.retries: 0 and remediateLastFailure: false, or remove them, and the deploy continues (kuberik retries every minute).';
 		expect(readyIssue(ready('HelmReleaseRemediationConflict', msg))).toMatchObject({
 			kind: 'refused',
 			title: 'Deploy refused',
-			line: 'HelmReleaseRemediationConflict on spec.upgrade.remediation.remediateLastFailure, also set by kustomize-controller',
-			conflict: { path: 'spec.upgrade.remediation.remediateLastFailure', by: 'kustomize-controller' },
-			nextStep: REMEDIATION_NEXT_STEP,
-			detail: msg
+			conflict: { kind: 'HelmRelease', name: 'shop', path: 'spec.upgrade.remediation.remediateLastFailure', by: 'kustomize-controller' },
+			nextStep: REMEDIATION_LAST_FAILURE_NEXT_STEP,
+			detail: `HelmReleaseRemediationConflict: ${msg}`
 		});
 	});
 
@@ -141,3 +158,28 @@ describe('pathParts', () => {
 		expect(/[\u200B\u200C\u200D\u2060]/.test(i.line + i.conflict!.path + i.conflict!.by)).toBe(false);
 	});
 });
+
+describe('readyFacts: the banner record beside the drawn row', () => {
+	const ago = () => '14m';
+	test('a conflict records the reason, the controller hint (first clause) and since when; path and writer stay drawn only', () => {
+		const i = readyIssue(ready('HelmReleaseFieldConflict', HELM))!;
+		expect(readyFacts(i, ago)).toEqual([
+			{ label: 'Reason', value: 'HelmReleaseFieldConflict' },
+			{ label: 'Controller', value: 'Remove it from the manifest in Git so kuberik owns it' },
+			{ label: 'Since', value: '14m ago' }
+		]);
+	});
+	test('another rollout as the writer also records its raw field manager', () => {
+		const msg =
+			'Kustomization ns/k: spec.postBuild.substitute.API_TAG is also set by "rollout-controller/ns/hello-api". Release it.';
+		const facts = readyFacts(readyIssue(ready('KustomizationFieldConflict', msg))!, ago);
+		expect(facts).toContainEqual({ label: 'Field manager', value: 'rollout-controller/ns/hello-api' });
+	});
+	test('firstClause cuts at ;, a sentence end or a parenthesis', () => {
+		expect(firstClause('a b; c d.')).toBe('a b');
+		expect(firstClause('one. two')).toBe('one');
+		expect(firstClause('x (y)')).toBe('x');
+		expect(firstClause('plain')).toBe('plain');
+	});
+});
+

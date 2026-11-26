@@ -1,7 +1,10 @@
 /**
  * THE READY=FALSE BANNER (owner 2026-11-21: "Add it to the banner"). When the controller sets the Rollout's
- * `Ready` condition False, the rollout page's banner names the reason and the message, e.g.
- *   Deploy refused · HelmReleaseFieldConflict on spec.values.image.tag, also set by gitops-demo
+ * `Ready` condition False, the rollout page's banner names the reason and the message. A field conflict is DRAWN
+ * (owner 2026-11-26: the prose form was "a wall of text"), one short next step under it, the rest behind Details:
+ *   Deploy refused
+ *   [HelmRelease|shop] spec.values.image.tag  [gitops-demo] → [kuberik] ✕
+ *   Stop the other writer from setting it to continue.          › Details
  * Before this the refusal was visible only through `kubectl describe`; the page showed "Held" or nothing.
  *
  * Which reasons it speaks for: EVERY Ready=False reason, except the ones another surface on the rollout page already
@@ -36,10 +39,23 @@ export type ReadyIssue = {
 	title: string;
 	/** the printed consequence line, as plain text (copy, aria, tests) */
 	line: string;
-	/** a field conflict's path and who else sets it, so the page can mark up the path's break points (`pathParts`); null otherwise */
-	conflict: { path: string; by: string } | null;
-	/** one generic next-step sentence for a field conflict (owner 2026-11-25: keep it generic, no per-writer advice), its own for a
-	 * remediation conflict (owner 2026-11-26); null for every other reason */
+	/**
+	 * a field conflict, DRAWN (glanceable-UI rule, owner 2026-11-26: "a wall of text"): the object (`kind` + `name`, e.g.
+	 * HelmRelease shop), the contested path, and who else sets it — `[HelmRelease|shop] spec.values.image.tag [gitops-demo] → [kuberik] ✕`.
+	 * `by` is the person-readable writer (`managerName`). The controller's message carries no values, so none are drawn. Null otherwise.
+	 */
+	conflict: {
+		kind: string;
+		name: string;
+		path: string;
+		by: string;
+		/** the raw field manager the controller named (`by` is its readable form); null for an unnamed manager */
+		manager: string | null;
+		/** what the controller said after naming the writer (its fix hint), for the record; '' when it said nothing more */
+		hint: string;
+	} | null;
+	/** one short next step (12 words or fewer): generic for a field conflict (owner 2026-11-25: no per-writer advice), its own
+	 * for a remediation conflict (owner 2026-11-26); null for every other reason */
 	nextStep: string | null;
 	/** the controller's full message, disclosed; null when `line` already is the whole message */
 	detail: string | null;
@@ -50,12 +66,13 @@ export type ReadyIssue = {
 export const OWNED_ELSEWHERE: ReadonlySet<string> = new Set(['BakeTimeFailed', 'BakeTimeRetrying', 'ReleaseSourceRequired', 'NoReleases']);
 /** the three conflict reasons the controller writes; deliberately one sentence for all of them */
 const FIELD_CONFLICT = /FieldConflict$/;
-export const CONFLICT_NEXT_STEP = "Another tool also sets this field. kuberik won't overwrite it \u2014 stop that tool from setting it and the deploy continues on its own.";
+export const CONFLICT_NEXT_STEP = 'Stop the other writer from setting it to continue.';
 /** HelmReleaseRemediationConflict: kuberik turns Helm's upgrade remediation off, and another tool sets it to something else.
  * Setting the same values is a fix too, so the generic "stop setting it" is only half the answer. */
 const REMEDIATION_CONFLICT = /RemediationConflict$/;
-export const REMEDIATION_NEXT_STEP =
-	'Set spec.upgrade.remediation.retries: 0 and remediateLastFailure: false, or remove them, and the deploy continues on its own.';
+export const REMEDIATION_NEXT_STEP = 'Set it to 0, or remove it.';
+/** remediateLastFailure is a boolean: "off" is false, not 0 */
+export const REMEDIATION_LAST_FAILURE_NEXT_STEP = 'Set it to false, or remove it.';
 const LEGACY_NO_RELEASES = { reason: 'RolloutSucceeded', message: 'No releases available' };
 /** the controller's write refusals: rollout-controller `deployWriteIssue` reasons */
 const REFUSED = /(?:FieldConflict|RemediationConflict|InvalidAnnotation)$/;
@@ -81,6 +98,27 @@ export function managerName(manager: string | undefined): string {
  */
 export const pathParts = (path: string): string[] => path.split(/(?<=\.)(?=[A-Za-z0-9_])/);
 
+/** "a; b. c (d)" -> "a": the controller's hint up to its first `;`, sentence end or parenthesis */
+export function firstClause(text: string): string {
+	const cut = text.search(/;|\.\s|\s\(/);
+	return (cut === -1 ? text : text.slice(0, cut)).replace(/\.$/, '');
+}
+
+/**
+ * The banner's record (the right column at banner widths, `Details` on a phone): what the drawn row does not already say.
+ * The reason code, the raw field manager when the row shows a friendlier name, the controller's own hint, and since when.
+ */
+export function readyFacts(issue: ReadyIssue, ago: (iso: string) => string): { label: string; value: string }[] {
+	const facts: { label: string; value: string }[] = [{ label: 'Reason', value: issue.reason }];
+	const c = issue.conflict;
+	if (c?.manager && c.manager !== c.by) facts.push({ label: 'Field manager', value: c.manager });
+	// Trimmed to its first clause: the record is a side column, not a second paragraph. The whole message is the row's title.
+	if (c?.hint) facts.push({ label: 'Controller', value: firstClause(c.hint) });
+	else if (!c && issue.detail) facts.push({ label: 'Controller', value: issue.detail });
+	if (issue.since) facts.push({ label: 'Since', value: `${ago(issue.since)} ago` });
+	return facts;
+}
+
 export function readyIssue(conditions: readonly Cond[] | null | undefined, o: { held?: boolean } = {}): ReadyIssue | null {
 	const c = conditions?.find((x) => x.type === 'Ready');
 	if (!c || c.status !== 'False') return null;
@@ -92,13 +130,25 @@ export function readyIssue(conditions: readonly Cond[] | null | undefined, o: { 
 
 	const since = c.lastTransitionTime ?? null;
 	const refused = REFUSED.test(reason);
-	const nextStep = REMEDIATION_CONFLICT.test(reason) ? REMEDIATION_NEXT_STEP : FIELD_CONFLICT.test(reason) ? CONFLICT_NEXT_STEP : null;
+	let nextStep = REMEDIATION_CONFLICT.test(reason) ? REMEDIATION_NEXT_STEP : FIELD_CONFLICT.test(reason) ? CONFLICT_NEXT_STEP : null;
 	const title = refused ? 'Deploy refused' : 'Not ready';
 	const conflict = CONFLICT.exec(message);
 	if (conflict) {
-		const [, , , path, manager] = conflict;
+		const [, objKind, id, path, manager, hint] = conflict;
 		const by = managerName(manager);
-		return { kind: refused ? 'refused' : 'not-ready', reason, title, line: `${reason} on ${path}, also set by ${by}`, conflict: { path, by }, nextStep, detail: message, since };
+		if (nextStep === REMEDIATION_NEXT_STEP && path.endsWith('.remediateLastFailure')) nextStep = REMEDIATION_LAST_FAILURE_NEXT_STEP;
+		const name = id.slice(id.indexOf('/') + 1);
+		// The reason code and the controller's whole message are the disclosed record, never printed (glanceable-UI rule).
+		return {
+			kind: refused ? 'refused' : 'not-ready',
+			reason,
+			title,
+			line: `${objKind} ${name} ${path}, also set by ${by}`,
+			conflict: { kind: objKind, name, path, by, manager: manager ?? null, hint: hint.trim() },
+			nextStep,
+			detail: `${reason}: ${message}`,
+			since
+		};
 	}
 	const body = message.replace(OBJECT_LEAD, '');
 	const line = body ? `${reason}: ${body}` : reason;

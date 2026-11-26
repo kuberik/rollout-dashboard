@@ -109,13 +109,21 @@ describe('the Ready banner never repeats a fact another banner states', () => {
 		await waitFor(() => expect(readyBanner(c)).not.toBeNull(), { timeout: 25000 });
 		const b = readyBanner(c)!;
 		expect(b.textContent).toContain('Deploy refused');
-		expect(b.textContent).toContain('HelmReleaseFieldConflict on spec.values.image.tag, also set by gitops-demo');
+		// drawn, not written: the row carries object, path and writer; the reason code is only in the disclosed footnote
+		const row = b.querySelector('[data-testid="conflict-row"]')!;
+		expect(row.textContent).toContain('alpha-app');
+		expect(row.textContent).not.toContain('HelmReleaseFieldConflict');
 		expect(/[​‌‍⁠]/.test(b.textContent ?? ''), 'no zero-width characters to copy').toBe(false);
 		const path = b.querySelector('[data-ready-path]')!;
 		expect(path.textContent).toBe('spec.values.image.tag');
 		expect(path.querySelectorAll('wbr').length).toBe(3);
-		expect(b.querySelector('[data-ready-next]')!.textContent).toContain('stop that tool from setting it');
+		expect(b.querySelector('[data-ready-next]')!.textContent).toBe('Stop the other writer from setting it to continue.');
 		expect(b.querySelector('[data-ready-by]')!.textContent).toBe('gitops-demo');
+		// the record is rendered once (beside the row on a wide banner, behind its own Details on a phone), with the reason code
+		const facts = b.querySelector('[data-glance-facts]')!;
+		expect(facts.textContent).toContain('HelmReleaseFieldConflict');
+		expect(b.querySelectorAll('[data-glance-facts]').length).toBe(1);
+		expect(b.querySelector('[data-glance-toggle]')!.textContent).toContain('Details');
 		expect(screen.queryByText('No release source', { exact: true })).toBeNull();
 		expect(screen.queryByText('Deployment failed')).toBeNull();
 	});
