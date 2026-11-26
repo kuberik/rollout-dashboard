@@ -18,14 +18,26 @@
 	import { ChevronRightOutline } from 'flowbite-svelte-icons';
 	import FactList, { type Fact } from './FactList.svelte';
 
-	let { main, facts = [] }: { main: Snippet; facts?: Fact[] } = $props();
+	let {
+		main,
+		facts = [],
+		aside,
+		toggleLabel = 'Details'
+	}: {
+		main: Snippet;
+		facts?: Fact[];
+		/** a record that is not label/value pairs (the rollback banners' verdict rows); drawn instead of `facts` */
+		aside?: Snippet;
+		/** the toggle's word on a narrow banner; a countable set takes the count form (`lib/disclosure.ts`) */
+		toggleLabel?: string;
+	} = $props();
 	let open = $state(false);
 </script>
 
 <div class="glance-split-cq min-w-0">
 	<div class="glance-split" data-glance-split>
 		<div class="min-w-0" data-glance-main>{@render main()}</div>
-		{#if facts.length}
+		{#if aside || facts.length}
 			<button
 				type="button"
 				class="glance-toggle t-ui-sm hit-32 inline-flex items-center gap-1 self-start"
@@ -33,10 +45,10 @@
 				onclick={() => (open = !open)}
 				data-glance-toggle
 			>
-				<ChevronRightOutline class="h-3 w-3 transition-transform {open ? 'rotate-90' : ''}" aria-hidden="true" />Details
+				<ChevronRightOutline class="h-3 w-3 transition-transform {open ? 'rotate-90' : ''}" aria-hidden="true" />{toggleLabel}
 			</button>
 			<div class="glance-facts min-w-0" data-open={open} data-glance-facts>
-				<FactList {facts} tone="banner" />
+				{#if aside}{@render aside()}{:else}<FactList {facts} tone="banner" />{/if}
 			</div>
 		{/if}
 	</div>
