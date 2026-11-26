@@ -155,8 +155,10 @@ export type AutoRollbackView =
 			state: 'not-rolled-back';
 			/** the condition's reason: NotATrigger | Blocked | ManualDeploy | ManualIntent | NoTarget | DeployError */
 			reason: string;
-			/** the sentence the banner leads with */
+			/** state word + reason in one string (titles, aria); the banner draws `why` as its one line */
 			headline: string;
+			/** the reason alone, one short line */
+			why: string;
 			failed: HistoryEntry;
 			rows: VerdictRow[];
 			message?: string;
@@ -182,7 +184,7 @@ export function notRolledBackWhy(reason: string, failed: HistoryEntry, rows: Ver
 			return 'No earlier build is safe to roll back to';
 		case 'NotATrigger': {
 			const names = rows.filter((r) => !r.rollsBack);
-			if (names.length === 1) return `${shortRef(names[0].ref)} failed · ${names[0].short}`;
+			if (names.length === 1) return `${shortRef(names[0].ref)} failed`; // the severity is the row's chip; said once
 			if (names.length > 1) return `${names.length} failures, none severe enough`;
 			return `${display(failed)} failed for a reason that does not roll back`;
 		}
@@ -281,7 +283,7 @@ export function entryRollbackNote(r: Rollout | null | undefined, entry: HistoryE
 	if ((r?.spec?.autoRollback?.severity ?? 'Never') === 'Never') return noteOf(false, rows.some((x) => x.rollsBack) ? 'Would roll back' : 'Not rolled back', 'Automatic rollback is off');
 	if (deployedByHand(entry.deployKind)) return noteOf(false, 'Not rolled back', 'Deployed by hand');
 	if (!entry.deployKind) return noteOf(false, 'Not rolled back', 'Deployed before rollback decisions were recorded');
-	const head = r.status?.history?.[0];
+	const head = r?.status?.history?.[0];
 	const c = cond(r);
 	if (head === entry && c?.status === 'False' && c.reason) return noteOf(false, 'Not rolled back', notRolledBackWhy(c.reason, entry, rows));
 	return noteOf(false, 'Not rolled back');

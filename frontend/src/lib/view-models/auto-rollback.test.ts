@@ -95,8 +95,8 @@ describe('auto-rollback view-model', () => {
 	it('NotATrigger names the one source that did not trigger', () => {
 		const only = { ...failed, failedHealthChecks: [{ ...failed.failedHealthChecks[0], failures: [failed.failedHealthChecks[0].failures[0]] }] };
 		const rows = verdictRows(only as never);
-		expect(notRolledBackWhy('NotATrigger', only as never, rows)).toBe('flaky-ui failed · Warning');
-		expect(notRolledBackHeadline('NotATrigger', only as never, rows)).toBe('Not rolled back · flaky-ui failed · Warning');
+		expect(notRolledBackWhy('NotATrigger', only as never, rows)).toBe('flaky-ui failed');
+		expect(notRolledBackHeadline('NotATrigger', only as never, rows)).toBe('Not rolled back · flaky-ui failed');
 		expect(notRolledBackWhy('Blocked', only as never, rows)).toBe('No earlier build is safe to roll back to');
 	});
 	it('glance rows: a glyph, a name and a verdict word, never a sentence', () => {

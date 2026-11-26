@@ -1392,7 +1392,6 @@ lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and p
 lib/view-models/auto-rollback.ts	code	: r.ref} · …${r.message ?
 lib/view-models/auto-rollback.ts	code	… and … more failed
 lib/view-models/auto-rollback.ts	code	… failed
-lib/view-models/auto-rollback.ts	code	… failed · …
 lib/view-models/auto-rollback.ts	code	… failed for a reason that does not roll back
 lib/view-models/auto-rollback.ts	code	… failures, none severe enough
 lib/view-models/auto-rollback.ts	code	… won't auto-deploy again
