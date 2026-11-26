@@ -1348,7 +1348,7 @@ export function lastDeploy(state: HomeState, tier?: TierKey): { app: string; pla
 
 /* ═══ per-place holds, gates, approval scope (AD v2 v, w, x, y, z) ═══ */
 /** Where a place stands in its tier's rollout order (sites & waves): its wave, whether it leads the wave, and who it follows. `multi` is true only when the tier has more than one wave, i.e. when the wave tells the reader something. */
-export type WaveInfo = { site: string; wave: number; leader: boolean; follows: string | null; multi: boolean };
+export type WaveInfo = { site: string; wave: number; leader: boolean; follows: string | null; multi: boolean; /** the tier's wave numbers, in order */ waves: number[] };
 const TOPOLOGY = new WeakMap<object, Map<string, AppTopology>>();
 /** The wave facts of the place a rollout href names, off the fixture's Environments (null for an unbound rollout or an unplaced tier). */
 export function waveInfoOfHref(href: string): WaveInfo | null {
@@ -1362,7 +1362,7 @@ export function waveInfoOfHref(href: string): WaveInfo | null {
 	const tier = topo?.tiers.find((t) => t.tier === node?.tier);
 	if (!topo || !node || !tier) return null;
 	const follows = node.isLeader ? null : (upstreamOf(topo, node)[0]?.site ?? null);
-	return { site: node.site, wave: node.wave, leader: node.isLeader, follows, multi: tier.waves.length > 1 };
+	return { site: node.site, wave: node.wave, leader: node.isLeader, follows, multi: tier.waves.length > 1, waves: tier.waves.map((w) => w.wave) };
 }
 /** The environment a place's promotion gate waits on, as a chip would name it: the tier of its upstream sites when that is another tier ("staging"), else the one site it follows ("eu-central"); null when there is none or several. The source of `gateLabel`'s chip. */
 export function promotionSourceOfHref(href: string): string | null {

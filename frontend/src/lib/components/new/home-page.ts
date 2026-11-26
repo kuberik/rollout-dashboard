@@ -15,7 +15,7 @@ import { inScope } from './derivation-scope';
 import { oldestFirst, newestFirst, earliest, latest as latestInstant } from '$lib/instant';
 import { liveSource } from '$lib/components/home/sketch/fleet-source.svelte';
 import { approvalIdentity,
-	inbox, rollouts, pinOnlyPlaces, heldRegionsPhrase, type PinOnlyPlace, fleet24hEvents, ago, isViewer, personOf, waitClock, gateName, regionStates, pretty, buildIdentity, NOW, type HomeState, type TRow
+	inbox, rollouts, pinOnlyPlaces, heldRegionsPhrase, type PinOnlyPlace, fleet24hEvents, ago, isViewer, personOf, waitClock, gateName, regionStates, pretty, buildIdentity, waveInfoOfHref, NOW, type HomeState, type TRow
 } from './data';
 import { rowAction, actionHref } from './rollout-view';
 import { chipPlace, changeLineOf } from './rollouts-page';
@@ -38,7 +38,7 @@ export type AskItem = {
 	id: { name: string; ref?: string; title?: string; person?: string; you?: boolean };
 };
 /** `mark` is the StatusMark state of the row: failing, held by a rule, waiting on an approval, or moving (QA #6: an approval-held or moving rollout must show on Home even when it is not the viewer's ask). */
-export type FleetTrouble = { key: string; app: string; failing: boolean; mark: 'failed' | 'held' | 'approval' | 'deploying' | 'checking'; word: 'Failing' | 'Failed' | 'Held' | 'Waiting for approval' | 'Needs your approval' | 'Deploying' | 'Checking' | 'Paused'; href: string; places: { tier: string; place: string }[]; /** a failed row whose every failed place has its checks OK again: the ring, not the solid disc */ recovered?: boolean };
+export type FleetTrouble = { key: string; app: string; failing: boolean; mark: 'failed' | 'held' | 'approval' | 'deploying' | 'checking'; word: 'Failing' | 'Failed' | 'Held' | 'Waiting for approval' | 'Needs your approval' | 'Deploying' | 'Checking' | 'Paused'; href: string; places: { tier: string; place: string }[]; /** a failed row whose every failed place has its checks OK again: the ring, not the solid disc */ recovered?: boolean; /** a moving prod row whose tier rolls out in waves: the row reads "wave N of M" in place of one chip per site (fleetWave) */ wave?: { at: number; of: number } };
 export type FleetDeploy = { key: string; app: string; tier: string; place: string; at: string; age: string; failing: boolean; href: string; /** the app's failed places all have their checks OK again: the ring, not the solid disc */ recovered?: boolean };
 export type HomePage = {
 	asks: AskItem[];
@@ -166,6 +166,13 @@ function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 	foldPinIntoFleet(by, heldRegions, pinOnlyPlaces(R.c.m.apps as never, R.rows, new Set([...askKeys, ...mineKeys])));
 	/* a held app's prod chip says the same count the Apps tile, the app page and the rollout page say: "3 of 5 regions" (every cause and the pin once), not the rows' own region count */
 	for (const x of by.values()) if (x.mark === 'held') { const ph = heldRegionsPhrase(x.app, hs); const pr = x.places.find((q) => q.tier === 'prod'); if (ph && pr) pr.place = ph; }
+	/* a moving prod row on a tier with waves says how far the waves are ("wave 1 of 2"), not which sites move (owner 2026-11-26, pack 08 variant B) */
+	for (const x of by.values()) {
+		if ((x.mark !== 'checking' && x.mark !== 'deploying') || !x.places.every((q) => q.tier === 'prod')) continue;
+		const info = R.rows.filter((r) => r.app === x.app && r.tier === 'prod' && r.group === 'moving').map((r) => waveInfoOfHref(r.href)).filter((i): i is NonNullable<typeof i> => !!i);
+		const w = info.length ? fleetWave(info[0].waves, info.map((i) => i.wave)) : null;
+		if (w) x.wave = w;
+	}
 	const trouble = [...by.values()].sort((a, b) => TROUBLE_ORDER(a.mark) - TROUBLE_ORDER(b.mark) || Number(!!a.recovered) - Number(!!b.recovered) || oldestFirst(a.since, b.since)).map(({ since: _s, ...t }) => t);
 
 	const failingApps = new Set(R.rows.filter((r) => r.group === 'failed').map((r) => r.app));
@@ -195,6 +202,16 @@ function homePageRaw(hs: HomeState, starred?: ReadonlySet<string>): HomePage {
 		counts: { failing, toApprove },
 		calm: !asks.length
 	};
+}
+/**
+ * How far a tier's waves have got, for one Fleet row: `at` is the position of the furthest moving wave among the tier's waves, `of` how many
+ * waves the tier has. Null when the tier has one wave or nothing moves (the row keeps its site chips).
+ */
+export function fleetWave(waves: number[], moving: number[]): { at: number; of: number } | null {
+	const all = [...new Set(waves)].sort((a, b) => a - b);
+	const at = all.indexOf(Math.max(...moving));
+	if (all.length < 2 || !moving.length || at < 0) return null;
+	return { at: at + 1, of: all.length };
 }
 export { plural as _plural, TIERS as _TIERS };
 

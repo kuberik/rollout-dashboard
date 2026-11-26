@@ -76,3 +76,29 @@ it('the Needs-you rollup says `failed` for a recovered failure, like every other
 	expect(asksRollupOf(3, 1, 2)).toEqual([{ text: '2 failing', ink: 'danger' }, { text: '2 to approve', ink: 'held' }, '1 failed']);
 	expect(asksRollupOf(1, 1, 0)).toEqual(['1 failed']);
 });
+
+import { fleetWave } from './home-page';
+/* pack 08 variant B (owner 2026-11-26): a moving prod row on a tier with waves reads "wave N of M" instead of one chip per site */
+it('fleetWave: the furthest moving wave out of the tier\'s waves', () => {
+	expect(fleetWave([1, 2], [1, 1])).toEqual({ at: 1, of: 2 });
+	expect(fleetWave([1, 2, 3], [2])).toEqual({ at: 2, of: 3 });
+});
+it('fleetWave: one wave, or nothing moving, keeps the site chips (null)', () => {
+	expect(fleetWave([1], [1])).toBeNull();
+	expect(fleetWave([1, 2], [])).toBeNull();
+	expect(fleetWave([1, 2], [5])).toBeNull();
+});
+it('fleetWave: a gap in the numbering counts waves present, not the highest number', () => {
+	expect(fleetWave([1, 3], [3])).toEqual({ at: 2, of: 2 });
+});
+it('Fleet: only moving prod rows carry a wave; every other row keeps its chips', () => {
+	for (const s of ['incident', 'calm', 'quiet'] as const) {
+		for (const t of homePage(s).fleet.trouble) {
+			if (!t.wave) continue;
+			expect(['checking', 'deploying']).toContain(t.mark);
+			expect(t.places.every((p) => p.tier === 'prod')).toBe(true);
+			expect(t.wave.at).toBeGreaterThanOrEqual(1);
+			expect(t.wave.at).toBeLessThanOrEqual(t.wave.of);
+		}
+	}
+});
