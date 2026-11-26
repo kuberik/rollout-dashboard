@@ -114,7 +114,7 @@ function shape(f: Fixture, r: Obj): Obj {
 		if (need) e.version = { ...v, requires: need };
 	}
 	const out = (over: Obj, spec: Obj = {}): Obj => ({ ...r, spec: { ...(r.spec as Obj), healthCheckSelector: { matchLabels: { app } }, ...spec }, status: { ...st, ...over, history: over.history ?? hist } });
-	const optIn = { autoRollback: { severity: 'Critical' } };
+	const optIn = { autoRollback: { minSeverity: 'Critical' } };
 	const headTag = (v: string) => tagOf(app, v);
 	const candidate = (v: string) => [{ tag: headTag(v), gated: true, created: rel(app, v).created, firstSeen: rel(app, v).created, failedBake: true }];
 

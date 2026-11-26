@@ -20,7 +20,7 @@ const sel = { usualTarget: 'r51', blockedBy: [brk()] };
 function blocked(over: Record<string, unknown> = {}, live?: unknown): Rollout {
 	return {
 		metadata: { name: 'ledger-books', namespace: 'ledger-prod' },
-		spec: { autoRollback: { severity: 'Critical' } },
+		spec: { autoRollback: { minSeverity: 'Critical' } },
 		status: {
 			conditions: [{ type: 'AutoRollback', status: 'False', reason: 'ConsumerRequires', message: 'm' }],
 			autoRollback: live,
