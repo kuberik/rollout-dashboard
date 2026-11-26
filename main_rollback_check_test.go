@@ -72,7 +72,7 @@ func rbWorld(policy rolloutv1alpha1.ProviderRollbackPolicy) []client.Object {
 }
 
 func TestRollbackCheck_ConsumerBreaks(t *testing.T) {
-	withHCReadClient(t, nil, rbWorld("")...)
+	withHCReadClient(t, nil, rbWorld(rolloutv1alpha1.ProviderRollbackBlock)...)
 	code, body, raw := getRollbackCheck(t, "/api/rollouts/shop/ledger-core/rollback-check?tag=v5")
 	if code != 200 {
 		t.Fatalf("status %d: %s", code, raw)
@@ -83,6 +83,15 @@ func TestRollbackCheck_ConsumerBreaks(t *testing.T) {
 	b := body.Breaks[0]
 	if b.Kind != "ConsumerRequires" || b.Rollout != "checkout" || b.Reason != "ConstraintNotSatisfied" || b.Allowed || b.Requires != "^6.0.0" || b.Version != "3.2.0" {
 		t.Fatalf("unexpected break: %+v", b)
+	}
+}
+
+// An edge that sets no providerRollback is Allow (the default): the break is reported, marked allowed.
+func TestRollbackCheck_UnsetEdgeIsAllowByDefault(t *testing.T) {
+	withHCReadClient(t, nil, rbWorld("")...)
+	code, body, raw := getRollbackCheck(t, "/api/rollouts/shop/ledger-core/rollback-check?tag=v5")
+	if code != 200 || len(body.Breaks) != 1 || !body.Breaks[0].Allowed {
+		t.Fatalf("want one Allowed break for an unset edge, got %d %s", code, raw)
 	}
 }
 
@@ -109,7 +118,7 @@ func TestRollbackCheck_NoConsumersIsEmptyArray(t *testing.T) {
 }
 
 func TestRollbackCheck_UnknownTagIs404(t *testing.T) {
-	withHCReadClient(t, nil, rbWorld("")...)
+	withHCReadClient(t, nil, rbWorld(rolloutv1alpha1.ProviderRollbackBlock)...)
 	code, _, raw := getRollbackCheck(t, "/api/rollouts/shop/ledger-core/rollback-check?tag=nope")
 	if code != http.StatusNotFound {
 		t.Fatalf("want 404, got %d: %s", code, raw)
@@ -117,7 +126,7 @@ func TestRollbackCheck_UnknownTagIs404(t *testing.T) {
 }
 
 func TestRollbackCheck_MissingTagIs400(t *testing.T) {
-	withHCReadClient(t, nil, rbWorld("")...)
+	withHCReadClient(t, nil, rbWorld(rolloutv1alpha1.ProviderRollbackBlock)...)
 	code, _, raw := getRollbackCheck(t, "/api/rollouts/shop/ledger-core/rollback-check")
 	if code != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d: %s", code, raw)
@@ -145,9 +154,9 @@ func TestRollbackCheck_HubProxiesToSpoke(t *testing.T) {
 // Two consumers of ledger-core: checkout (ns shop, visible) and risk (ns
 // secret, not listable by the restricted viewer).
 func rbVisibilityWorld() []client.Object {
-	objs := rbWorld("")
+	objs := rbWorld(rolloutv1alpha1.ProviderRollbackBlock)
 	risk := rbRollout("secret", "risk", rbVersion("r1", "1.0.0", map[string]string{"ledger": "^6.0.0"}))
-	d := rbDep("risk", "")
+	d := rbDep("risk", rolloutv1alpha1.ProviderRollbackBlock)
 	d.Namespace = "secret"
 	return append(objs, risk, d)
 }
@@ -191,7 +200,7 @@ func TestRollbackCheck_HiddenConsumerTrimmedAndCounted(t *testing.T) {
 func TestRollbackCheck_VisibleConsumerKeptNoHiddenField(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	hcIsolation(t)
-	withHCReadClient(t, nil, rbWorld("")...)
+	withHCReadClient(t, nil, rbWorld(rolloutv1alpha1.ProviderRollbackBlock)...)
 	rbLimitedViewer(t, map[string]bool{"shop": true})
 	code, body, raw := getRollbackCheckAs(t, "tok-shop")
 	if code != 200 || len(body.Breaks) != 1 || strings.Contains(raw, "hiddenConsumers") {
@@ -215,7 +224,7 @@ func TestRollbackCheck_HiddenAllowAndProviderRowsNotCounted(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	hcIsolation(t)
 	// ledger-core (shop) has a hidden Allow consumer "risk" in ns secret.
-	objs := rbWorld("")
+	objs := rbWorld(rolloutv1alpha1.ProviderRollbackBlock)
 	risk := rbRollout("secret", "risk", rbVersion("r1", "1.0.0", map[string]string{"ledger": "^6.0.0"}))
 	d := rbDep("risk", rolloutv1alpha1.ProviderRollbackAllow)
 	d.Namespace = "secret"
@@ -223,7 +232,7 @@ func TestRollbackCheck_HiddenAllowAndProviderRowsNotCounted(t *testing.T) {
 	// vault-ledger (ns secret) at 7.0.0, so TargetRequires names a hidden provider.
 	web := rbRollout("shop", "web", rbVersion("w2", "2.0.0", nil), rbVersion("w1", "1.0.0", map[string]string{"ledger": "^9.0.0"}))
 	vault := rbRollout("secret", "vault-ledger", rbVersion("v1", "7.0.0", nil))
-	wd := rbDep("web", "")
+	wd := rbDep("web", rolloutv1alpha1.ProviderRollbackBlock)
 	wd.Name = "web-needs-vault"
 	wd.Spec.ProviderRef = rolloutv1alpha1.ProviderRolloutReference{Name: "vault-ledger", Namespace: ptr.To("secret")}
 	objs = append(objs, risk, d, web, vault, wd)
