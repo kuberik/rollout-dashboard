@@ -37,8 +37,8 @@ export function deployKindLabel(kind: string | undefined | null): string | null 
 	}
 }
 
-/** deployed by a person's explicit choice: the controller never rolls these back (force deploy, pin, unblock-failed) */
-export const deployedByHand = (kind: string | undefined | null): boolean => kind === 'ForceDeploy' || kind === 'Pin' || kind === 'Unblock';
+/** deployed by a person's explicit choice: the controller never rolls these back (force deploy, pin) */
+export const deployedByHand = (kind: string | undefined | null): boolean => kind === 'ForceDeploy' || kind === 'Pin';
 
 const KIND_WORD: Record<string, string> = {
 	Alert: 'Alert',

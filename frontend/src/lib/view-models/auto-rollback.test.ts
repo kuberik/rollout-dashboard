@@ -144,9 +144,6 @@ describe('entryRollbackNote: verdicts follow what the controller decided', () =>
 		const r = ro(true, [e, ok()], [{ type: 'AutoRollback', status: 'False', reason, message: '' }]);
 		expect(entryRollbackNote(r, e)).toMatchObject({ ran: false, word: 'Not rolled back', why });
 	});
-	it('an unblock-failed deploy is a deploy by hand', () => {
-		expect(entryRollbackNote(ro(true, [failed({ deployKind: 'Unblock' })]), failed({ deployKind: 'Unblock' })).note).toBe('Not rolled back · Deployed by hand');
-	});
 	it('deployed by hand, or before deploy kinds were recorded', () => {
 		expect(entryRollbackNote(ro(true, [failed({ deployKind: 'ForceDeploy' })]), failed({ deployKind: 'ForceDeploy' })).note).toBe('Not rolled back · Deployed by hand');
 		const old = failed({ deployKind: undefined });
