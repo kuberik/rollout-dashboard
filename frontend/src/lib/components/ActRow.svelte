@@ -132,7 +132,7 @@
 />
 
 {#snippet face(a: Act, variant: Item['variant'])}
-	{#if a.icon && !a.iconAfter}{@const I = a.icon}<I class={a.iconClass ?? 'h-4 w-4'} aria-hidden="true" />{/if}<span>{a.label}</span>{#if a.icon && a.iconAfter}{@const I = a.icon}<I class="{a.iconClass ?? 'h-4 w-4'} transition-transform {a.iconTurn ? 'rotate-180' : ''}" aria-hidden="true" />{/if}{#if a.href && !a.icon}<span aria-hidden="true" class="shrink-0">{a.external ? '↗' : '›'}</span>{/if}
+	{#if a.icon && !a.iconAfter}{@const I = a.icon}<I class={a.iconClass ?? 'h-4 w-4'} aria-hidden="true" />{/if}<span class="ar-label">{a.label}</span>{#if a.icon && a.iconAfter}{@const I = a.icon}<I class="{a.iconClass ?? 'h-4 w-4'} transition-transform {a.iconTurn ? 'rotate-180' : ''}" aria-hidden="true" />{/if}{#if a.href && !a.icon}<span aria-hidden="true" class="shrink-0">{a.external ? '↗' : '›'}</span>{/if}
 {/snippet}
 
 <div class="ar" class:ar-fill={fill} class:ar-end={align === 'end'} class:ar-equal={equal} bind:this={root} data-act-row>
@@ -228,6 +228,16 @@
 		}
 		.ar-more-btn {
 			min-height: 44px;
+		}
+		/* a long label (a service name) is cut with an ellipsis inside its button, never past its edge */
+		.ar :global(.ar-item) {
+			min-width: 0;
+		}
+		.ar :global(.ar-label) {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
 		}
 		.ar-equal.ar-fill :global(.ar-item:not(.ar-menu)) {
 			flex: 1 1 0;
