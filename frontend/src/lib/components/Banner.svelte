@@ -116,11 +116,11 @@
 
 	/* the mark is the product's status disc (StatusMark's grammar) at 20px: a solid hue with a white glyph */
 	const SEV = {
-		critical: { icon: BangGlyph, disc: 'bg-danger-solid text-white', face: 'field-danger border-banner-danger-line', halo: 'bg-danger-solid/30' },
-		warning: { icon: BangGlyph, disc: 'bg-warning-solid text-gray-900', face: 'field-warning border-warning-line', halo: 'bg-warning-solid/30' },
-		held: { icon: HeldGlyph, disc: 'bg-held-solid text-white', face: 'field-held border-held-line', halo: 'bg-held-solid/30' },
-		info: { icon: InfoGlyph, disc: 'bg-active-solid text-white', face: 'bg-surface border-line', halo: 'bg-active-solid/30' },
-		success: { icon: CheckGlyph, disc: 'bg-success-solid text-white', face: 'bg-surface border-line', halo: 'bg-success-solid/30' }
+		critical: { icon: BangGlyph, disc: `${hueSolid('danger')} text-white`, face: 'field-danger border-banner-danger-line' },
+		warning: { icon: BangGlyph, disc: `${hueSolid('warning')} text-gray-900`, face: 'field-warning border-warning-line' },
+		held: { icon: HeldGlyph, disc: `${hueSolid('held')} text-white`, face: 'field-held border-held-line' },
+		info: { icon: InfoGlyph, disc: `${hueSolid('active')} text-white`, face: 'bg-surface border-line' },
+		success: { icon: CheckGlyph, disc: `${hueSolid('success')} text-white`, face: 'bg-surface border-line' }
 	} as const;
 
 	const severity = $derived(shown.severity ?? 'info');
@@ -164,7 +164,7 @@
 			<div class="bn-cq">
 				<section class="bn rounded-md border text-fg {sev.face}" {role} data-banner data-severity={severity}>
 					<span class="bn-icon relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full {disc}" aria-hidden="true" data-banner-mark>
-						{#if shown.pulse}<span class="bn-halo absolute inset-0 rounded-full {sev.halo}"></span>{/if}
+						{#if shown.pulse}<span class="bn-halo absolute inset-0 rounded-full opacity-30 {disc}"></span>{/if}
 						<Icon class="relative h-3 w-3" />
 					</span>
 					<div class="bn-head min-w-0">
