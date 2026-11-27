@@ -251,7 +251,7 @@
 			white-space: nowrap;
 		}
 		.ar-equal.ar-fill :global(.ar-item:not(.ar-menu)) {
-			flex: 1 1 0;
+			flex: 1 1 auto;
 			min-width: 0;
 		}
 	}
