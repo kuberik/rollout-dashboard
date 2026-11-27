@@ -71,11 +71,13 @@ function breakPhrase(b: DependencyBreak): string {
  *   Rolling back would break checkout, billing and 1 more
  *   No earlier build can run against its providers
  */
-export function blockedWhy(breaks: DependencyBreak[] | null | undefined): string {
+export function blockedWhy(breaks: DependencyBreak[] | null | undefined, code = false): string {
 	const names = breakNames(blocking(breaks).filter((b) => !isTarget(b)));
 	if (names.length === 0) return 'No earlier build can run against its providers';
 	const { shown, rest } = clip(names);
-	return `Rolling back would break ${nameList(shown.concat(rest > 0 ? [`${rest} more`] : []))}`;
+	/* `code`: each service name is marked `like this`, so the banner draws it in the code role and it never breaks at its hyphen */
+	const marked = code ? shown.map((n) => '`' + n + '`') : shown;
+	return `Rolling back would break ${nameList(marked.concat(rest > 0 ? [`${rest} more`] : []))}`;
 }
 
 /** a row is made of pieces; a piece is words and, where it carries one, a version or constraint (mono) */
@@ -208,9 +210,9 @@ export function skippedBreakRows(sel: RollbackSelection | null | undefined): { b
 	return (sel?.skipped ?? []).map((s) => ({ build: s.version || s.tag, rows: breakRows(s.breaks, s.version || s.tag) }));
 }
 
-/** the skipped builds as Details rows: one per break, tagged `Skipped` */
+/** the skipped builds as Details rows: one per break (the consumer, what it runs and needs) */
 export function skippedDetailRows(sel: RollbackSelection | null | undefined, cluster: string, self = ''): DetailRow[] {
-	return skippedBreakRows(sel).flatMap((sk) => breakDetailRows(sk.rows, cluster, self, 'Skipped'));
+	return skippedBreakRows(sel).flatMap((sk) => breakDetailRows(sk.rows, cluster, self));
 }
 
 /** the banner's clause for the skipped builds, the first named in the code role: "skipped `5.1.0` and 1 more"; '' when nothing was skipped */

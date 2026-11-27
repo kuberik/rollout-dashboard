@@ -16,7 +16,7 @@
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
 	import { autoRollbackView, notRolledBackSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
-	import { consumerNowLookup, nowSafeView, breakDetailRows } from '$lib/view-models/rollback-deps';
+	import { blockedWhy, consumerNowLookup, nowSafeView, breakDetailRows } from '$lib/view-models/rollback-deps';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { poolOf, worstOf, failingNowList, failingSummary, type SnapCheck } from '$lib/view-models/health-failures';
 
@@ -212,7 +212,7 @@
 	/* the banner's one sentence (12 words or fewer, no age: the page header has it): why it was not rolled back (or that it is safe now), else what is failing */
 	const sentence = $derived(
 		nowSafe ? nowSafe.headline
-		: dependencyBlock ? dependencyBlock.why
+		: dependencyBlock ? blockedWhy(dependencyBlock.blockedBy, true)
 		: notRolled ? notRolledBackSentence(notRolled.reason, notRolled.failed, notRolled.rows)
 		: allRecovered ? '`' + (worst?.row?.name ?? worst?.check.name ?? 'The check') + '` recovered'
 		: bannerMessage

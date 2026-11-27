@@ -3795,7 +3795,7 @@
 								icon={UndoOutline}
 								title="Rolled back automatically"
 								move={{ from: failedName, to: autoRolled.target }}
-								line={[triggerSentence(autoRolled.triggers), skippedSentence(autoRolled.rollback.autoRollback)].filter(Boolean).join(', ')}
+								line={skippedSentence(autoRolled.rollback.autoRollback) || triggerSentence(autoRolled.triggers)}
 								rows={[...verdictDetailRows([...autoRolled.triggers, ...autoRolled.spared]), ...skippedDetailRows(autoRolled.rollback.autoRollback, cluster, name)]}
 								secondary={canModify && failedBakeHeld(rollout, autoRolled.failed.version.tag)
 									? {
