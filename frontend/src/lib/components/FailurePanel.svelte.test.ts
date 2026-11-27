@@ -15,10 +15,10 @@ const props = (observations: unknown[]) => ({
 describe('rollout detail failure banner', () => {
 	test('the sentence names the check and its budget; the measured figure is behind Details', () => {
 		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: props([obs]) } });
-		const line = container.querySelector('[data-calm-line]')?.textContent ?? '';
+		const line = container.querySelector('[data-banner-line]')?.textContent ?? '';
 		expect(line).toContain('over a 1% budget');
-		expect(container.querySelector('[data-calm-panel]')?.textContent).toContain('4.2%');
-		expect(container.querySelector('[data-calm-banner]')?.textContent).toContain('Failed, not rolled back');
+		expect(container.querySelector('[data-banner-panel]')?.textContent).toContain('4.2%');
+		expect(container.querySelector('[data-banner]')?.textContent).toContain('Failed, not rolled back');
 	});
 	test('no observations: no figure, the sentence is unchanged', () => {
 		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: props([]) } });

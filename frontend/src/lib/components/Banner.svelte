@@ -44,6 +44,7 @@
 	import InfoGlyph from './InfoMarkGlyph.svelte';
 	import CheckGlyph from './CheckMarkGlyph.svelte';
 	import type { DetailRow } from '$lib/view-models/detail-rows';
+	import { hueSolid } from '$lib/view-models/state-tone';
 
 	interface Props {
 		/** the banner's condition: false collapses it out (300 ms) instead of unmounting in one frame */

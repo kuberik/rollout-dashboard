@@ -68,15 +68,15 @@ describe('a 503 from the API is a terminal, legible failure on every page', () =
 			//    joined three machine facts with an em dash; `errorFacts` gives
 			//    each a label and `FactList` aligns them. BOTH DIRECTIONS ARE
 			//    PINNED HERE, which is the property `AlertPanel.svelte.test.ts`
-			//    exists for: the facts are DISCLOSED (a closed `<details>`, so a
+			//    exists for: the facts are DISCLOSED (a closed `[data-banner-panel]`, so a
 			//    future edit cannot quietly print them back into the first
 			//    second of reading) AND they are REACHABLE (in the DOM, so a
 			//    future edit cannot quietly drop one while the suite stays green).
 			const address = screen.getAllByText('/api/rollouts')[0];
 			expect(address).toBeInTheDocument();
-			const record = address.closest('details');
+			const record = address.closest<HTMLElement>('[data-banner-panel]');
 			expect(record).not.toBeNull();
-			expect((record as HTMLDetailsElement).open).toBe(false);
+			expect(record!.hidden).toBe(true);
 			expect(record?.textContent).toContain('HTTP 503');
 			expect(record?.textContent).toContain('nothing');
 

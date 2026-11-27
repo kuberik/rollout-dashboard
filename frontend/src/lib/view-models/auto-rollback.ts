@@ -231,7 +231,7 @@ export function notRolledBackHeadline(reason: string, failed: HistoryEntry, rows
 }
 
 /**
- * Verdict rows as Details rows (`CalmBanner`): the check, its severity word (or "check error" / "before deploy"), and the
+ * Verdict rows as Details rows (`Banner`): the check, its severity word (or "check error" / "before deploy"), and the
  * check's own message. A row that rolls back (or would have) is drawn in the danger ink.
  */
 export function verdictDetailRows(rows: VerdictRow[]): DetailRow[] {

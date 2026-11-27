@@ -1,5 +1,5 @@
 /**
- * One line of a report banner's Details (`CalmBanner`): a name, an optional one-word severity or state, a fact. The banner
+ * One line of a report banner's Details (`Banner`): a name, an optional one-word severity or state, a fact. The banner
  * draws every row in the same columns, so a view-model only decides WHAT each cell says, never how wide it is.
  */
 export interface DetailRow {

@@ -143,6 +143,9 @@ lib/components/AttentionCard.svelte	code	Open rollout
 lib/components/AttentionCard.svelte	text	Roll back
 lib/components/Avatar.svelte	code	… (CI)
 lib/components/Avatar.svelte	code	kuberik (automatic)
+lib/components/Banner.svelte	code	… text-gray-900
+lib/components/Banner.svelte	code	… text-white
+lib/components/Banner.svelte	aria-label	replaced by
 lib/components/BlockedRow.svelte	code	: ''}… — …${holdLabel ?
 lib/components/BlockedRow.svelte	code	… failed
 lib/components/BlockedRow.svelte	code	… release… waiting
@@ -200,7 +203,6 @@ lib/components/CadenceStrip.svelte	label	Time range
 lib/components/CadenceStrip.svelte	aria-label	View diff
 lib/components/CadenceStrip.svelte	text	View diff
 lib/components/CadenceStrip.svelte	title	View diff
-lib/components/CalmBanner.svelte	aria-label	replaced by
 lib/components/Card.svelte	code	text-fg-subtle !font-normal
 lib/components/ChangeList.svelte	text	… commit … went live here
 lib/components/ChangeList.svelte	code	… commit…

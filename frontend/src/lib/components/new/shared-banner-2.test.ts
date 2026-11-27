@@ -23,8 +23,11 @@ describe('shared banner + pipeline card (S1b)', () => {
 		expect(s).toMatch(/WHY CARD\.svelte IS NOT USED/);
 		for (const at of [520, 560, 600, 640]) expect(s).toContain(`min-width: ${at}px`);
 	});
-	it('the banner disclosure is one AlertPanel chevron (44px), not one per host', () => {
-		expect(src('../AlertPanel.svelte')).toMatch(/data-ap-toggle/);
-		expect(src('../AlertPanel.svelte')).toMatch(/h-11 w-11/);
+	it('the banner disclosure is one chevron, drawn in one place (Banner `toggle`, .bn-toggle), not one per host', () => {
+		expect(src('../Banner.svelte')).toMatch(/toggle\?: \{/);
+		expect(src('../Banner.svelte')).toMatch(/bn-toggle/);
+		/* AlertPanel only passes it through; it no longer draws a chevron of its own */
+		expect(src('../AlertPanel.svelte')).toMatch(/toggle=\{p\.toggle\}/);
+		expect(src('../AlertPanel.svelte')).not.toMatch(/data-ap-toggle|h-11 w-11/);
 	});
 });

@@ -23,29 +23,39 @@ import { rollbackWent, rollbackNext, rollbackStory } from '$lib/view-models/auto
  *
  * Every sentence in those blocks was written to fix a real defect, and
  * `lib/messages/` pins most of them. So the fix was DISCLOSURE, not deletion:
- * the footnote moved behind a `<details>` inside the banner. That guard —
+ * the footnote moved behind a `disclosure` inside the banner. That guard —
  * `subject.svelte.test.ts` and `truth.test.ts` walk `textContent`, which
- * includes a closed `<details>` — is exactly why the message suite kept
+ * includes a closed `disclosure` — is exactly why the message suite kept
  * passing unchanged, and it is ALSO why the suite cannot tell the difference
  * between "disclosed" and "printed".
  *
  * Nothing else in the product would notice if a future edit swapped the
- * `<details>` back for a printed `<p>` (the defect returns silently) or for
+ * `disclosure` back for a printed `<p>` (the defect returns silently) or for
  * `{#if expanded}` (the fact becomes unreachable, and the message suite goes
  * red for a reason nobody can read). Both directions are pinned here.
  */
 
-const SUMMARY = 'summary';
+/* The disclosure contract (banners system, 2026-11-27): `Banner` draws a `<button data-banner-details aria-expanded>` and a
+   `<div data-banner-panel hidden>`. Closed = `hidden` with the content still in the DOM (what the native disclosure gave the
+   message census); the label is the button's text. */
+const SUMMARY = '[data-banner-details]';
+const PANEL = '[data-banner-panel]';
 
-function detailsHolding(text: string): HTMLDetailsElement {
+/** the closed disclosure panel holding `text`; `.open` is `!hidden`, so the old open/closed assertions read the same */
+function detailsHolding(text: string): HTMLElement & { open: boolean; querySelector: HTMLElement['querySelector'] } {
 	const node = screen.getByText(text, { exact: false });
-	const details = node.closest('details');
-	expect(details, `"${text}" is not inside a <details>`).not.toBeNull();
-	return details as HTMLDetailsElement;
+	const panel = node.closest<HTMLElement>(PANEL);
+	expect(panel, `"${text}" is not inside a [data-banner-panel]`).not.toBeNull();
+	return Object.assign(panel as HTMLElement, { open: !(panel as HTMLElement).hidden }) as never;
+}
+
+/** the label of the disclosure button that controls `panel` (the control sits in the banner, outside the panel) */
+function labelOf(panel: HTMLElement): string {
+	return panel.closest('[data-banner]')?.querySelector(SUMMARY)?.textContent?.trim() ?? '';
 }
 
 describe('AlertPanel: the footnote is available, not printed', () => {
-	test('the footnote is in the DOM, inside a closed <details>', () => {
+	test('the footnote is in the DOM, inside a closed disclosure', () => {
 		render(AlertPanel, {
 			props: {
 				severity: 'warning',
@@ -71,8 +81,8 @@ describe('AlertPanel: the footnote is available, not printed', () => {
 				footnote: 'A deploy you start by hand still applies immediately.'
 			}
 		});
-		expect(screen.getByText('DEV is held').closest('details')).toBeNull();
-		expect(screen.getByText('Health checks are unhealthy.').closest('details')).toBeNull();
+		expect(screen.getByText('DEV is held').closest(PANEL)).toBeNull();
+		expect(screen.getByText('Health checks are unhealthy.').closest(PANEL)).toBeNull();
 	});
 
 	test('the control is labelled, and `Details` is the honest default', () => {
@@ -80,7 +90,7 @@ describe('AlertPanel: the footnote is available, not printed', () => {
 			props: { severity: 'info', title: 'Rolled back', footnote: 'Rolled back by admin.' }
 		});
 		const details = detailsHolding('Rolled back by admin.');
-		expect(details.querySelector(SUMMARY)?.textContent?.trim()).toBe('Details');
+		expect(labelOf(details)).toBe('Details');
 	});
 
 	test('a caller that knows the kind says the kind', () => {
@@ -92,16 +102,14 @@ describe('AlertPanel: the footnote is available, not printed', () => {
 				footnoteLabel: 'What happens next'
 			}
 		});
-		expect(detailsHolding('Rolled back by admin.').querySelector(SUMMARY)?.textContent).toContain(
-			'What happens next'
-		);
+		expect(labelOf(detailsHolding('Rolled back by admin.'))).toContain('What happens next');
 	});
 
 	test('no footnote, no control — an empty disclosure is a control that teaches nothing', () => {
 		const { container } = render(AlertPanel, {
 			props: { severity: 'info', title: 'Recovery mode', message: 'Failures will not fail this.' }
 		});
-		expect(container.querySelector('details')).toBeNull();
+		expect(container.querySelector(PANEL)).toBeNull();
 	});
 });
 
@@ -154,8 +162,8 @@ describe('BlockingStoryPanel: the verdict and the rule handle are the disclosed 
 		render(BlockingStoryPanel, { props: { story } });
 
 		// PRINTED — the fact with its subject, and one consequence line.
-		expect(screen.getByText(story.headline).closest('details')).toBeNull();
-		expect(screen.getByText(story.consequence).closest('details')).toBeNull();
+		expect(screen.getByText(story.headline).closest(PANEL)).toBeNull();
+		expect(screen.getByText(story.consequence).closest(PANEL)).toBeNull();
 
 		// DISCLOSED — the mechanism and the generated object id an operator
 		// cannot act on directly. Still in the DOM: `subject.svelte.test.ts`
@@ -180,7 +188,7 @@ describe('BlockingStoryPanel: the verdict and the rule handle are the disclosed 
 		// ⭐ AND IT IS THE COUNT FORM. (2026-09-02) It said `Details` while the
 		// CARD scale of the same gates said `1 rule`, 90px below it on
 		// `/environments`. `lib/disclosure.ts` owns the choice now.
-		expect(details.querySelector(SUMMARY)?.textContent?.trim()).toBe('1 rule');
+		expect(labelOf(details)).toBe('1 rule');
 	});
 
 	test('the manual-deploy clause is never lost, only moved', () => {
@@ -247,10 +255,10 @@ describe('the rollback splits into two tiers and loses nothing', () => {
  *     to a disclosed one.
  *   · unmounted instead of hidden   → every field becomes unreachable to
  *     `lib/messages/` WHILE THE SUITE STAYS GREEN. That is precisely why
- *     `RulePopover` is a native `<details>` and not flowbite's `<Popover>`.
+ *     `RulePopover` is a native `disclosure` and not flowbite's `<Popover>`.
  */
 describe('AlertPanel: a record is disclosed, not printed — and stays reachable', () => {
-	test('the fields are in the DOM, inside a closed <details>', () => {
+	test('the fields are in the DOM, inside a closed disclosure', () => {
 		render(AlertPanel, {
 			props: {
 				severity: 'error',
@@ -277,9 +285,9 @@ describe('AlertPanel: a record is disclosed, not printed — and stays reachable
 				footnoteBody: createRawSnippet(() => ({ render: () => '<dl><dd>x</dd></dl>' }))
 			}
 		});
-		expect(screen.getByText('Cannot reach the dashboard server').closest('details')).toBeNull();
+		expect(screen.getByText('Cannot reach the dashboard server').closest(PANEL)).toBeNull();
 		expect(
-			screen.getByText('This is a failed request, not an empty result.').closest('details')
+			screen.getByText('This is a failed request, not an empty result.').closest(PANEL)
 		).toBeNull();
 	});
 
@@ -287,7 +295,7 @@ describe('AlertPanel: a record is disclosed, not printed — and stays reachable
 		const { container } = render(AlertPanel, {
 			props: { severity: 'info', title: 'Recovery mode', message: 'Failures will not fail this.' }
 		});
-		expect(container.querySelector('details')).toBeNull();
+		expect(container.querySelector(PANEL)).toBeNull();
 	});
 });
 
@@ -374,8 +382,8 @@ describe('the banner and the card are one affordance over one content', () => {
 	test('the banner holds a RECORD, and the gate handle is in it', () => {
 		const story = blockingStory(rollout, ctx, { subject: 'DEV' });
 		const banner = render(BlockingStoryPanel, { props: { story } });
-		const bannerRecord = banner.container.querySelector('details');
-		expect(bannerRecord?.open).toBe(false);
+		const bannerRecord = banner.container.querySelector<HTMLElement>(PANEL);
+		expect(bannerRecord?.hidden).toBe(true);
 		expect(bannerRecord?.querySelector('dl')).not.toBeNull();
 		expect(bannerRecord?.textContent).toContain('dependency-hello-frontend-needs-api');
 		// ⛔ AND THE BANNER DOES NOT REPEAT ITS OWN PRINTED CONSEQUENCE. The
