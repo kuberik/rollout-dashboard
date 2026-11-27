@@ -3821,6 +3821,7 @@
 								     mode: right on wide, the phone's full-width lead), owner 2026-11-27; the same `Deploy anyway` the held build's
 								     row in Newer builds carries -->
 								<ActRow
+									align="end"
 									secondary={[
 										{
 											label: 'Deploy anyway',

@@ -242,7 +242,8 @@
 		actionBar?: boolean;
 		/**
 		 * ACTIONS BELOW (owner 2026-11-27, needs `actionBar`): the action row stays under the headline and the line at every
-		 * width, left-aligned with the text (primary first), instead of moving to a right-hand rail from 640px. The body then
+		 * width, spanning the banner and ending at its right edge (the caller's ActRow `align="end"`: primary rightmost),
+		 * instead of moving to a right-hand rail from 640px. The body then
 		 * spans the full inner width, so a two-column glance body keeps its record on the right. Phones are unchanged.
 		 */
 		actionsBelow?: boolean;

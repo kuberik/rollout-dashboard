@@ -73,7 +73,7 @@
 		fill?: boolean;
 		/** how many actions stay on the phone row (lead + one side by default); the rest go to "⋯" */
 		phoneMax?: number;
-		/** `end`: from 640 the actions end on the right edge (a pane's action row) */
+		/** `end`: from 640 the actions end on the right edge, primary rightmost (a pane's action row, a banner's bottom row) */
 		align?: 'start' | 'end';
 	} = $props();
 
@@ -167,6 +167,11 @@
 	@container (min-width: 640px) {
 		.ar-end {
 			justify-content: flex-end;
+			flex: 1 1 auto;
+		}
+		/* an end-aligned row reads like a dialog's: the primary is the rightmost button (DOM order, and so the phone row, unchanged) */
+		.ar-end :global(.btn-primary) {
+			order: 1;
 		}
 	}
 	@media (min-width: 640px) {
