@@ -3,9 +3,9 @@
 <script lang="ts">
 	import { canHover } from '$lib/can-hover.svelte';
 	import type { Rollout, HealthCheck, KruiseRollout, RolloutTest } from '../../types';
-	import { PlaySolid, UndoOutline, ExclamationCircleOutline } from 'flowbite-svelte-icons';
+	import { PlaySolid, UndoOutline } from 'flowbite-svelte-icons';
 	import { WANTED_VERSION_OWNED_REASON, rollbackTooltip } from '$lib/view-models/pin-hold';
-	import CalmBanner from './CalmBanner.svelte';
+	import Banner from './Banner.svelte';
 	import ChangeVersionFlow from './ChangeVersionFlow.svelte';
 	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import RetryTestsModal from './RetryTestsModal.svelte';
@@ -264,11 +264,10 @@
      headline + the failing check in one sentence + actions inline. The
      per-check bullets and the "deployments are paused" note live under
      `Details`; the `N issues` chip is gone (the sentence already counts). -->
-<CalmBanner
+<Banner
 	{open}
 	class="mb-4"
-	tone="danger"
-	icon={ExclamationCircleOutline}
+	severity="critical"
 	title="Failed, not rolled back"
 	line={sentence}
 	rows={detailRows}

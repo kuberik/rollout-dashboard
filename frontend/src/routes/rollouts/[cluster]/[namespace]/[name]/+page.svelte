@@ -47,7 +47,6 @@
 	import {
 		CodePullRequestSolid,
 		UndoOutline,
-		BanOutline,
 		EditOutline,
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -112,7 +111,7 @@
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import { autoRollbackView, failedBakeHeld, triggerSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
-	import CalmBanner from '$lib/components/CalmBanner.svelte';
+	import Banner from '$lib/components/Banner.svelte';
 	import { previewLine, skippedDetailRows, skippedSentence } from '$lib/view-models/rollback-deps';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
@@ -3459,12 +3458,11 @@
 					<PartialDataNotice class="mb-4" errors={myClusterErrors} subject="this rollout" onRetry={() => fleetListQuery.refetch()} isRetrying={fleetListQuery.isFetching} />
 				{/if}
 				<!-- ══ READY=FALSE (deploy refused / not ready) ══ — first in the stack; see `readyBanner`. `open`, not `{#if}`: it collapses out when the next deploy succeeds. -->
-				<!-- Q1L report banner (CalmBanner): the title, ONE short sentence naming the other writer and the field, the next step, the reason code,
+				<!-- report banner (Banner): the title, ONE short sentence naming the other writer and the field, the next step, the reason code,
 				     the controller's hint and the age behind Details (owner glanceable-UI rule, 2026-11-26/27). -->
-				<CalmBanner
+				<Banner
 					open={!!readyBanner}
-					tone="danger"
-					icon={BanOutline}
+					severity="critical"
 					title={readyBanner?.title ?? 'Deploy refused'}
 					line={readyShown ? readyLine(readyShown) : undefined}
 					rows={readyShown ? readyRows(readyShown, formatTimeAgoCompact) : undefined}
@@ -3854,8 +3852,8 @@
 							<!-- Q1L (signed 2026-11-27): the same report banner every failure uses. A rollback that worked has the normal card
 							     border; the mark carries the hue. The sentence is the move and what triggered it; the hold is the button's
 							     own business ("Deploy anyway"), and the checks sit behind Details. -->
-							<CalmBanner
-								tone="neutral"
+							<Banner
+								severity="info"
 								icon={UndoOutline}
 								title="Rolled back automatically"
 								move={{ from: failedName, to: autoRolled.target }}
@@ -3879,8 +3877,8 @@
 									: undefined}
 							/>
 						{:else}
-							<CalmBanner
-								tone="neutral"
+							<Banner
+								severity="info"
 								icon={UndoOutline}
 								title="Rolled back"
 								line={justClearedPin ? 'The pin has been cleared; automatic promotion is back on.' : rollbackWent(rolledBack, autoDeploy)}
