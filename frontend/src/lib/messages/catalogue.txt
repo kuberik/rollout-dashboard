@@ -2243,6 +2243,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	… has not ship
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… hasn't received its first deploy. Once a version is selected and the controller deploys it, this page will fill in with the deployment pipeline, health checks, and history.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	… new versions found!
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… newer
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	aria-label	… on GitHub (opens in a new tab)
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	… pending
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	… rules
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	…${e.requiredVersion ?
@@ -2321,7 +2322,9 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	headline	This rollout 
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This will not clear on its own.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	View all apps in …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	View logs
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	aria-label	View on GitHub
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	View on GitHub
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	View on GitHub
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Waiting for health checks
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	waiting for health checks · …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Waiting on …
