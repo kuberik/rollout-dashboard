@@ -1039,20 +1039,50 @@ dialog[role='dialog'][aria-modal='true'] {
 	letter-spacing: -0.015em;
 }
 
-/* ── LOGOPEN r11 (Lane L): a calm build's secondary "Roll back to <sha>" is
-   right-aligned on a phone like the failed build's Roll back. It does not
-   fit beside the meta facts (194px), so it keeps its own row in the actions
-   cell, pushed to the right edge; the label keeps its sha. A cell that wraps
-   several buttons (the Overview's) ends on the right too, so its Roll back
-   finishes at the same right edge. */
+/* ── PHONE HEADER ACTIONS (phone-layouts r1, variant b1): below lg the header
+   buttons share ONE left-aligned row at the 16px edge, 44px tall. Roll back
+   always leads (order -1), in the same spot on every tab, as the failed
+   build's Roll back / Retry pair does. Below sm the row is Roll back | Change
+   version | a square GitHub icon button (`[data-gh]`, its label is
+   screen-reader text). 640-1023 keeps the labels at natural width. lg+ is
+   untouched. A cell whose only child is the sm+ copy of an action stays
+   collapsed (above). */
 @media (max-width: 1023px) {
-	.page-header > div:has([data-phone-end]) {
-		margin-left: auto;
-		justify-content: flex-end;
-		/* 640-1023 (rollout-tabs item 2): the cell takes its own row too, so the
-		   title stays put and Roll back ends right at 768 as it does at 390.
-		   lg+ keeps the title-and-actions row. */
+	.page-header > [data-ph-actions]:not(:has(> [data-desktop-only]:only-child)) {
+		margin-left: 0;
+		justify-content: flex-start;
 		flex-basis: 100%;
+	}
+	.page-header > [data-ph-actions] > [data-phone-end] {
+		order: -1;
+	}
+	/* 12px to the strip below the row (the Overview lane, the History cadence) */
+	.page-header > [data-ph-actions]:has(+ [data-ph-below]:not(:empty)) {
+		margin-bottom: 12px;
+	}
+}
+@media (max-width: 639px) {
+	.page-header > [data-ph-actions]:not(:has(> [data-desktop-only]:only-child)) {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.page-header > [data-ph-actions] > .btn {
+		flex: 1 1 112px;
+		min-width: 0;
+		justify-content: center;
+		padding-inline: 8px;
+	}
+	/* a lone button (History's Roll back) keeps the half-row width, it does not stretch */
+	.page-header > [data-ph-actions] > .btn:only-child {
+		flex: 0 1 auto;
+		min-width: calc(50% - 4px);
+	}
+	.page-header > [data-ph-actions] > [data-gh] {
+		order: 2;
+		flex: none;
+		width: 44px;
+		padding: 0;
 	}
 }
 
