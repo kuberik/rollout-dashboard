@@ -3075,15 +3075,19 @@
 									<!-- phone-layouts r1 (b2): the sha IS the GitHub link, so below lg the
 									     header's GitHub button can leave the action row -->
 									<a
-										class="t-code-sm text-fg-subtle hover:text-fg inline-flex items-center gap-1 py-1 underline decoration-dotted underline-offset-2 hover:decoration-solid"
+										class="t-code-sm text-fg-subtle hover:text-fg inline-flex items-center gap-1 py-1 underline decoration-dotted underline-offset-2 hover:decoration-solid lg:hidden"
 										href={getGitHubUrl(getDisplayVersion(latestEntry.version), latestEntry.version.revision)}
 										target="_blank"
 										rel="noopener noreferrer"
 										title="View on GitHub"
+										aria-label="{formatRevision(getRevisionInfo(latestEntry.version)!)} on GitHub (opens in a new tab)"
 										data-sha-github
 									>
 										{formatRevision(getRevisionInfo(latestEntry.version)!)}<GithubSolid class="h-3 w-3 shrink-0" aria-hidden="true" />
 									</a>
+									<span class="t-code-sm text-fg-subtle max-lg:hidden">
+										{formatRevision(getRevisionInfo(latestEntry.version)!)}
+									</span>
 								{:else}
 									<span class="t-code-sm text-fg-subtle">
 										{formatRevision(getRevisionInfo(latestEntry.version)!)}
@@ -3157,8 +3161,10 @@
 					{#if rollout?.status?.source}
 						<!-- below lg the sha in the meta line carries this link; without a sha
 						     shown, the button stays (icon-only below sm) -->
+						{@const shaLinked = !!getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version)}
 						<a
-							class="btn btn-secondary max-lg:h-11 {getRevisionInfo(latestEntry.version) && formatRevision(getRevisionInfo(latestEntry.version)!) !== getDisplayVersion(latestEntry.version) ? 'max-lg:hidden' : ''}"
+							class="btn btn-secondary max-lg:h-11 {shaLinked ? 'max-lg:hidden' : ''}"
+							data-desktop-only={shaLinked ? '' : undefined}
 							data-gh
 							aria-label="View on GitHub"
 							href={getGitHubUrl(
