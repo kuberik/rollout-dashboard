@@ -2168,7 +2168,7 @@ func setupRouter() *gin.Engine {
 				Spokes:            spokes,
 				Token:             token,
 				FanoutHeader:      fanoutHeader,
-				HTTPClient:        &http.Client{Transport: fanoutTransport},
+				HTTPClient:        newSpokeHTTPClient(0),
 				HeartbeatInterval: 30 * time.Second,
 				Filter: func(events []kubernetes.ChangeEvent) []kubernetes.ChangeEvent {
 					// Object attach runs BEFORE the visibility filter so an

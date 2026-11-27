@@ -12,7 +12,7 @@ import (
 
 // spokeProxyClient handles requests proxied to remote dashboards.
 // No client-level timeout — context cancellation governs (needed for SSE log streams).
-var spokeProxyClient = &http.Client{Transport: fanoutTransport}
+var spokeProxyClient = newSpokeHTTPClient(0)
 
 // hopByHopHeaders are stripped from both directions when proxying.
 // https://datatracker.ietf.org/doc/html/rfc7230#section-6.1
@@ -25,6 +25,28 @@ var hopByHopHeaders = map[string]bool{
 	"trailers":            true,
 	"transfer-encoding":   true,
 	"upgrade":             true,
+}
+
+// proxyForwardHeaders is the ALLOWLIST of browser request headers the proxy
+// copies to a spoke (canonical form). Everything else is dropped, notably the
+// gateway-injected X-Auth-Request-{Access-Token,Email,User}, X-Forwarded-*,
+// and any custom header. Credentials are set explicitly by proxyToRemote
+// (Authorization from the verified token, Cookie = gh_token only). Each entry
+// is one the spoke code actually reads:
+//   - Accept: content negotiation (SSE text/event-stream vs JSON).
+//   - Content-Type: JSON body parsing on POST/PUT routes.
+//   - If-None-Match: conditional GET, main_etag.go:47.
+//   - X-Kuberik-Fanout: leg marker that stops re-fan-out (main.go, main_health_checks.go, main_github_pulls.go).
+// Not forwarded though a spoke might "expect" them: X-Forwarded-Proto/Host
+// (read only by localDashboardURL when DASHBOARD_URL is unset; the hub's
+// values would be wrong for the spoke), Last-Event-ID (no handler reads it),
+// Accept-Encoding (see below). No spoke identity depends on X-Auth-Request-*:
+// pkg/auth reads only Authorization/cookies, and the hub sends the bearer.
+var proxyForwardHeaders = map[string]bool{
+	"Accept":        true,
+	"Content-Type":  true,
+	"If-None-Match": true,
+	fanoutHeader:    true,
 }
 
 // SpokeProxyMiddleware proxies any request carrying ?cluster=<name> to that
@@ -65,6 +87,10 @@ func proxyToRemote(c *gin.Context, spokeBase string) {
 		target += "?" + encoded
 	}
 
+	if !spokeURLAllowed(spokeBase) {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "spoke not allowlisted", "details": "set " + spokeAllowlistEnv})
+		return
+	}
 	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, target, c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "spoke proxy: build request", "details": err.Error()})
@@ -82,12 +108,20 @@ func proxyToRemote(c *gin.Context, spokeBase string) {
 	// transport negotiates gzip with the spoke itself and transparently
 	// decompresses, so the hub's middleware compresses exactly once.
 	for k, vs := range c.Request.Header {
-		if hopByHopHeaders[strings.ToLower(k)] || strings.EqualFold(k, "Accept-Encoding") {
+		if !proxyForwardHeaders[http.CanonicalHeaderKey(k)] {
 			continue
 		}
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}
+	}
+	// Header values are copied above; the length must be set explicitly or the
+	// transport falls back to chunked encoding for the opaque body reader.
+	req.ContentLength = c.Request.ContentLength
+	// The spoke's GitHub-backed routes read the gh_token cookie; forward that
+	// one cookie (we only get here for allowlisted spokes) and nothing else.
+	if gh := readCookie(c, githubTokenCookie); gh != "" {
+		req.AddCookie(&http.Cookie{Name: githubTokenCookie, Value: gh})
 	}
 	// Ensure Bearer token is set from context — the spoke validates the same OIDC token.
 	if token := auth.GetTokenFromContext(c); token != "" {

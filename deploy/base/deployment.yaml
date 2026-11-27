@@ -30,6 +30,16 @@ spec:
                   name: kuberik-cluster-info
                   key: url
                   optional: true
+            # Trust list of spoke dashboard origins (comma-separated scheme://host[:port],
+            # optional https://*.example.com wildcard). Spoke URLs discovered from
+            # Environment status are IGNORED unless listed here (fail closed), so
+            # viewer credentials are never sent to attacker-chosen URLs.
+            - name: SPOKE_URL_ALLOWLIST
+              valueFrom:
+                configMapKeyRef:
+                  name: kuberik-cluster-info
+                  key: spokeUrlAllowlist
+                  optional: true
             # Dev-only: skip TLS verification when calling spoke dashboards.
             # Use only in kind/dev where each cluster has its own self-signed cert.
             - name: INSECURE_SKIP_TLS_VERIFY
