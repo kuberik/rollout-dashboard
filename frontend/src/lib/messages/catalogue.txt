@@ -2276,6 +2276,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Clear pin
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Clearing the pin is what lets this deploy automatically — the rules below may also still apply.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Clearing the pin is what lets this deploy automatically.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Commit message and author need GitHub. …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Copy field path
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Couldn't check dependency holds
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Couldn't load what this HelmRelease manages (…).
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Custom build

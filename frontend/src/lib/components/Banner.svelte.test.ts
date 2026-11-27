@@ -16,24 +16,19 @@ describe('Banner (the one shell)', () => {
 		const { container } = mount();
 		expect(container.querySelector('[data-banner-title]')!.textContent).toBe('Rolled back automatically');
 		const line = container.querySelector('[data-banner-line]')!;
-		expect(line.querySelector('[data-banner-move]')!.textContent).toContain('2.4.0');
-		expect(line.querySelector('[data-banner-move]')!.textContent).toContain('2.3.0');
-		expect(line.querySelector('.t-code.text-fg:not([data-banner-move] *)')!.textContent).toBe('cart-smoke-test');
+		/* the drawn move sits inline in the text column, ahead of the sentence */
+		expect(container.querySelector('[data-banner-move]')!.textContent).toContain('2.4.0');
+		expect(container.querySelector('[data-banner-shape]')!.textContent).toContain('2.3.0');
+		expect(line.querySelector('.t-code.text-fg')!.textContent).toBe('cart-smoke-test');
 		expect(line.textContent!.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(12);
 	});
 
-	test('info and success sit on the plain card surface; critical, warning and held carry a faint field', () => {
-		for (const s of ['info', 'success']) {
+	test('every severity, info and success included, is a tinted field with its own hue line and no side bar', () => {
+		for (const s of ['critical', 'warning', 'held', 'info', 'success']) {
 			const el = mount({ severity: s }).container.querySelector('[data-banner]')!;
 			expect(el.getAttribute('data-severity')).toBe(s);
-			expect(el.className).toContain('border-line');
-			expect(el.className).toContain('bg-surface');
-			expect(el.className).not.toMatch(/field-|border-l-/);
-		}
-		for (const s of ['critical', 'warning', 'held']) {
-			const el = mount({ severity: s }).container.querySelector('[data-banner]')!;
-			expect(el.getAttribute('data-severity')).toBe(s);
-			expect(el.className).toContain('field-');
+			expect(el.className).toContain('bn-f-');
+			expect(el.className).toContain('rounded-md');
 			expect(el.className).not.toContain('border-l-');
 		}
 	});

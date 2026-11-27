@@ -185,6 +185,16 @@ export function notRolledBackWhy(reason: string, failed: HistoryEntry, rows: Ver
 	return notRolledBackSentence(reason, failed, rows).replaceAll('`', '');
 }
 
+/**
+ * Which button is the filled primary on a failed rollout's banner. When the controller looked at the failure and
+ * deliberately did NOT roll back (reason NotATrigger: a warning-only check, a check that could not run, one failing
+ * before the deploy), the evidence says a rollback is not recommended, so Retry is primary and Roll back the secondary.
+ * Every other not-rolled-back reason (blocked, no target, manual) is about the rollback itself and keeps Roll back first.
+ */
+export function retryPrimary(o: { allRecovered: boolean; notRolledBackReason?: string | null }): boolean {
+	return o.allRecovered || o.notRolledBackReason === 'NotATrigger';
+}
+
 /** the same line for the banner: a check's name is marked `like this` so the banner draws it in the code role */
 export function notRolledBackSentence(reason: string, failed: HistoryEntry, rows: VerdictRow[]): string {
 	switch (reason) {

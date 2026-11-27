@@ -728,6 +728,17 @@
 	/** the last issue shown, kept while the banner collapses out: its message is a snippet of THIS page, and AlertPanel freezes props, not snippets */
 	let readyLast: ReadyIssue | null = null;
 	const readyShown = $derived.by(() => (readyBanner ? (readyLast = readyBanner) : readyLast));
+	/* ONE ACTION ONCE PER PAGE (design language 15): while the pin banner offers Clear pin, the header does not */
+	const bannerOffersClearPin = $derived(!!blockStory.pinnedTo && !rolledBack && canModify);
+	/* DEPLOY REFUSED, the one real action: the conflicting field's path on the clipboard, for the other writer's manifest (the dashboard has no page for that object, so there is nowhere to navigate to) */
+	let fieldCopied = $state(false);
+	const copyFieldAct = $derived(
+		readyShown?.conflict
+			? { label: fieldCopied ? 'Copied' : 'Copy field path', key: 'copy-field-path', id: 'ready-copy-field', onclick: () => {
+					navigator.clipboard?.writeText(readyShown!.conflict!.path).then(() => { fieldCopied = true; setTimeout(() => (fieldCopied = false), 1500); }, () => {});
+				} }
+			: undefined
+	);
 
 	// The gates the held banner names, frozen while it collapses out: its
 	// action slot is a snippet of THIS page, so without this it would read
@@ -3178,7 +3189,7 @@
 						</a>
 					{/if}
 					{#if canModify || !permissionsKnown}
-						{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom}
+						{#if rollout.spec?.wantedVersion && !isPinnedVersionCustom && !bannerOffersClearPin}
 							<button
 								type="button"
 								class="btn btn-secondary max-lg:h-11"
@@ -3466,6 +3477,7 @@
 					title={readyBanner?.title ?? 'Deploy refused'}
 					line={readyShown ? readyLine(readyShown) : undefined}
 					rows={readyShown ? readyRows(readyShown, formatTimeAgoCompact) : undefined}
+					primary={copyFieldAct}
 					dataTour="ready-banner"
 				/>
 				{#if blockStory.pinnedTo}

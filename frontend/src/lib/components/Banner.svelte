@@ -18,15 +18,14 @@
 	 * text, a full-width bottom row). The owner rejected both looks ("busy", "too calm") and the drifting buttons.
 	 *
 	 * Anatomy (borrows Primer Banner and Atlassian section message; proportions from `Card`'s header):
-	 *   [20px status glyph] [title  t-heading                    ] [secondary] [primary]
-	 *                       [one line ≤12 words · Details ›      ]
-	 *                       [Details panel, behind a hairline    ]
-	 * - Severity is the glyph's hue plus, for the three states that need someone, a faint field (28% of the tint, the DL
-	 *   §1.12 "trace of hue") and a 1px hue line. `info` and `success` stay on the card surface with the card border: a note
-	 *   is not an alarm. No disc, no side bar (side bars are only legal on square elements), no filled area.
+	 *   STATEMENT (glyph, title, one sentence, Details)  |  SHAPE (the drawn facts)  |  ACT (buttons, fixed at the right)
+	 *   Below 640px OF THE BANNER the three cells stack: statement, shape under the text, then a 44px button row.
+	 * - Every severity is a tinted field with a 1px hue line and the status glyph (the owner: info and success are coloured
+	 *   too). Corner radius is the cards' (rounded-md, 8px). No disc beyond the 20px mark, no side bar (side bars are only
+	 *   legal on square elements).
 	 *     critical  danger   failed, refused, error        warning  amber    stuck (DL: amber means stuck only)
-	 *     held      orange   a rule holds it               info     blue     pinned, partial, recovery, a note
-	 *     success   green    a recovery that worked
+	 *     held      orange   a rule holds it               info     blue     pinned, partial, a note, "Rolled back" (the system acted)
+	 *     success   green    DONE only: a recovery, an approval, a finished step; "Rolled back" is never success
 	 * - ONE action position: the buttons are a right-hand column whose first row is centred on the TITLE line, whatever the
 	 *   body holds or whether Details is open, so a reader's eye finds them in the same place on every banner. Primary is
 	 *   rightmost, at most two visible, the rest in "⋯". Below 640px OF THE BANNER they become a full-width 44px row at the
@@ -171,7 +170,7 @@
 	>
 		<div class="bn-collapse-inner">
 			<div class="bn-cq">
-				<section class="bn rounded-lg border text-fg {sev.face}" class:bn--shape={hasShape} class:bn--acts={hasActions} class:is-open={detailsOpen} data-variant={variant} {role} data-banner data-severity={severity}>
+				<section class="bn rounded-md border text-fg {sev.face}" class:bn--acts={hasActions} class:is-open={detailsOpen} data-variant={variant} {role} data-banner data-severity={severity}>
 					<div class="bn-st">
 					<span class="bn-icon relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full {disc}" aria-hidden="true" data-banner-mark>
 						{#if shown.pulse}<span class="bn-halo absolute inset-0 rounded-full opacity-30 {disc}"></span>{/if}
@@ -183,8 +182,18 @@
 						{#if shown.extra}<span class="bn-extra ml-2 inline-flex align-baseline">{@render shown.extra()}</span>{/if}
 											{#if hasDetails}<button type="button" class="bn-details bn-det-ph t-ui-sm hit-32 items-center gap-1 text-fg-muted hover:text-fg" aria-expanded={detailsOpen} aria-controls={panelId} onclick={() => (detailsOpen = !detailsOpen)}>{detailsLabel}<ChevronRightOutline class="h-3 w-3 shrink-0 transition-transform {detailsOpen ? 'rotate-90' : ''}" aria-hidden="true" /></button>{/if}
 					</div>
-					{#if hasLine || hasDetails}
+					{#if hasLine || hasDetails || hasShape}
 						<div class="bn-row2 min-w-0" class:bn-row2--block={!!shown.body}>
+							{#if hasShape}
+								<span class="bn-sh" data-banner-shape>
+									{#if shown.move}
+										<span class="bn-chip bn-chip--old t-code-sm" data-banner-move>{shown.move.from}</span>
+										<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-label="replaced by" />
+										<span class="bn-chip t-code-sm">{shown.move.to}</span>
+									{/if}
+									{#if shown.shape}{@render shown.shape()}{/if}
+								</span>
+							{/if}
 							{#if hasLine}
 								<div class="bn-line t-body min-w-0 text-fg-muted [overflow-wrap:anywhere]" data-banner-line>
 									{#if shown.body}
@@ -214,16 +223,6 @@
 					{/if}
 						</div>
 					</div>
-					{#if hasShape}
-						<div class="bn-sh" data-banner-shape>
-							{#if shown.move}
-								<span class="bn-chip bn-chip--old t-code" data-banner-move>{shown.move.from}</span>
-								<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-label="replaced by" />
-								<span class="bn-chip t-code">{shown.move.to}</span>
-							{/if}
-							{#if shown.shape}{@render shown.shape()}{/if}
-						</div>
-					{/if}
 					{#if hasDetails}
 						<div class="bn-panel" id={panelId} hidden={!detailsOpen} data-banner-panel>
 							{#if rows.length > 0}
@@ -280,13 +279,14 @@
 	.bn-cq {
 		container-type: inline-size;
 	}
-	/* c-redesign: STATEMENT | SHAPE | ACT. Every severity is a tinted field with a 1px hue line. */
+	/* c-redesign r2: one tinted field with a 1px hue line; the text column, then the buttons fixed at the right edge. No cells, no dividers. */
 	.bn {
-		--h-solid: var(--k-active-solid);
+		
 		--h-tint: var(--k-active-tint);
 		--h-line: var(--k-active-line);
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
+		align-items: start;
 		border-color: var(--h-line);
 		background: color-mix(in oklab, var(--h-tint) 62%, var(--k-surface));
 		overflow: hidden;
@@ -294,35 +294,27 @@
 	.bn--acts {
 		grid-template-columns: minmax(0, 1fr) auto;
 	}
-	.bn--shape {
-		grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
-	}
-	.bn--shape.bn--acts {
-		grid-template-columns: minmax(0, max-content) minmax(0, 1fr) auto;
-	}
-	.bn[data-severity='critical'] { --h-solid: var(--k-danger-solid); --h-tint: var(--k-danger-tint); --h-line: var(--k-banner-danger-line); }
-	.bn[data-severity='warning'] { --h-solid: var(--k-warning-solid); --h-tint: var(--k-warning-tint); --h-line: var(--k-warning-line); }
-	.bn[data-severity='held'] { --h-solid: var(--k-held-solid); --h-tint: var(--k-held-tint); --h-line: var(--k-held-line); }
-	.bn[data-severity='success'] { --h-solid: var(--k-success-solid); --h-tint: var(--k-success-tint); --h-line: var(--k-success-line); }
+	.bn[data-severity='critical'] { --h-tint: var(--k-danger-tint); --h-line: var(--k-banner-danger-line); }
+	.bn[data-severity='warning'] { --h-tint: var(--k-warning-tint); --h-line: var(--k-warning-line); }
+	.bn[data-severity='held'] { --h-tint: var(--k-held-tint); --h-line: var(--k-held-line); }
+	.bn[data-severity='success'] { --h-tint: var(--k-success-tint); --h-line: var(--k-success-line); }
 	.bn-st,
-	.bn-sh,
 	.bn-acts {
 		display: flex;
 		align-items: center;
 		min-width: 0;
-		padding: 14px 20px;
 	}
-	.bn-sh,
+	.bn-st {
+		padding: 12px 16px;
+	}
+	/* the buttons' first row is centred on the 24px title line (12px pad + 12 - 16) and sits flush right, on every banner */
 	.bn-acts {
-		border-left: 1px solid color-mix(in oklab, var(--h-line) 85%, transparent);
+		align-self: start;
+		padding: 8px 16px 8px 0;
 	}
 	.bn-st {
 		align-items: flex-start;
 		gap: 12px;
-		max-width: 38rem;
-	}
-	.bn:not(.bn--shape) .bn-st {
-		max-width: none;
 	}
 	.bn-txt {
 		flex: 1 1 auto;
@@ -347,33 +339,35 @@
 	.bn-det-ph {
 		display: none;
 	}
-	/* SHAPE: the facts drawn, centred in their cell */
+	/* SHAPE: the facts drawn, inline in the text column ahead of the sentence */
 	.bn-sh {
-		justify-content: center;
+		display: inline-flex;
 		flex-wrap: wrap;
-		gap: 8px 10px;
+		align-items: center;
+		gap: 8px;
 	}
 	.bn-chip,
 	.bn-sh :global(.bn-ent) {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		height: 28px;
+		height: 24px;
 		padding: 0 8px;
 		border-radius: 6px;
 		background: var(--k-surface);
 		border: 1px solid color-mix(in oklab, var(--h-line) 70%, var(--k-line));
-		font-size: 13px;
-		line-height: 16px;
-		font-weight: 500;
 		white-space: nowrap;
+	}
+	/* a drawn entity (a name chip) takes t-ui-sm's metrics; the version chips carry the t-code-sm class */
+	.bn-sh :global(.bn-ent) {
+		font: 500 12px/16px var(--font-sans);
 	}
 	.bn-chip--old {
 		color: var(--k-fg-muted);
 		text-decoration: line-through;
 		text-decoration-color: color-mix(in oklab, var(--k-fg-muted) 60%, transparent);
 	}
-	/* ACT: one fixed cell at the right, buttons centred on the banner's height */
+	/* ACT: the buttons at the right edge, centred on the banner's height */
 	.bn-acts {
 		flex-wrap: wrap;
 		justify-content: flex-end;
@@ -401,8 +395,7 @@
 	}
 	.bn-panel {
 		grid-column: 1 / -1;
-		border-top: 1px solid color-mix(in oklab, var(--h-line) 85%, transparent);
-		padding: 8px 20px 12px 56px;
+		padding: 0 16px 12px 48px;
 		order: 5;
 	}
 	.bn-panel[hidden] {
@@ -443,30 +436,14 @@
 		}
 	}
 
-	/* phone: statement, shape under the text track, buttons in a 40px row under a hairline; Details joins the title row */
+	/* phone: statement, shape under the text track, buttons in a 44px row under a hairline; Details joins the title row */
 	@container (max-width: 639px) {
 		.bn,
-		.bn--acts,
-		.bn--shape,
-		.bn--shape.bn--acts {
+		.bn--acts {
 			grid-template-columns: minmax(0, 1fr);
 		}
-		.bn-st,
-		.bn-sh,
-		.bn-acts {
-			padding: 12px;
-		}
-		.bn-sh,
-		.bn-acts {
-			border-left: 0;
-		}
 		.bn-st {
-			max-width: none;
-		}
-		.bn-sh {
-			justify-content: flex-start;
-			padding: 0 12px 12px 48px;
-			gap: 8px;
+			padding: 12px;
 		}
 		.bn-head {
 			display: flex;
@@ -482,13 +459,13 @@
 		}
 		.bn-acts {
 			order: 2;
-			border-top: 1px solid color-mix(in oklab, var(--h-line) 85%, transparent);
-			padding: 8px 12px;
+			align-self: stretch;
+			padding: 0 12px 12px;
 			justify-content: stretch;
 		}
 		.bn-panel {
 			order: 3;
-			padding: 8px 12px 12px;
+			padding: 0 12px 12px 44px;
 		}
 		.bn-acts > :global(*) {
 			flex: 1 1 100%;
@@ -506,16 +483,16 @@
 		.bn-acts :global(.ar .btn) {
 			flex: 1 1 0;
 			min-width: 0;
-			height: 40px;
-			min-height: 40px;
+			height: 44px;
+			min-height: 44px;
 			justify-content: center;
 		}
 		.bn-acts :global(.ar-more) {
-			flex: 0 0 40px;
+			flex: 0 0 44px;
 		}
 		.bn-acts :global(.ar-more-btn) {
-			width: 40px;
-			min-width: 40px;
+			width: 44px;
+			min-width: 44px;
 		}
 		.bn-note {
 			text-align: left;

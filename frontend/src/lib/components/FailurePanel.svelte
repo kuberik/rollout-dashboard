@@ -15,7 +15,7 @@
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
-	import { autoRollbackView, notRolledBackSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
+	import { autoRollbackView, notRolledBackSentence, retryPrimary, verdictDetailRows } from '$lib/view-models/auto-rollback';
 	import { blockedWhy, consumerNowLookup, nowSafeView, breakDetailRows } from '$lib/view-models/rollback-deps';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { poolOf, worstOf, failingNowList, failingSummary, type SnapCheck } from '$lib/view-models/health-failures';
@@ -223,7 +223,7 @@
 	const detailRows = $derived(
 		notRolled ? [...verdictDetailRows(notRolled.rows), ...(dependencyBlock && !nowSafe ? breakDetailRows(dependencyBlock.breaks, cluster ?? '', rollout?.metadata?.name ?? '') : [])] : undefined
 	);
-	const retryFirst = $derived(allRecovered);
+	const retryFirst = $derived(retryPrimary({ allRecovered, notRolledBackReason: notRolled?.reason }));
 	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
 	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: () => handleRollback(), ...(isDashboardManagingWantedVersion ? {} : { ...(canHover.current ? {} : { title: WANTED_VERSION_OWNED_REASON }), describedBy: 'failure-owned-reason' }) });
 	const anywayAct = $derived({ label: nowSafe ? 'Roll back' : 'Roll back anyway\u2026', ...(nowSafe ? { ariaLabel: `Roll back to ${nowSafe.target}` } : {}), icon: UndoOutline, id: 'failure-rollback-btn', key: nowSafe ? 'rollback-safe' : 'rollback-anyway', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: () => handleRollback(nowSafe?.targetTag ?? dependencyBlock?.usualTag) });

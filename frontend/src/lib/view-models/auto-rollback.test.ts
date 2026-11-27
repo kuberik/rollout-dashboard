@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rollout } from '../../types';
-import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, triggerSentence, notRolledBackSentence, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
+import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, triggerSentence, notRolledBackSentence, retryPrimary, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
 
 const v = (tag: string) => ({ tag, version: `1.${tag.slice(-1)}.0`, revision: 'a'.repeat(40), created: '2026-11-21T10:00:00Z' });
 const failed = {
@@ -154,5 +154,18 @@ describe('entryRollbackNote: verdicts follow what the controller decided', () =>
 	it('an older failed entry that was not rolled back reads plainly', () => {
 		const e = failed({ id: 3 });
 		expect(entryRollbackNote(ro(true, [ok({ id: 9 }), e]), e)).toEqual({ ran: false, word: 'Not rolled back', why: '', note: 'Not rolled back' });
+	});
+});
+
+describe('retryPrimary: the filled button follows what the controller decided', () => {
+	it('a warning-only failure the controller chose not to roll back makes Retry primary', () => {
+		expect(retryPrimary({ allRecovered: false, notRolledBackReason: 'NotATrigger' })).toBe(true);
+	});
+	it('a recovered failure keeps Retry primary', () => {
+		expect(retryPrimary({ allRecovered: true })).toBe(true);
+	});
+	it('a failure still failing, or blocked for the rollback itself, keeps Roll back primary', () => {
+		expect(retryPrimary({ allRecovered: false })).toBe(false);
+		for (const r of ['Blocked', 'NoTarget', 'ManualDeploy', 'ManualIntent', 'DeployError']) expect(retryPrimary({ allRecovered: false, notRolledBackReason: r })).toBe(false);
 	});
 });
