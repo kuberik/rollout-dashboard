@@ -3871,6 +3871,7 @@
 							messageBody={rollbackMessage}
 							actions={autoRolled && canModify && failedBakeHeld(rollout, autoRolled.failed.version.tag) ? releaseHoldAction : undefined}
 							actionBar={!!autoRolled}
+							actionsBelow
 							footnoteBody={autoRolled ? undefined : rollbackDetail}
 						>
 							{#snippet extra()}
