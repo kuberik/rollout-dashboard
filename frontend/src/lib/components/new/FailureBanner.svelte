@@ -22,7 +22,7 @@
 
 	let { b, extra }: {
 		b: { /** the Overview banner's evidence (same lines, Details and class glyph); absent = the check + line the row carries */ evidence?: BannerEvidence | null; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null; /** every check is OK again: Retry leads (view-models/failure-actions.ts) */ recovered?: boolean; /** where Retry goes: the rollout, which holds the retry and its confirmation (defaults to openHref) */ retryHref?: string; meta: BannerMeta };
-		/** one more row under the sentence (/envs: the newer build that is waiting) */
+		/** one more fact about the failure (/envs: the newer build that is waiting); it opens under Details (title + one line) */
 		extra?: Snippet;
 	} = $props();
 	/* the age rides on the health line ("2 health checks failing, 1 pending · 12m ago"), as on the rollout Overview's banner; the meta line keeps only the build */
@@ -38,9 +38,9 @@
 	}));
 </script>
 
-{#snippet details()}{#if b.evidence}<FailureDetails pool={b.evidence.pool} />{/if}{/snippet}
+{#snippet details()}{#if extra}<div class="mb-2">{@render extra()}</div>{/if}{#if b.evidence}<FailureDetails pool={b.evidence.pool} />{/if}{/snippet}
 <StatementBanner severity="failed" title={b.title} recovered={!!b.recovered} check={b.evidence ? b.evidence.check : b.check ?? undefined} observations={b.evidence?.observations}
 	message={sentence} change={b.change ? { ...b.change, build: b.meta.build ?? undefined } : undefined}
-	build={b.change ? undefined : b.meta.build ?? undefined} body={extra} class=""
-	footnoteLabel={b.evidence ? 'Details' : undefined}
-	primary={acts.primary} secondary={acts.secondary} footnoteBody={b.evidence ? details : undefined} />
+	build={b.change ? undefined : b.meta.build ?? undefined} class=""
+	footnoteLabel={b.evidence || extra ? 'Details' : undefined}
+	primary={acts.primary} secondary={acts.secondary} footnoteBody={b.evidence || extra ? details : undefined} />

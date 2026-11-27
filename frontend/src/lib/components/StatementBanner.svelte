@@ -150,7 +150,8 @@
 	);
 	const acts = $derived<Act[]>(severity === 'failed' && !primary && !secondary.length && openHref ? [{ label: 'Open rollout', href: openHref, after: true, key: 'open-rollout' }] : secondary);
 	/* at most two visible buttons (the banner rule): the primary and one more; the rest go in "⋯" at every width */
-	const visibleActs = $derived(acts.slice(0, primary ? 1 : 2));
+	/* DOM order = visual order (Tab meets the primary last, as the eye does): no `after` reordering inside a banner */
+	const visibleActs = $derived(acts.slice(0, primary ? 1 : 2).map((a) => (a.after && !a.quiet ? { ...a, after: false } : a)));
 	const moreActs = $derived(acts.slice(primary ? 1 : 2));
 	const hasActions = $derived(!!primary || acts.length > 0);
 	/* the failure cards' rule (attention.ts): a measured figure leads, and the check line then says the name + the budget instead of repeating the figure in its message */

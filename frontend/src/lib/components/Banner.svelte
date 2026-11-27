@@ -429,6 +429,14 @@
 			height: 44px;
 			min-height: 44px;
 		}
+		/* "⋯" is a fixed 44px square; the buttons share what is left */
+		.bn-acts :global(.ar-more) {
+			flex: 0 0 44px;
+		}
+		.bn-acts :global(.ar-more-btn) {
+			width: 44px;
+			min-width: 44px;
+		}
 		.bn-note {
 			text-align: left;
 		}
