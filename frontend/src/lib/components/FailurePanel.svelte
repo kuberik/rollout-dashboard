@@ -279,7 +279,6 @@
 	message={notRolled ? undefined : evidence ? evMessage : failureAgo ? `${bannerMessage} \u00b7\u00a0${failureAgo}\u00a0ago` : bannerMessage}
 	footnoteLabel="Details"
 	pulse={true}
-	actionsBelow
 	primary={retryFirst ? (canUpdate ? retryAct : undefined) : rollbackShown ? rollbackAct : undefined}
 	secondary={retryFirst ? (rollbackShown ? [rollbackAct] : []) : canUpdate ? [{ ...retryAct, after: true }] : []}
 	tooltips={{
