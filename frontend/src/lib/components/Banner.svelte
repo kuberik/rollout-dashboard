@@ -141,8 +141,8 @@
 	const primary = $derived(plain(shown.primary));
 	const secondary = $derived((shown.secondary === undefined ? [] : Array.isArray(shown.secondary) ? shown.secondary : [shown.secondary]).map((a) => plain(a)!));
 	const more = $derived((shown.more ?? []).map((a) => plain(a)!));
-	// throwaway switch for the review: ?bv=a2 puts title, sentence and buttons on one line
-	const variant = typeof location !== 'undefined' && new URLSearchParams(location.search).get('bv') === 'a2' ? 'a2' : 'a1';
+	// throwaway switch for the owner's review: ?bv=d1..d5 (default d1), all one continuous surface
+	const variant = (() => { const v = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('bv') : null; return v === 'd2' || v === 'd3' || v === 'd4' || v === 'd5' ? v : 'd1'; })();
 	const actions = $derived(shown.actions);
 	const toggle = $derived(shown.toggle);
 	const hasActs = $derived(!!primary || secondary.length > 0 || more.length > 0);
@@ -288,7 +288,7 @@
 		grid-template-columns: minmax(0, 1fr);
 		align-items: start;
 		border-color: var(--h-line);
-		background: color-mix(in oklab, var(--h-tint) 62%, var(--k-surface));
+		background: color-mix(in oklab, var(--h-tint) var(--h-mix, 62%), var(--k-surface));
 		overflow: hidden;
 	}
 	.bn--acts {
@@ -307,9 +307,9 @@
 	.bn-st {
 		padding: 12px 16px;
 	}
-	/* the buttons' first row is centred on the 24px title line (12px pad + 12 - 16) and sits flush right, on every banner */
+	/* desktop: the buttons are centred vertically across the statement rows and sit flush right (same inset on every banner) */
 	.bn-acts {
-		align-self: start;
+		align-self: center; /* centred on the closed statement rows; the Details panel is a later grid row, so opening it never moves the buttons */
 		padding: 8px 16px 8px 0;
 	}
 	.bn-st {
@@ -507,6 +507,116 @@
 		.bn-text {
 			grid-column: 1 / -1;
 			grid-row: 2;
+		}
+	}
+
+	/* ---- the owner's review variants of D (?bv=d1..d4); d1 is the base above ---- */
+	/* d2: stronger tint, icon-led */
+	.bn[data-variant='d2'] { --h-mix: 90%; }
+	/* d3: compact one line, OUTLINE buttons (the primary is drawn as an outline too) */
+	.bn[data-variant='d3'] :global(.bn-acts .btn-primary) {
+		background: var(--k-surface);
+		color: var(--k-fg);
+		border: 1px solid var(--h-line);
+	}
+	/* d4: light tint, the glyph in a tinted rounded-sm square */
+	.bn[data-variant='d4'] { --h-mix: 38%; }
+	/* d5: SQUARE corners (a side bar is only legal on a square element): 3px hue bar on the left, light tint, a bare hue glyph, no disc */
+	.bn[data-variant='d5'] {
+		--h-mix: 34%;
+		border-radius: 0;
+		border-left: 3px solid var(--h-line);
+	}
+	.bn[data-variant='d5'] .bn-icon {
+		background: transparent;
+		color: color-mix(in oklab, var(--h-line) 70%, var(--k-fg));
+		width: 24px;
+		height: 24px;
+		margin-top: 0;
+	}
+	.bn[data-variant='d5'] .bn-icon :global(svg) {
+		width: 20px;
+		height: 20px;
+	}
+	@container (min-width: 640px) {
+		.bn[data-variant='d5'] .bn-st {
+			align-items: center;
+		}
+	}
+	/* d2 icon: stronger hierarchy: a 24px solid disc, generous padding, a consistent height */
+	.bn[data-variant='d2'] .bn-icon {
+		width: 24px;
+		height: 24px;
+		margin-top: 0;
+	}
+	.bn[data-variant='d2'] .bn-icon :global(svg) {
+		width: 14px;
+		height: 14px;
+	}
+	/* d4: the glyph in a 32px tinted rounded square (hue tint, hue icon), not a solid disc */
+	.bn[data-variant='d4'] .bn-icon {
+		width: 32px;
+		height: 32px;
+		margin-top: 0;
+		border-radius: 4px;
+		background: color-mix(in oklab, var(--h-line) 32%, var(--k-surface));
+		color: color-mix(in oklab, var(--h-line) 65%, var(--k-fg));
+	}
+	.bn[data-variant='d4'] .bn-icon :global(svg) {
+		width: 16px;
+		height: 16px;
+	}
+	@container (min-width: 640px) {
+		.bn[data-variant='d2'] {
+			min-height: 80px;
+		}
+		.bn[data-variant='d2'] .bn-st {
+			padding: 16px;
+			align-items: center;
+		}
+		.bn[data-variant='d2'] .bn-acts {
+			padding: 16px 16px 16px 0;
+		}
+		.bn[data-variant='d2'] .bn-panel {
+			padding-left: 52px;
+		}
+		.bn[data-variant='d4'] .bn-st {
+			padding: 12px 16px;
+			align-items: center;
+		}
+		.bn[data-variant='d4'] .bn-panel {
+			padding-left: 60px;
+		}
+		/* d3: title and the one sentence on ONE line, sentence muted after a separator; wraps gracefully */
+		.bn[data-variant='d3'] .bn-st {
+			padding: 14px 16px;
+			align-items: center;
+		}
+		.bn[data-variant='d3'] .bn-txt {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: baseline;
+			column-gap: 12px;
+		}
+		.bn[data-variant='d3'] .bn-row2 {
+			margin-top: 0;
+			flex: 0 1 auto;
+		}
+		.bn[data-variant='d3'] .bn-row2:not(.bn-row2--block)::before {
+			content: '\00b7';
+			color: var(--k-fg-subtle);
+			margin-right: 0;
+		}
+		.bn[data-variant='d3'] .bn-acts {
+			padding: 10px 16px 10px 0;
+		}
+	}
+	@container (max-width: 639px) {
+		.bn[data-variant='d2'] .bn-panel {
+			padding-left: 48px;
+		}
+		.bn[data-variant='d4'] .bn-panel {
+			padding-left: 56px;
 		}
 	}
 
