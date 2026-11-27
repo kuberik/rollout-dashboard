@@ -15,7 +15,7 @@
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
-	import { autoRollbackView, notRolledBackSentence, retryPrimary, failureTitle, verdictDetailRows } from '$lib/view-models/auto-rollback';
+	import { autoRollbackView, notRolledBackSentence, retryPrimary, failureTitle, warningOnly, warningSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
 	import { blockedWhy, consumerNowLookup, nowSafeView, breakDetailRows } from '$lib/view-models/rollback-deps';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { poolOf, worstOf, failingNowList, failingSummary, type SnapCheck } from '$lib/view-models/health-failures';
@@ -222,6 +222,7 @@
 		nowSafe ? nowSafe.headline
 		: relation ? 'A rollback would break a consumer'
 		: dependencyBlock ? blockedWhy(dependencyBlock.blockedBy, true)
+		: notRolled && warningOnly({ reason: notRolled.reason, rows: notRolled.rows }) ? warningSentence(notRolled.rows)
 		: notRolled ? notRolledBackSentence(notRolled.reason, notRolled.failed, notRolled.rows)
 		: allRecovered ? '`' + (worst?.row?.name ?? worst?.check.name ?? 'The check') + '` recovered'
 		: bannerMessage
@@ -296,8 +297,7 @@
 		<span class="bn-chip t-code-sm" data-banner-relation>{relation.name}</span>
 		<span class="t-meta text-fg-muted">needs</span>
 		<span class="bn-chip t-code-sm">{relation.left}</span>
-		<span aria-hidden="true" class="t-meta text-fg-subtle">&rarr;</span>
-		<span class="bn-chip bn-chip--old t-code-sm" aria-label="the rollback target, which does not satisfy it">{relation.right}</span>
+		<span class="bn-chip t-code-sm" aria-label="the rollback target {relation.right} does not satisfy it">{relation.right} &#x2715;</span>
 	{/if}
 {/snippet}
 {#snippet evidenceBody()}

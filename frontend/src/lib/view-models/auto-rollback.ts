@@ -199,10 +199,19 @@ export function retryPrimary(o: { allRecovered: boolean; notRolledBackReason?: s
  * The failure banner's headline. A failure the controller chose not to roll back because every failing check is a
  * warning gets its own words, so it is told apart from a critical failure without reading the sentence.
  */
-export function failureTitle(o: { reason?: string | null; rows?: Pick<VerdictRow, 'severity' | 'rollsBack'>[] }): string {
+export function warningOnly(o: { reason?: string | null; rows?: Pick<VerdictRow, 'severity' | 'rollsBack'>[] }): boolean {
 	const rows = o.rows ?? [];
-	if (o.reason === 'NotATrigger' && rows.length > 0 && rows.every((r) => r.severity === 'Warning' && !r.rollsBack)) return rows.length === 1 ? 'Warning check failed' : 'Warning checks failed';
+	return o.reason === 'NotATrigger' && rows.length > 0 && rows.every((r) => r.severity === 'Warning' && !r.rollsBack);
+}
+
+export function failureTitle(o: { reason?: string | null; rows?: Pick<VerdictRow, 'severity' | 'rollsBack'>[] }): string {
+	if (warningOnly(o)) return (o.rows ?? []).length === 1 ? 'Warning check failed' : 'Warning checks failed';
 	return 'Failed, not rolled back';
+}
+
+/** the sentence under the warning headline: the title says it was a warning, so this names the check and the consequence */
+export function warningSentence(rows: Pick<VerdictRow, 'ref'>[]): string {
+	return rows.length === 1 ? '`' + shortRef(rows[0].ref) + '` does not trigger a rollback' : `${rows.length} checks, none trigger a rollback`;
 }
 
 /** the same line for the banner: a check's name is marked `like this` so the banner draws it in the code role */

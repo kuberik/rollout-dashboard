@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rollout } from '../../types';
-import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, triggerSentence, notRolledBackSentence, retryPrimary, failureTitle, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
+import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, triggerSentence, notRolledBackSentence, retryPrimary, failureTitle, warningSentence, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
 
 const v = (tag: string) => ({ tag, version: `1.${tag.slice(-1)}.0`, revision: 'a'.repeat(40), created: '2026-11-21T10:00:00Z' });
 const failed = {
@@ -181,4 +181,9 @@ describe('failureTitle: a warning-only failure has its own headline', () => {
 		expect(failureTitle({ reason: 'Blocked', rows: [w] })).toBe('Failed, not rolled back');
 		expect(failureTitle({})).toBe('Failed, not rolled back');
 	});
+});
+
+describe('warningSentence: names the check and the consequence, not the severity again', () => {
+	it('one check', () => expect(warningSentence([{ ref: 'prod/catalog-flaky-ui-test' }])).toBe('`catalog-flaky-ui-test` does not trigger a rollback'));
+	it('several', () => expect(warningSentence([{ ref: 'a/x' }, { ref: 'a/y' }])).toBe('2 checks, none trigger a rollback'));
 });

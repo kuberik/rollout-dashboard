@@ -33,7 +33,7 @@
 	 *   visible. Buttons are TEXT ONLY: the shell hides every SVG in the action area except the "⋯" dots (callers' icons and
 	 *   `actions` snippets included). Below 640px OF THE BANNER the group becomes one full-width 44px row at the bottom, with no
 	 *   rule above it. Labels never carry a version ("Roll back", not "Roll back to 5.1.0").
-	 * - Details is ONE fixed place at every width: the end of the title row, right-aligned in the text column. Chips and
+	 * - Details is ONE fixed place per breakpoint: right after the title text on desktop, the end of the title row (right-aligned) on the phone. Chips and
 	 *   arrows (`move`, `shape`) sit inline on the sentence's row, at the product Chip's 20px height, so a banner with chips is
 	 *   as tall as one without.
 	 * - Copy: a short title, then at most one sentence of 12 words or fewer; shaped facts are drawn (`move` 2.4.0 → 2.3.0,
@@ -292,7 +292,7 @@
 	.bn[data-severity='success'] { --h-tint: var(--k-success-tint); --h-line: var(--k-success-line); }
 	/* dark: the three tints are as chromatic as each other, so rank them: critical loudest, held between, info calmest */
 	:global(.dark) .bn[data-severity='critical'] { --h-mix: 70%; }
-	:global(.dark) .bn[data-severity='held'] { --h-mix: 52%; }
+	:global(.dark) .bn[data-severity='held'] { --h-mix: 60%; }
 	:global(.dark) .bn[data-severity='info'] { --h-mix: 30%; }
 	:global(.dark) .bn[data-severity='success'] { --h-mix: 30%; }
 	.bn-st,
@@ -338,8 +338,16 @@
 	.bn-row2--block {
 		align-items: last baseline;
 	}
+	/* desktop: Details follows the title text on the title row */
 	.bn-det-ph {
-		margin-left: auto;
+		margin-left: 4px;
+	}
+	/* light: the held disc a step darker, so it holds 3:1 against the peach field */
+	.bn[data-severity='held'] .bn-icon {
+		filter: brightness(0.82);
+	}
+	:global(.dark) .bn[data-severity='held'] .bn-icon {
+		filter: none;
 	}
 	/* SHAPE: the facts drawn, inline in the text column ahead of the sentence */
 	.bn-sh {
@@ -452,6 +460,9 @@
 		}
 		.bn-st {
 			padding: 12px;
+		}
+		.bn-det-ph {
+			margin-left: auto;
 		}
 		.bn-acts {
 			order: 2;
