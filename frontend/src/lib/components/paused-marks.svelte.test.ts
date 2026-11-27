@@ -71,12 +71,10 @@ describe('the banner age: one helper, one wording, floored', () => {
 import FailureBanner from './new/FailureBanner.svelte';
 
 describe('the list-page banner prints the age on the health line, as the rollout banner does', () => {
-	it('"12m ago" off the live clock ends the health line; the meta line keeps only the build', () => {
+	it('"12m ago" off the live clock ends the health line; no bare build row (it shifted the banner when the change line arrived)', () => {
 		const b = { title: 'orders-hub failing in prod', check: null, line: '2 health checks failing', change: null, openHref: '/x', rollbackHref: null, meta: { since: '11m', sinceAt: '2026-11-15T18:38:00Z', build: '1.4.0' } };
 		const { container } = render(FailureBanner, { b });
-		const meta = container.querySelector('[data-statement-meta]')!.textContent!;
-		expect(meta).toContain('1.4.0');
-		expect(meta).not.toMatch(/ago|\bfor\b/);
+		expect(container.querySelector('[data-statement-meta]')).toBeNull();
 		expect(container.querySelector('[data-statement-body]')!.textContent).toMatch(/2 health checks failing\s*·\s*12m\s*ago/);
 	});
 

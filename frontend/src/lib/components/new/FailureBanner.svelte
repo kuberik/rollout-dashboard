@@ -41,6 +41,6 @@
 {#snippet details()}{#if extra}<div class="mb-2">{@render extra()}</div>{/if}{#if b.evidence}<FailureDetails pool={b.evidence.pool} />{/if}{/snippet}
 <StatementBanner severity="failed" title={b.title} recovered={!!b.recovered} check={b.evidence ? b.evidence.check : b.check ?? undefined} observations={b.evidence?.observations}
 	message={sentence} change={b.change ? { ...b.change, build: b.meta.build ?? undefined } : undefined}
-	build={b.change ? undefined : b.meta.build ?? undefined} class=""
+	class=""
 	footnoteLabel={b.evidence || extra ? 'Details' : undefined}
 	primary={acts.primary} secondary={acts.secondary} footnoteBody={b.evidence || extra ? details : undefined} />

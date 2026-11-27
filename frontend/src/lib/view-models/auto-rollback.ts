@@ -195,6 +195,16 @@ export function retryPrimary(o: { allRecovered: boolean; notRolledBackReason?: s
 	return o.allRecovered || o.notRolledBackReason === 'NotATrigger';
 }
 
+/**
+ * The failure banner's headline. A failure the controller chose not to roll back because every failing check is a
+ * warning gets its own words, so it is told apart from a critical failure without reading the sentence.
+ */
+export function failureTitle(o: { reason?: string | null; rows?: Pick<VerdictRow, 'severity' | 'rollsBack'>[] }): string {
+	const rows = o.rows ?? [];
+	if (o.reason === 'NotATrigger' && rows.length > 0 && rows.every((r) => r.severity === 'Warning' && !r.rollsBack)) return rows.length === 1 ? 'Warning check failed' : 'Warning checks failed';
+	return 'Failed, not rolled back';
+}
+
 /** the same line for the banner: a check's name is marked `like this` so the banner draws it in the code role */
 export function notRolledBackSentence(reason: string, failed: HistoryEntry, rows: VerdictRow[]): string {
 	switch (reason) {

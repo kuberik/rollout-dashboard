@@ -17,19 +17,25 @@
 	 * and their buttons sat in four different places (right column centred on 2 or 3 rows, a bottom row indented to the
 	 * text, a full-width bottom row). The owner rejected both looks ("busy", "too calm") and the drifting buttons.
 	 *
-	 * Anatomy (borrows Primer Banner and Atlassian section message; proportions from `Card`'s header):
-	 *   STATEMENT (glyph, title, one sentence, Details)  |  SHAPE (the drawn facts)  |  ACT (buttons, fixed at the right)
-	 *   Below 640px OF THE BANNER the three cells stack: statement, shape under the text, then a 44px button row.
-	 * - Every severity is a tinted field with a 1px hue line and the status glyph (the owner: info and success are coloured
-	 *   too). Corner radius is the cards' (rounded-md, 8px). No disc beyond the 20px mark, no side bar (side bars are only
-	 *   legal on square elements).
+	 * Anatomy (D1; borrows Primer Banner and Atlassian section message; proportions from `Card`'s header). ONE continuous
+	 * tinted surface: no cells, no dividers, no hairlines, no side bar.
+	 *   [20px status disc] [title t-heading                         Details ›] [secondary] [primary]
+	 *                      [chips · one sentence of 12 words or fewer         ]
+	 *                      [Details panel, full width, below the row above    ]
+	 * - Every severity is coloured, info and success included: a tinted field with a 1px hue line and a solid disc.
+	 *   Radius is the cards' (rounded-md, 8px). In dark the tints are ranked (critical > held > info) so info is calmer.
 	 *     critical  danger   failed, refused, error        warning  amber    stuck (DL: amber means stuck only)
 	 *     held      orange   a rule holds it               info     blue     pinned, partial, a note, "Rolled back" (the system acted)
 	 *     success   green    DONE only: a recovery, an approval, a finished step; "Rolled back" is never success
-	 * - ONE action position: the buttons are a right-hand column whose first row is centred on the TITLE line, whatever the
-	 *   body holds or whether Details is open, so a reader's eye finds them in the same place on every banner. Primary is
-	 *   rightmost, at most two visible, the rest in "⋯". Below 640px OF THE BANNER they become a full-width 44px row at the
-	 *   bottom (`ActRow`'s phone row). Labels never carry a version ("Roll back", not "Roll back to 5.1.0").
+	 * - The buttons are one group, vertically CENTRED on the closed statement rows (title + sentence) and flush right with the
+	 *   same 16px inset on every banner, whatever the body holds. Opening Details never moves them: the panel is a later row.
+	 *   Primary is rightmost, then the secondary, with "⋯" to the LEFT of the pair so the primary never moves; at most two
+	 *   visible. Buttons are TEXT ONLY: the shell hides every SVG in the action area except the "⋯" dots (callers' icons and
+	 *   `actions` snippets included). Below 640px OF THE BANNER the group becomes one full-width 44px row at the bottom, with no
+	 *   rule above it. Labels never carry a version ("Roll back", not "Roll back to 5.1.0").
+	 * - Details is ONE fixed place at every width: the end of the title row, right-aligned in the text column. Chips and
+	 *   arrows (`move`, `shape`) sit inline on the sentence's row, at the product Chip's 20px height, so a banner with chips is
+	 *   as tall as one without.
 	 * - Copy: a short title, then at most one sentence of 12 words or fewer; shaped facts are drawn (`move` 2.4.0 → 2.3.0,
 	 *   `code` spans); lists, reasons and the controller's own words go behind `Details`.
 	 */
@@ -121,7 +127,7 @@
 	const SEV = {
 		critical: { icon: BangGlyph, disc: `${hueSolid('danger')} text-white`, face: 'bn-f-danger border-banner-danger-line' },
 		warning: { icon: BangGlyph, disc: `${hueSolid('warning')} text-gray-900`, face: 'bn-f-warning border-warning-line' },
-		held: { icon: HeldGlyph, disc: `${hueSolid('held')} text-white`, face: 'bn-f-held border-held-line' },
+		held: { icon: HeldGlyph, disc: `${hueSolid('held')} text-gray-900`, face: 'bn-f-held border-held-line' },
 		info: { icon: InfoGlyph, disc: `${hueSolid('active')} text-white`, face: 'bn-f-info border-active-line' },
 		success: { icon: CheckGlyph, disc: `${hueSolid('success')} text-white`, face: 'bn-f-success border-success-line' }
 	} as const;
@@ -141,8 +147,6 @@
 	const primary = $derived(plain(shown.primary));
 	const secondary = $derived((shown.secondary === undefined ? [] : Array.isArray(shown.secondary) ? shown.secondary : [shown.secondary]).map((a) => plain(a)!));
 	const more = $derived((shown.more ?? []).map((a) => plain(a)!));
-	// throwaway switch for the owner's review: ?bv=d1..d5 (default d1), all one continuous surface
-	const variant = (() => { const v = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('bv') : null; return v === 'd2' || v === 'd3' || v === 'd4' || v === 'd5' ? v : 'd1'; })();
 	const actions = $derived(shown.actions);
 	const toggle = $derived(shown.toggle);
 	const hasActs = $derived(!!primary || secondary.length > 0 || more.length > 0);
@@ -170,7 +174,7 @@
 	>
 		<div class="bn-collapse-inner">
 			<div class="bn-cq">
-				<section class="bn rounded-md border text-fg {sev.face}" class:bn--acts={hasActions} class:is-open={detailsOpen} data-variant={variant} {role} data-banner data-severity={severity}>
+				<section class="bn rounded-md border text-fg {sev.face}" class:bn--acts={hasActions} class:is-open={detailsOpen} {role} data-banner data-severity={severity}>
 					<div class="bn-st">
 					<span class="bn-icon relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full {disc}" aria-hidden="true" data-banner-mark>
 						{#if shown.pulse}<span class="bn-halo absolute inset-0 rounded-full opacity-30 {disc}"></span>{/if}
@@ -179,10 +183,10 @@
 						<div class="bn-txt min-w-0">
 					<div class="bn-head min-w-0">
 						{#if shown.heading}{@render shown.heading()}{:else}<p class="t-heading inline text-fg [overflow-wrap:anywhere]" data-banner-title>{shown.title}</p>{/if}
-						{#if shown.extra}<span class="bn-extra ml-2 inline-flex align-baseline">{@render shown.extra()}</span>{/if}
-											{#if hasDetails}<button type="button" class="bn-details bn-det-ph t-ui-sm hit-32 items-center gap-1 text-fg-muted hover:text-fg" aria-expanded={detailsOpen} aria-controls={panelId} onclick={() => (detailsOpen = !detailsOpen)}>{detailsLabel}<ChevronRightOutline class="h-3 w-3 shrink-0 transition-transform {detailsOpen ? 'rotate-90' : ''}" aria-hidden="true" /></button>{/if}
+						{#if shown.extra}<span class="bn-extra inline-flex align-baseline">{@render shown.extra()}</span>{/if}
+											{#if hasDetails}<button type="button" class="bn-details bn-det-ph t-ui-sm hit-32 inline-flex items-center gap-1 text-fg-muted hover:text-fg focus-visible:ring-2 focus-visible:ring-line-strong focus-visible:outline-none" data-banner-details aria-expanded={detailsOpen} aria-controls={panelId} onclick={() => (detailsOpen = !detailsOpen)}>{detailsLabel}<ChevronRightOutline class="h-3 w-3 shrink-0 transition-transform {detailsOpen ? 'rotate-90' : ''}" aria-hidden="true" /></button>{/if}
 					</div>
-					{#if hasLine || hasDetails || hasShape}
+					{#if hasLine || hasShape}
 						<div class="bn-row2 min-w-0" class:bn-row2--block={!!shown.body}>
 							{#if hasShape}
 								<span class="bn-sh" data-banner-shape>
@@ -206,18 +210,6 @@
 										</span>
 									{/if}
 								</div>
-							{/if}
-							{#if hasDetails}
-								<button
-									type="button"
-									class="bn-details t-ui-sm hit-32 inline-flex shrink-0 items-center gap-1 text-fg-muted hover:text-fg focus-visible:ring-2 focus-visible:ring-line-strong focus-visible:outline-none"
-									aria-expanded={detailsOpen}
-									aria-controls={panelId}
-									onclick={() => (detailsOpen = !detailsOpen)}
-									data-banner-details
-								>
-									{detailsLabel}<ChevronRightOutline class="h-3 w-3 shrink-0 transition-transform {detailsOpen ? 'rotate-90' : ''}" aria-hidden="true" />
-								</button>
 							{/if}
 						</div>
 					{/if}
@@ -298,6 +290,11 @@
 	.bn[data-severity='warning'] { --h-tint: var(--k-warning-tint); --h-line: var(--k-warning-line); }
 	.bn[data-severity='held'] { --h-tint: var(--k-held-tint); --h-line: var(--k-held-line); }
 	.bn[data-severity='success'] { --h-tint: var(--k-success-tint); --h-line: var(--k-success-line); }
+	/* dark: the three tints are as chromatic as each other, so rank them: critical loudest, held between, info calmest */
+	:global(.dark) .bn[data-severity='critical'] { --h-mix: 70%; }
+	:global(.dark) .bn[data-severity='held'] { --h-mix: 52%; }
+	:global(.dark) .bn[data-severity='info'] { --h-mix: 30%; }
+	:global(.dark) .bn[data-severity='success'] { --h-mix: 30%; }
 	.bn-st,
 	.bn-acts {
 		display: flex;
@@ -322,22 +319,27 @@
 	.bn-icon {
 		margin-top: 2px; /* centred on the 24px title line */
 	}
+	/* the title row: title, a small fact, then Details at the row's end: one fixed place at every width */
 	.bn-head {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
 		min-height: 24px;
 	}
 	.bn-row2 {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: baseline;
+		align-items: center;
 		column-gap: 12px;
 		row-gap: 2px;
 		margin-top: 2px;
+		min-height: 20px;
 	}
 	.bn-row2--block {
 		align-items: last baseline;
 	}
 	.bn-det-ph {
-		display: none;
+		margin-left: auto;
 	}
 	/* SHAPE: the facts drawn, inline in the text column ahead of the sentence */
 	.bn-sh {
@@ -346,14 +348,15 @@
 		align-items: center;
 		gap: 8px;
 	}
-	.bn-chip,
+	/* the product Chip's geometry: 20px tall, 4px radius, so a banner with chips is as tall as one without */
+	.bn-sh :global(.bn-chip),
 	.bn-sh :global(.bn-ent) {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		height: 24px;
-		padding: 0 8px;
-		border-radius: 6px;
+		height: 20px;
+		padding: 0 6px;
+		border-radius: 4px;
 		background: var(--k-surface);
 		border: 1px solid color-mix(in oklab, var(--h-line) 70%, var(--k-line));
 		white-space: nowrap;
@@ -362,7 +365,7 @@
 	.bn-sh :global(.bn-ent) {
 		font: 500 12px/16px var(--font-sans);
 	}
-	.bn-chip--old {
+	.bn-sh :global(.bn-chip--old) {
 		color: var(--k-fg-muted);
 		text-decoration: line-through;
 		text-decoration-color: color-mix(in oklab, var(--k-fg-muted) 60%, transparent);
@@ -390,8 +393,13 @@
 	.bn-acts :global(.ar-end .btn-primary) {
 		order: 1;
 	}
-	.bn-acts :global(.ar-end .ar-more) {
-		order: 2;
+	/* "⋯" sits LEFT of the visible pair, so the primary is the rightmost control at every width */
+	.bn .bn-acts :global(.ar .ar-more) {
+		order: -1;
+	}
+	/* text-only buttons, enforced here for every caller (ActRow rows and the `actions` snippet): only the "⋯" dots, a toggle chevron and a busy spinner keep their SVG */
+	.bn-acts :global(.btn:not(.ar-more-btn):not(.bn-toggle) svg:not(.animate-spin)) {
+		display: none;
 	}
 	.bn-panel {
 		grid-column: 1 / -1;
@@ -445,18 +453,6 @@
 		.bn-st {
 			padding: 12px;
 		}
-		.bn-head {
-			display: flex;
-			align-items: baseline;
-			gap: 8px;
-		}
-		.bn-det-ph {
-			display: inline-flex;
-			margin-left: auto;
-		}
-		.bn-row2 .bn-details {
-			display: none;
-		}
 		.bn-acts {
 			order: 2;
 			align-self: stretch;
@@ -507,116 +503,6 @@
 		.bn-text {
 			grid-column: 1 / -1;
 			grid-row: 2;
-		}
-	}
-
-	/* ---- the owner's review variants of D (?bv=d1..d4); d1 is the base above ---- */
-	/* d2: stronger tint, icon-led */
-	.bn[data-variant='d2'] { --h-mix: 90%; }
-	/* d3: compact one line, OUTLINE buttons (the primary is drawn as an outline too) */
-	.bn[data-variant='d3'] :global(.bn-acts .btn-primary) {
-		background: var(--k-surface);
-		color: var(--k-fg);
-		border: 1px solid var(--h-line);
-	}
-	/* d4: light tint, the glyph in a tinted rounded-sm square */
-	.bn[data-variant='d4'] { --h-mix: 38%; }
-	/* d5: SQUARE corners (a side bar is only legal on a square element): 3px hue bar on the left, light tint, a bare hue glyph, no disc */
-	.bn[data-variant='d5'] {
-		--h-mix: 34%;
-		border-radius: 0;
-		border-left: 3px solid var(--h-line);
-	}
-	.bn[data-variant='d5'] .bn-icon {
-		background: transparent;
-		color: color-mix(in oklab, var(--h-line) 70%, var(--k-fg));
-		width: 24px;
-		height: 24px;
-		margin-top: 0;
-	}
-	.bn[data-variant='d5'] .bn-icon :global(svg) {
-		width: 20px;
-		height: 20px;
-	}
-	@container (min-width: 640px) {
-		.bn[data-variant='d5'] .bn-st {
-			align-items: center;
-		}
-	}
-	/* d2 icon: stronger hierarchy: a 24px solid disc, generous padding, a consistent height */
-	.bn[data-variant='d2'] .bn-icon {
-		width: 24px;
-		height: 24px;
-		margin-top: 0;
-	}
-	.bn[data-variant='d2'] .bn-icon :global(svg) {
-		width: 14px;
-		height: 14px;
-	}
-	/* d4: the glyph in a 32px tinted rounded square (hue tint, hue icon), not a solid disc */
-	.bn[data-variant='d4'] .bn-icon {
-		width: 32px;
-		height: 32px;
-		margin-top: 0;
-		border-radius: 4px;
-		background: color-mix(in oklab, var(--h-line) 32%, var(--k-surface));
-		color: color-mix(in oklab, var(--h-line) 65%, var(--k-fg));
-	}
-	.bn[data-variant='d4'] .bn-icon :global(svg) {
-		width: 16px;
-		height: 16px;
-	}
-	@container (min-width: 640px) {
-		.bn[data-variant='d2'] {
-			min-height: 80px;
-		}
-		.bn[data-variant='d2'] .bn-st {
-			padding: 16px;
-			align-items: center;
-		}
-		.bn[data-variant='d2'] .bn-acts {
-			padding: 16px 16px 16px 0;
-		}
-		.bn[data-variant='d2'] .bn-panel {
-			padding-left: 52px;
-		}
-		.bn[data-variant='d4'] .bn-st {
-			padding: 12px 16px;
-			align-items: center;
-		}
-		.bn[data-variant='d4'] .bn-panel {
-			padding-left: 60px;
-		}
-		/* d3: title and the one sentence on ONE line, sentence muted after a separator; wraps gracefully */
-		.bn[data-variant='d3'] .bn-st {
-			padding: 14px 16px;
-			align-items: center;
-		}
-		.bn[data-variant='d3'] .bn-txt {
-			display: flex;
-			flex-wrap: wrap;
-			align-items: baseline;
-			column-gap: 12px;
-		}
-		.bn[data-variant='d3'] .bn-row2 {
-			margin-top: 0;
-			flex: 0 1 auto;
-		}
-		.bn[data-variant='d3'] .bn-row2:not(.bn-row2--block)::before {
-			content: '\00b7';
-			color: var(--k-fg-subtle);
-			margin-right: 0;
-		}
-		.bn[data-variant='d3'] .bn-acts {
-			padding: 10px 16px 10px 0;
-		}
-	}
-	@container (max-width: 639px) {
-		.bn[data-variant='d2'] .bn-panel {
-			padding-left: 48px;
-		}
-		.bn[data-variant='d4'] .bn-panel {
-			padding-left: 56px;
 		}
 	}
 

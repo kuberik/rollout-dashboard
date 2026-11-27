@@ -457,8 +457,8 @@ lib/components/EventsCard.svelte	title	Recent events
 lib/components/FailurePanel.svelte	code	` recovered
 lib/components/FailurePanel.svelte	text	+ … more
 lib/components/FailurePanel.svelte	code	A health check
+lib/components/FailurePanel.svelte	code	A rollback would break a consumer
 lib/components/FailurePanel.svelte	code	An error occurred during deployment.
-lib/components/FailurePanel.svelte	title	Failed, not rolled back
 lib/components/FailurePanel.svelte	code	Open …
 lib/components/FailurePanel.svelte	code	Open consumer
 lib/components/FailurePanel.svelte	code	Open provider
@@ -466,6 +466,7 @@ lib/components/FailurePanel.svelte	code	Roll back
 lib/components/FailurePanel.svelte	code	Roll back anyway…
 lib/components/FailurePanel.svelte	code	Roll back to …
 lib/components/FailurePanel.svelte	code	The check
+lib/components/FailurePanel.svelte	aria-label	the rollback target, which does not satisfy it
 lib/components/FailureSourceRow.svelte	text	&nbsp; …
 lib/components/FailureSourceRow.svelte	text	&nbsp;at failure
 lib/components/FailureToasts.svelte	text	+ … more failure …
@@ -1420,6 +1421,7 @@ lib/view-models/auto-rollback.ts	code	Check error
 lib/view-models/auto-rollback.ts	code	Deployed before rollback decisions were recorded
 lib/view-models/auto-rollback.ts	code	Deployed by hand
 lib/view-models/auto-rollback.ts	code	does not roll back
+lib/view-models/auto-rollback.ts	code	Failed, not rolled back
 lib/view-models/auto-rollback.ts	code	Force deployed
 lib/view-models/auto-rollback.ts	code	it started failing before this deploy
 lib/view-models/auto-rollback.ts	code	No earlier build is safe to roll back to
@@ -1433,6 +1435,8 @@ lib/view-models/auto-rollback.ts	code	Rules bypassed
 lib/view-models/auto-rollback.ts	code	Test failed
 lib/view-models/auto-rollback.ts	code	The rollback deploy could not be written
 lib/view-models/auto-rollback.ts	code	this build
+lib/view-models/auto-rollback.ts	code	Warning check failed
+lib/view-models/auto-rollback.ts	code	Warning checks failed
 lib/view-models/auto-rollback.ts	code	Would roll back
 lib/view-models/banner.ts	code	… … in …${place ?
 lib/view-models/blocking-story.ts	code	— it is on

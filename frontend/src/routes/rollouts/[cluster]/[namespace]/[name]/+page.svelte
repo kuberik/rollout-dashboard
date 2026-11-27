@@ -735,7 +735,10 @@
 	const copyFieldAct = $derived(
 		readyShown?.conflict
 			? { label: fieldCopied ? 'Copied' : 'Copy field path', key: 'copy-field-path', id: 'ready-copy-field', onclick: () => {
-					navigator.clipboard?.writeText(readyShown!.conflict!.path).then(() => { fieldCopied = true; setTimeout(() => (fieldCopied = false), 1500); }, () => {});
+					/* the label flips at once: the clipboard answer only matters when it fails, and then there is nothing to copy from here */
+					try { void Promise.resolve(navigator.clipboard?.writeText(readyShown!.conflict!.path)).catch(() => {}); } catch { /* no clipboard */ }
+					fieldCopied = true;
+					setTimeout(() => (fieldCopied = false), 2000);
 				} }
 			: undefined
 	);
@@ -3477,7 +3480,7 @@
 					title={readyBanner?.title ?? 'Deploy refused'}
 					line={readyShown ? readyLine(readyShown) : undefined}
 					rows={readyShown ? readyRows(readyShown, formatTimeAgoCompact) : undefined}
-					primary={copyFieldAct}
+					secondary={copyFieldAct}
 					dataTour="ready-banner"
 				/>
 				{#if blockStory.pinnedTo}

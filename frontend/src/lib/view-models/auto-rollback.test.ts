@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rollout } from '../../types';
-import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, triggerSentence, notRolledBackSentence, retryPrimary, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
+import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, triggerSentence, notRolledBackSentence, retryPrimary, failureTitle, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
 
 const v = (tag: string) => ({ tag, version: `1.${tag.slice(-1)}.0`, revision: 'a'.repeat(40), created: '2026-11-21T10:00:00Z' });
 const failed = {
@@ -167,5 +167,18 @@ describe('retryPrimary: the filled button follows what the controller decided', 
 	it('a failure still failing, or blocked for the rollback itself, keeps Roll back primary', () => {
 		expect(retryPrimary({ allRecovered: false })).toBe(false);
 		for (const r of ['Blocked', 'NoTarget', 'ManualDeploy', 'ManualIntent', 'DeployError']) expect(retryPrimary({ allRecovered: false, notRolledBackReason: r })).toBe(false);
+	});
+});
+
+describe('failureTitle: a warning-only failure has its own headline', () => {
+	const w = { severity: 'Warning' as const, rollsBack: false };
+	it('names a warning check, singular and plural', () => {
+		expect(failureTitle({ reason: 'NotATrigger', rows: [w] })).toBe('Warning check failed');
+		expect(failureTitle({ reason: 'NotATrigger', rows: [w, w] })).toBe('Warning checks failed');
+	});
+	it('keeps the failure headline for a critical failure or any other reason', () => {
+		expect(failureTitle({ reason: 'NotATrigger', rows: [w, { severity: 'Critical', rollsBack: false }] })).toBe('Failed, not rolled back');
+		expect(failureTitle({ reason: 'Blocked', rows: [w] })).toBe('Failed, not rolled back');
+		expect(failureTitle({})).toBe('Failed, not rolled back');
 	});
 });

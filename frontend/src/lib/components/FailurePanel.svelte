@@ -15,7 +15,7 @@
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
-	import { autoRollbackView, notRolledBackSentence, retryPrimary, verdictDetailRows } from '$lib/view-models/auto-rollback';
+	import { autoRollbackView, notRolledBackSentence, retryPrimary, failureTitle, verdictDetailRows } from '$lib/view-models/auto-rollback';
 	import { blockedWhy, consumerNowLookup, nowSafeView, breakDetailRows } from '$lib/view-models/rollback-deps';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { poolOf, worstOf, failingNowList, failingSummary, type SnapCheck } from '$lib/view-models/health-failures';
@@ -211,9 +211,16 @@
 	/* ROLLBACK DEPENDENCY SAFETY: a block (ConsumerRequires | TargetRequires) names what the usual target would break; once it lifts, the same banner offers the rollback as the primary */
 	const dependencyBlock = $derived(notRolled && (notRolled.reason === 'ConsumerRequires' || notRolled.reason === 'TargetRequires') ? notRolled : null);
 	const nowSafe = $derived(dependencyBlock ? nowSafeView(rollout, consumerNowLookup(fleet)) : null);
+	/* ONE consumer would break: draw the relation (`checkout` needs `^6.0.0`, the rollback target is `5.1.0`) and keep the sentence short */
+	const relation = $derived.by(() => {
+		if (!dependencyBlock || nowSafe || dependencyBlock.reason !== 'ConsumerRequires' || dependencyBlock.breaks.length !== 1) return null;
+		const r = dependencyBlock.breaks[0];
+		return r && r.left !== '?' ? r : null;
+	});
 	/* the banner's one sentence (12 words or fewer, no age: the page header has it): why it was not rolled back (or that it is safe now), else what is failing */
 	const sentence = $derived(
 		nowSafe ? nowSafe.headline
+		: relation ? 'A rollback would break a consumer'
 		: dependencyBlock ? blockedWhy(dependencyBlock.blockedBy, true)
 		: notRolled ? notRolledBackSentence(notRolled.reason, notRolled.failed, notRolled.rows)
 		: allRecovered ? '`' + (worst?.row?.name ?? worst?.check.name ?? 'The check') + '` recovered'
@@ -270,9 +277,10 @@
 	{open}
 	class="mb-4"
 	severity="critical"
-	title="Failed, not rolled back"
+	title={failureTitle({ reason: notRolled?.reason, rows: notRolled?.rows })}
 	line={sentence}
 	rows={detailRows}
+	shape={relation ? relationShape : undefined}
 	detailsBody={notRolled ? undefined : evidenceBody}
 	primary={dependencyBlock ? (nowSafe ? (rollbackShown ? anywayAct : undefined) : canUpdate ? retryAct : undefined) : retryFirst ? (canUpdate ? retryAct : undefined) : rollbackShown ? rollbackAct : undefined}
 	secondary={dependencyBlock ? (nowSafe ? (canUpdate ? retryAct : undefined) : openConsumerAct ?? undefined) : retryFirst ? (rollbackShown ? rollbackAct : undefined) : canUpdate ? retryAct : undefined}
@@ -283,6 +291,15 @@
 	}}
 	note={rollbackShown && !canHover.current && !isDashboardManagingWantedVersion ? WANTED_VERSION_OWNED_REASON : undefined}
 />
+{#snippet relationShape()}
+	{#if relation}
+		<span class="bn-chip t-code-sm" data-banner-relation>{relation.name}</span>
+		<span class="t-meta text-fg-muted">needs</span>
+		<span class="bn-chip t-code-sm">{relation.left}</span>
+		<span aria-hidden="true" class="t-meta text-fg-subtle">&rarr;</span>
+		<span class="bn-chip bn-chip--old t-code-sm" aria-label="the rollback target, which does not satisfy it">{relation.right}</span>
+	{/if}
+{/snippet}
 {#snippet evidenceBody()}
 	{#if evidence}
 		<FailureDetails {pool} />
