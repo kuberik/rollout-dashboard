@@ -18,7 +18,7 @@ require (
 	github.com/google/go-github/v88 v88.0.0
 	github.com/kuberik/environment-controller v0.2.0-rc.0.0.20261109131018-e596aabd24bd
 	github.com/kuberik/openkruise-controller v0.3.1-0.20260427061036-696fddeeb5bd
-	github.com/kuberik/rollout-controller v0.11.1-0.20261127120716-08cdd28e38a8
+	github.com/kuberik/rollout-controller v0.11.1-0.20261127122335-63a64a14a157
 	github.com/openkruise/kruise-rollout-api v0.6.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.24.0
@@ -30,6 +30,7 @@ require (
 )
 
 require (
+	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/bytedance/sonic v1.13.2 // indirect
