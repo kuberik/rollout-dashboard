@@ -1,7 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-	import type { Kustomization, OCIRepository, ManagedResourceStatus } from '../../types';
+	import type { Kustomization, HelmRelease, OCIRepository, ManagedResourceStatus } from '../../types';
+	import Chip from './Chip.svelte';
+	import { helmView, helmKey, isHelmKey, helmEmptyLine, type HelmNote, type HelmView, type HelmWord } from '$lib/view-models/helm';
 	import StatusSpinner from './StatusSpinner.svelte';
 	import Card from './Card.svelte';
 	import DeploymentChildren from './DeploymentChildren.svelte';
@@ -9,19 +11,36 @@
 		CheckCircleSolid,
 		ExclamationCircleSolid,
 		ClockSolid,
+		CubeSolid,
 		ChevronDownOutline,
 		ChevronRightOutline,
 		ArrowUpRightFromSquareOutline
 	} from 'flowbite-svelte-icons';
 	import { getResourceStatus, getLastTransitionTime } from '$lib/utils';
 
+	/**
+	 * ROLE: the rollout page's Resources card. A HelmRelease the rollout deploys is one GROUP in it, beside the Kustomizations' flat
+	 * list: a header row (name, chart + version, helm revision, Ready word) over the resources helm-controller manages. The
+	 * group's rows ARE the Kustomization rows (the `deploymentRow` / `routeRow` / `otherRow` snippets below, one drawing each), so a
+	 * Deployment inside a HelmRelease has the same card and the same pods drill-down as one inside a Kustomization.
+	 *
+	 * WHY A GROUP HEADER AND NOT A NEW CARD: nothing in the product groups rows inside a card, but a second card per release would
+	 * split "what did this rollout deploy" over N cards. The header borrows its proportions from the card's own rows (px-4, `t-code-sm`
+	 * name, `t-meta` second line) on the `bg-subtle` ground the expanded pod list already uses to mean "belongs to the row above".
+	 */
 	let {
 		kustomizations,
+		helmReleases = [],
+		helmNotes = {},
 		ociRepositories,
 		filteredManagedResources,
 		cluster
 	}: {
 		kustomizations: Kustomization[];
+		/** the rollout's HelmReleases; their resources sit in `filteredManagedResources` under `helmKey(namespace, name)` */
+		helmReleases?: HelmRelease[];
+		/** per HelmRelease key: the backend hint, or why its managed-resources fetch failed */
+		helmNotes?: Record<string, HelmNote>;
 		ociRepositories: OCIRepository[];
 		filteredManagedResources: Record<string, ManagedResourceStatus[]>;
 		// Spoke URL when this rollout lives on a remote cluster — passed through
@@ -31,20 +50,50 @@
 	} = $props();
 
 
-	// All managed resources (for status summary + "other" section)
-	const allManagedResources = $derived(
-		Object.values(filteredManagedResources).flat()
-			.map((r) => ({ ...r, type: r.groupVersionKind?.split('/').pop() || 'Resource' }))
-	);
-	const deploymentResources = $derived(allManagedResources.filter((r) => r.type === 'Deployment'));
-	const httpRouteResources = $derived(allManagedResources.filter((r) => r.type === 'HTTPRoute'));
-	const otherResources = $derived(allManagedResources.filter((r) => r.type !== 'Deployment' && r.type !== 'HTTPRoute'));
 	const READY_STATUSES = ['Ready', 'Healthy', 'Succeeded', 'Current'];
-	// Only ready/healthy resources are collapsible; everything else is always visible
-	const visibleOtherResources = $derived(otherResources.filter((r) => !READY_STATUSES.includes(r.status || '')));
-	const collapsibleOtherResources = $derived(otherResources.filter((r) => READY_STATUSES.includes(r.status || '')));
+	type Typed = ManagedResourceStatus & { type: string };
+	const typed = (list: ManagedResourceStatus[]): Typed[] =>
+		list.map((r) => ({ ...r, type: r.groupVersionKind?.split('/').pop() || 'Resource' }));
+	/** one list split the way every group of this card is drawn: Deployments, HTTPRoutes, then the rest (not-ready always visible, ready collapsible) */
+	function split(list: Typed[]) {
+		const others = list.filter((r) => r.type !== 'Deployment' && r.type !== 'HTTPRoute');
+		return {
+			deployments: list.filter((r) => r.type === 'Deployment'),
+			routes: list.filter((r) => r.type === 'HTTPRoute'),
+			visibleOthers: others.filter((r) => !READY_STATUSES.includes(r.status || '')),
+			readyOthers: others.filter((r) => READY_STATUSES.includes(r.status || ''))
+		};
+	}
 
-	const show = $derived(allManagedResources.length > 0);
+	// The Kustomizations' resources: the flat list at the top of the card
+	const plainResources = $derived(
+		typed(Object.entries(filteredManagedResources).filter(([k]) => !isHelmKey(k)).flatMap(([, v]) => v))
+	);
+	const plain = $derived(split(plainResources));
+	const deploymentResources = $derived(plain.deployments);
+	const httpRouteResources = $derived(plain.routes);
+	const visibleOtherResources = $derived(plain.visibleOthers);
+	const collapsibleOtherResources = $derived(plain.readyOthers);
+
+	// One group per HelmRelease
+	type HelmGroup = { key: string; view: HelmView; resources: Typed[] } & ReturnType<typeof split>;
+	const helmGroups = $derived<HelmGroup[]>(
+		helmReleases
+			.filter((h) => Boolean(h.metadata?.name))
+			.map((h) => {
+				const view = helmView(h);
+				const key = helmKey(view.namespace, view.name);
+				const resources = typed(filteredManagedResources[key] ?? []);
+				return { key, view, resources, ...split(resources) };
+			})
+	);
+
+	// All managed resources (for status summary)
+	const allManagedResources = $derived([...plainResources, ...helmGroups.flatMap((g) => g.resources)]);
+	const allDeployments = $derived(allManagedResources.filter((r) => r.type === 'Deployment'));
+	const hasPlain = $derived(plainResources.length > 0);
+
+	const show = $derived(allManagedResources.length > 0 || helmGroups.length > 0);
 
 	// Status summary uses ALL resources
 	const notReadyResources = $derived(
@@ -55,6 +104,16 @@
 
 	// Toggle to reveal ready/healthy non-deployment resources
 	let showOtherResources = $state(false);
+	// Same toggle per HelmRelease group
+	let showReadyInGroup = $state<Set<string>>(new Set());
+	function toggleReadyInGroup(key: string) {
+		const next = new Set(showReadyInGroup);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		showReadyInGroup = next;
+	}
+
+	const helmChip: Record<Exclude<HelmWord, 'Pending'>, 'ready' | 'issue'> = { Ready: 'ready', Failed: 'issue' };
 
 	/**
 	 * ⛔ A RAW camelCase ENUM WAS REACHING THE SCREEN. (2026-08-31)
@@ -92,7 +151,7 @@
 	// below); that component owns its own query now, so expanding a row
 	// (auto or manual) no longer means this component reaches for `fetch`.
 	$effect(() => {
-		for (const resource of deploymentResources) {
+		for (const resource of allDeployments) {
 			const isReady = ['Ready', 'Healthy', 'Succeeded', 'Current'].includes(resource.status || '');
 			const key = getDeploymentKey(resource);
 			if (!isReady && !autoExpandedKeys.has(key)) {
@@ -149,9 +208,12 @@
 	 * uses for "pending". The live spinners inside every row are untouched —
 	 * this only changes the ONE icon in the 47px bar.
 	 */
-	const failedInHeader = $derived(
+	const failedHelm = $derived(helmGroups.filter((g) => g.view.word === 'Failed'));
+	const failedResources = $derived(
 		notReadyResources.filter((r) => ['Unhealthy', 'Failed', 'Error'].includes(r.status || ''))
 	);
+	/** failed resources plus failed HelmReleases: what the header's "N failed" counts */
+	const failedCount = $derived(failedResources.length + failedHelm.length);
 
 	/**
 	 * ⛔ P10, OPERATOR-WALK FINDING (2026-09-03): "Resources 10/10 ready"
@@ -179,16 +241,18 @@
 			return !!ready && ready.status !== 'True';
 		})
 	);
-	const fluxDisagrees = $derived(notReadyResources.length === 0 && unreadyKustomizations.length > 0);
+	// A HelmRelease that is not Ready counts the way a not-Ready Kustomization does: its resources can all look fine while helm-controller is still working or has given up.
+	const unreadyHelm = $derived(helmGroups.filter((g) => g.view.word !== 'Ready'));
+	const fluxDisagrees = $derived(notReadyResources.length === 0 && (unreadyKustomizations.length > 0 || unreadyHelm.length > 0));
 	const HeaderIcon = $derived(
-		failedInHeader.length > 0
+		failedCount > 0
 			? ExclamationCircleSolid
 			: notReadyResources.length > 0 || fluxDisagrees
 				? ClockSolid
 				: CheckCircleSolid
 	);
 	const headerIconClass = $derived(
-		failedInHeader.length > 0
+		failedCount > 0
 			? 'text-danger'
 			: notReadyResources.length > 0 || fluxDisagrees
 				? 'text-progress'
@@ -199,16 +263,220 @@
 	// with the rest of the expanded-children rendering they served.
 </script>
 
+{#snippet deploymentRow(resource: any)}
+	{@const isReady = ['Ready','Healthy','Succeeded','Current'].includes(resource.status || '')}
+	{@const isFailing = ['Unhealthy','Failed','Error'].includes(resource.status || '')}
+	{@const isReconciling = resource.status === 'Reconciling'}
+	{@const replicas = getDeploymentReplicas(resource)}
+	{@const depKey = getDeploymentKey(resource)}
+	{@const isExpanded = expandedDeployments.has(depKey)}
+
+	<div class="{isFailing ? 'alert-fill-error' : isReconciling ? 'alert-fill-progress' : ''}">
+		<!-- Deployment row -->
+		<div class="flex items-center gap-2 px-4 py-3">
+			<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
+				{#if isFailing}
+					<ExclamationCircleSolid class="h-4 w-4 text-danger" />
+				{:else if isReconciling}
+					<StatusSpinner size="4" color="yellow" />
+				{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
+					<StatusSpinner size="4" color="blue" />
+				{:else if isReady}
+					<CheckCircleSolid class="h-4 w-4 text-success" />
+				{:else}
+					<ExclamationCircleSolid class="h-4 w-4 text-fg-subtle" />
+				{/if}
+			</div>
+			<!-- ⛔ F7: `hello-frontend` AND `hello-api` BOTH TRUNCATED TO
+			     `hell…` AT 390 (35/85 and 35/52 client/scroll) WHILE
+			     `Deployment`, `2/2 pods` AND THE STATUS BADGE — IDENTICAL,
+			     NON-DISCRIMINATING TEXT — KEPT FULL WIDTH. The name is the
+			     one thing on this row that tells two deployments apart; a
+			     type tag repeated on every Deployment row and a `pods` noun
+			     the number beside it already implies are not. Both drop below
+			     `sm`, in the `title` instead — the name gets the width back
+			     at the one size where the row cannot afford both. -->
+			<div class="min-w-0 flex-1">
+				<div class="flex items-center gap-1.5">
+					<span
+						class="t-body truncate text-fg"
+						title="{resource.name} — Deployment">{resource.name}</span
+					>
+					<span
+						class="rc-type-tag hidden shrink-0 rounded-xs bg-subtle px-1 py-0.5 t-meta text-fg-muted"
+						>Deployment</span
+					>
+				</div>
+				{#if resource.message && !isReady}
+					<p class="mt-0.5 break-words t-meta text-fg-subtle">{resource.message}</p>
+				{/if}
+			</div>
+			{#if replicas}
+				<span
+					class="t-ui-sm shrink-0 tabular-nums {replicas.ready === replicas.total && replicas.total > 0 ? 'text-success' : replicas.ready < replicas.total ? 'text-progress' : 'text-fg-subtle'}"
+					title="{replicas.ready}/{replicas.total} pods"
+				>
+					{replicas.ready}/{replicas.total}
+					<span class="rc-pods-word hidden t-meta text-fg-subtle">pods</span>
+				</span>
+			{/if}
+			{#if isFailing || isReconciling}
+			<span class="chip t-label shrink-0
+				{isFailing ? 'border-danger-line text-danger'
+				: 'border-progress-line text-progress'}">
+				{resourceStatusWord(resource.status)}
+			</span>
+			{/if}
+			<!-- A chevron is not a name. `title` alone made this announce as
+			     "Show pods" with no indication of WHICH deployment, and
+			     `aria-expanded` was missing entirely, so the state the glyph
+			     carries visually was carried by nothing else. -->
+			<button
+				type="button"
+				onclick={() => toggleDeploymentChildren(resource)}
+				class="btn btn-ghost btn-icon btn-xs shrink-0"
+				aria-expanded={isExpanded}
+				aria-label={`${isExpanded ? 'Hide' : 'Show'} pods for ${resource.name}`}
+				title={isExpanded ? 'Hide pods' : 'Show pods'}
+			>
+				{#if isExpanded}
+					<ChevronDownOutline class="h-3 w-3" aria-hidden="true" />
+				{:else}
+					<ChevronRightOutline class="h-3 w-3" aria-hidden="true" />
+				{/if}
+			</button>
+		</div>
+
+		<!-- Expanded children — own query, own cadence. See
+		     `DeploymentChildren.svelte`'s own doc comment: mounted only
+		     while `isExpanded`, which is what makes this "enabled only
+		     while expanded" rather than a flag to remember to flip. -->
+		{#if isExpanded}
+			<DeploymentChildren namespace={resource.namespace} name={resource.name} {cluster} />
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet routeRow(resource: any)}
+	{@const isReady = ['Ready','Healthy','Succeeded','Current'].includes(resource.status || '')}
+	{@const isFailing = ['Unhealthy','Failed','Error'].includes(resource.status || '')}
+	{@const isReconciling = resource.status === 'Reconciling'}
+	{@const urls = getHTTPRouteURLs(resource)}
+
+	<div class="{isFailing ? 'alert-fill-error' : isReconciling ? 'alert-fill-progress' : ''}">
+		<!-- HTTPRoute row -->
+		<div class="flex items-center gap-2 px-4 py-3">
+			<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
+				{#if isFailing}
+					<ExclamationCircleSolid class="h-4 w-4 text-danger" />
+				{:else if isReconciling}
+					<StatusSpinner size="4" color="yellow" />
+				{:else if isReady}
+					<CheckCircleSolid class="h-4 w-4 text-success" />
+				{:else}
+					<ExclamationCircleSolid class="h-4 w-4 text-fg-subtle" />
+				{/if}
+			</div>
+			<div class="min-w-0 flex-1">
+				<div class="flex items-center gap-1.5">
+					<span class="t-body truncate text-fg">{resource.name}</span>
+					<span class="shrink-0 rounded-xs bg-subtle px-1 py-0.5 t-meta text-fg-muted">HTTPRoute</span>
+				</div>
+				{#if resource.message && !isReady}
+					<p class="mt-0.5 break-words t-meta text-fg-subtle">{resource.message}</p>
+				{/if}
+			</div>
+			{#if isFailing || isReconciling}
+			<span class="chip t-label shrink-0
+				{isFailing ? 'border-danger-line text-danger'
+				: 'border-progress-line text-progress'}">
+				{resourceStatusWord(resource.status)}
+			</span>
+			{/if}
+			<!-- ⛔ F4 (finding 13): FIXED COLUMNS — THE CHEVRON HAS ITS OWN
+			     TRACK WHETHER PRESENT OR NOT. (2026-09-03) The Deployment
+			     row above ends in a real toggle button; this row (and the
+			     two below) had nothing there, so the status chip — the same
+			     `Current` pill, same column, same card — landed 26px further
+			     right. Measured on the live cluster: 1358 (Deployment row)
+			     vs 1384 (this row). An `invisible` same-box spacer keeps the
+			     chip's right edge identical without adding a fake control. -->
+			<span class="invisible shrink-0 rounded p-0.5" aria-hidden="true">
+				<ChevronRightOutline class="h-3 w-3" />
+			</span>
+		</div>
+
+		<!-- URL children -->
+		{#if urls.length > 0}
+			<div class="border-t border-line-subtle bg-subtle">
+				{#each urls as url}
+					<div class="flex items-center gap-2 py-1.5 pl-9 pr-4">
+						<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0 text-accent-text" />
+						<a
+							href={url}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="t-meta truncate text-accent-text hover:underline"
+						>{url}</a>
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet otherRow(resource: any)}
+	{@const isReady = ['Ready','Healthy','Succeeded','Current'].includes(resource.status || '')}
+	{@const isFailing = ['Unhealthy','Failed','Error'].includes(resource.status || '')}
+	{@const isReconciling = resource.status === 'Reconciling'}
+	<div class="flex items-center gap-2 px-4 py-2 {isFailing ? 'alert-fill-error' : isReconciling ? 'alert-fill-progress' : ''}">
+		<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
+			{#if isFailing}
+				<ExclamationCircleSolid class="h-4 w-4 text-danger" />
+			{:else if isReconciling}
+				<StatusSpinner size="4" color="yellow" />
+			{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
+				<StatusSpinner size="4" color="blue" />
+			{:else if isReady}
+				<CheckCircleSolid class="h-4 w-4 text-success" />
+			{:else}
+				<ExclamationCircleSolid class="h-4 w-4 text-fg-subtle" />
+			{/if}
+		</div>
+		<div class="min-w-0 flex-1">
+			<div class="flex items-center gap-1.5">
+				<span class="t-body truncate text-fg-muted">{resource.name}</span>
+				<span class="t-code-sm shrink-0 text-fg-subtle">{resource.type}</span>
+			</div>
+			{#if resource.message && !isReady}
+				<p class="mt-0.5 break-words t-meta text-fg-subtle">{resource.message}</p>
+			{/if}
+		</div>
+		{#if isFailing || isReconciling}
+		<span class="chip t-label shrink-0
+			{isFailing ? 'border-danger-line text-danger'
+			: 'border-progress-line text-progress'}">
+			{resourceStatusWord(resource.status)}
+		</span>
+		{/if}
+		<!-- Fixed chevron column — see the note beside the HTTPRoute
+		     row (finding 13). -->
+		<span class="invisible shrink-0 rounded p-0.5" aria-hidden="true">
+			<ChevronRightOutline class="h-3 w-3" />
+		</span>
+	</div>
+{/snippet}
+
 {#if show}
 	<Card icon={HeaderIcon} iconClass={headerIconClass} title="Resources" padded={false}>
 		{#snippet rollup()}
-			{#if failedInHeader.length > 0}
+			{#if failedCount > 0}
 				{@const reconcilingCount = notReadyResources.filter((r) => r.status === 'Reconciling').length}
 				<span class="t-ui-sm text-danger">
-					{failedInHeader.length} failed{reconcilingCount > 0 ? ` · ${reconcilingCount} reconciling` : ''}
+					{failedCount} failed{reconcilingCount > 0 ? ` · ${reconcilingCount} reconciling` : ''}
 				</span>
-			{:else if notReadyResources.length > 0}
-				<span class="t-ui-sm text-progress">{notReadyResources.length} not ready</span>
+			{:else if notReadyResources.length > 0 || unreadyHelm.length > 0}
+				<span class="t-ui-sm text-progress">{notReadyResources.length + (notReadyResources.length === 0 ? unreadyHelm.length : 0)} not ready</span>
 			{:else if fluxDisagrees}
 				<!-- ⛔ EVERY RESOURCE THIS CARD KNOWS ABOUT LOOKS READY, AND FLUX
 				     STILL SAYS OTHERWISE. Named, not silenced — see
@@ -227,166 +495,12 @@
 		<div class="divide-y divide-line-subtle">
 			<!-- Deployment resources -->
 			{#each deploymentResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
-				{@const isReady = ['Ready','Healthy','Succeeded','Current'].includes(resource.status || '')}
-				{@const isFailing = ['Unhealthy','Failed','Error'].includes(resource.status || '')}
-				{@const isReconciling = resource.status === 'Reconciling'}
-				{@const replicas = getDeploymentReplicas(resource)}
-				{@const depKey = getDeploymentKey(resource)}
-				{@const isExpanded = expandedDeployments.has(depKey)}
-
-				<div class="{isFailing ? 'alert-fill-error' : isReconciling ? 'alert-fill-progress' : ''}">
-					<!-- Deployment row -->
-					<div class="flex items-center gap-2 px-4 py-3">
-						<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
-							{#if isFailing}
-								<ExclamationCircleSolid class="h-4 w-4 text-danger" />
-							{:else if isReconciling}
-								<StatusSpinner size="4" color="yellow" />
-							{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
-								<StatusSpinner size="4" color="blue" />
-							{:else if isReady}
-								<CheckCircleSolid class="h-4 w-4 text-success" />
-							{:else}
-								<ExclamationCircleSolid class="h-4 w-4 text-fg-subtle" />
-							{/if}
-						</div>
-						<!-- ⛔ F7: `hello-frontend` AND `hello-api` BOTH TRUNCATED TO
-						     `hell…` AT 390 (35/85 and 35/52 client/scroll) WHILE
-						     `Deployment`, `2/2 pods` AND THE STATUS BADGE — IDENTICAL,
-						     NON-DISCRIMINATING TEXT — KEPT FULL WIDTH. The name is the
-						     one thing on this row that tells two deployments apart; a
-						     type tag repeated on every Deployment row and a `pods` noun
-						     the number beside it already implies are not. Both drop below
-						     `sm`, in the `title` instead — the name gets the width back
-						     at the one size where the row cannot afford both. -->
-						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-1.5">
-								<span
-									class="t-body truncate text-fg"
-									title="{resource.name} — Deployment">{resource.name}</span
-								>
-								<span
-									class="rc-type-tag hidden shrink-0 rounded-xs bg-subtle px-1 py-0.5 t-meta text-fg-muted"
-									>Deployment</span
-								>
-							</div>
-							{#if resource.message && !isReady}
-								<p class="mt-0.5 break-words t-meta text-fg-subtle">{resource.message}</p>
-							{/if}
-						</div>
-						{#if replicas}
-							<span
-								class="t-ui-sm shrink-0 tabular-nums {replicas.ready === replicas.total && replicas.total > 0 ? 'text-success' : replicas.ready < replicas.total ? 'text-progress' : 'text-fg-subtle'}"
-								title="{replicas.ready}/{replicas.total} pods"
-							>
-								{replicas.ready}/{replicas.total}
-								<span class="rc-pods-word hidden t-meta text-fg-subtle">pods</span>
-							</span>
-						{/if}
-						{#if isFailing || isReconciling}
-						<span class="chip t-label shrink-0
-							{isFailing ? 'border-danger-line text-danger'
-							: 'border-progress-line text-progress'}">
-							{resourceStatusWord(resource.status)}
-						</span>
-						{/if}
-						<!-- A chevron is not a name. `title` alone made this announce as
-						     "Show pods" with no indication of WHICH deployment, and
-						     `aria-expanded` was missing entirely, so the state the glyph
-						     carries visually was carried by nothing else. -->
-						<button
-							type="button"
-							onclick={() => toggleDeploymentChildren(resource)}
-							class="btn btn-ghost btn-icon btn-xs shrink-0"
-							aria-expanded={isExpanded}
-							aria-label={`${isExpanded ? 'Hide' : 'Show'} pods for ${resource.name}`}
-							title={isExpanded ? 'Hide pods' : 'Show pods'}
-						>
-							{#if isExpanded}
-								<ChevronDownOutline class="h-3 w-3" aria-hidden="true" />
-							{:else}
-								<ChevronRightOutline class="h-3 w-3" aria-hidden="true" />
-							{/if}
-						</button>
-					</div>
-
-					<!-- Expanded children — own query, own cadence. See
-					     `DeploymentChildren.svelte`'s own doc comment: mounted only
-					     while `isExpanded`, which is what makes this "enabled only
-					     while expanded" rather than a flag to remember to flip. -->
-					{#if isExpanded}
-						<DeploymentChildren namespace={resource.namespace} name={resource.name} {cluster} />
-					{/if}
-				</div>
+				{@render deploymentRow(resource)}
 			{/each}
 
 			<!-- HTTPRoute resources -->
 			{#each httpRouteResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
-				{@const isReady = ['Ready','Healthy','Succeeded','Current'].includes(resource.status || '')}
-				{@const isFailing = ['Unhealthy','Failed','Error'].includes(resource.status || '')}
-				{@const isReconciling = resource.status === 'Reconciling'}
-				{@const urls = getHTTPRouteURLs(resource)}
-
-				<div class="{isFailing ? 'alert-fill-error' : isReconciling ? 'alert-fill-progress' : ''}">
-					<!-- HTTPRoute row -->
-					<div class="flex items-center gap-2 px-4 py-3">
-						<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
-							{#if isFailing}
-								<ExclamationCircleSolid class="h-4 w-4 text-danger" />
-							{:else if isReconciling}
-								<StatusSpinner size="4" color="yellow" />
-							{:else if isReady}
-								<CheckCircleSolid class="h-4 w-4 text-success" />
-							{:else}
-								<ExclamationCircleSolid class="h-4 w-4 text-fg-subtle" />
-							{/if}
-						</div>
-						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-1.5">
-								<span class="t-body truncate text-fg">{resource.name}</span>
-								<span class="shrink-0 rounded-xs bg-subtle px-1 py-0.5 t-meta text-fg-muted">HTTPRoute</span>
-							</div>
-							{#if resource.message && !isReady}
-								<p class="mt-0.5 break-words t-meta text-fg-subtle">{resource.message}</p>
-							{/if}
-						</div>
-						{#if isFailing || isReconciling}
-						<span class="chip t-label shrink-0
-							{isFailing ? 'border-danger-line text-danger'
-							: 'border-progress-line text-progress'}">
-							{resourceStatusWord(resource.status)}
-						</span>
-						{/if}
-						<!-- ⛔ F4 (finding 13): FIXED COLUMNS — THE CHEVRON HAS ITS OWN
-						     TRACK WHETHER PRESENT OR NOT. (2026-09-03) The Deployment
-						     row above ends in a real toggle button; this row (and the
-						     two below) had nothing there, so the status chip — the same
-						     `Current` pill, same column, same card — landed 26px further
-						     right. Measured on the live cluster: 1358 (Deployment row)
-						     vs 1384 (this row). An `invisible` same-box spacer keeps the
-						     chip's right edge identical without adding a fake control. -->
-						<span class="invisible shrink-0 rounded p-0.5" aria-hidden="true">
-							<ChevronRightOutline class="h-3 w-3" />
-						</span>
-					</div>
-
-					<!-- URL children -->
-					{#if urls.length > 0}
-						<div class="border-t border-line-subtle bg-subtle">
-							{#each urls as url}
-								<div class="flex items-center gap-2 py-1.5 pl-9 pr-4">
-									<ArrowUpRightFromSquareOutline class="h-3 w-3 flex-shrink-0 text-accent-text" />
-									<a
-										href={url}
-										target="_blank"
-										rel="noopener noreferrer"
-										class="t-meta truncate text-accent-text hover:underline"
-									>{url}</a>
-								</div>
-							{/each}
-						</div>
-					{/if}
-				</div>
+				{@render routeRow(resource)}
 			{/each}
 		</div>
 
@@ -394,42 +508,7 @@
 		{#if visibleOtherResources.length > 0}
 			<div class="divide-y divide-line-subtle border-t border-line-subtle">
 				{#each visibleOtherResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
-					{@const isFailing = ['Unhealthy', 'Failed', 'Error'].includes(resource.status || '')}
-					{@const isReconciling = resource.status === 'Reconciling'}
-					<div class="flex items-center gap-2 px-4 py-2 {isFailing ? 'alert-fill-error' : isReconciling ? 'alert-fill-progress' : ''}">
-						<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
-							{#if isFailing}
-								<ExclamationCircleSolid class="h-4 w-4 text-danger" />
-							{:else if isReconciling}
-								<StatusSpinner size="4" color="yellow" />
-							{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
-								<StatusSpinner size="4" color="blue" />
-							{:else}
-								<ExclamationCircleSolid class="h-4 w-4 text-fg-subtle" />
-							{/if}
-						</div>
-						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-1.5">
-								<span class="t-body truncate text-fg-muted">{resource.name}</span>
-								<span class="t-code-sm shrink-0 text-fg-subtle">{resource.type}</span>
-							</div>
-							{#if resource.message}
-								<p class="mt-0.5 break-words t-meta text-fg-subtle">{resource.message}</p>
-							{/if}
-						</div>
-						{#if isFailing || isReconciling}
-						<span class="chip t-label shrink-0
-							{isFailing ? 'border-danger-line text-danger'
-							: 'border-progress-line text-progress'}">
-							{resourceStatusWord(resource.status)}
-						</span>
-						{/if}
-						<!-- Fixed chevron column — see the note beside the HTTPRoute
-						     row above (finding 13). -->
-						<span class="invisible shrink-0 rounded p-0.5" aria-hidden="true">
-							<ChevronRightOutline class="h-3 w-3" />
-						</span>
-					</div>
+					{@render otherRow(resource)}
 				{/each}
 			</div>
 		{/if}
@@ -454,49 +533,84 @@
 			{#if showOtherResources}
 				<div id="resources-card-ready" class="divide-y divide-line-subtle border-t border-line-subtle">
 					{#each collapsibleOtherResources as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
-						{@const isReady = ['Ready','Healthy','Succeeded','Current'].includes(resource.status || '')}
-						{@const isFailing = ['Unhealthy','Failed','Error'].includes(resource.status || '')}
-						{@const isReconciling = resource.status === 'Reconciling'}
-						<div class="flex items-center gap-2 px-4 py-2 {isFailing ? 'alert-fill-error' : isReconciling ? 'alert-fill-progress' : ''}">
-							<div class="flex h-5 w-5 flex-shrink-0 items-center justify-center">
-								{#if isFailing}
-									<ExclamationCircleSolid class="h-4 w-4 text-danger" />
-								{:else if isReconciling}
-									<StatusSpinner size="4" color="yellow" />
-								{:else if resource.status === 'Pending' || resource.status === 'InProgress'}
-									<StatusSpinner size="4" color="blue" />
-								{:else if isReady}
-									<CheckCircleSolid class="h-4 w-4 text-success" />
-								{:else}
-									<ExclamationCircleSolid class="h-4 w-4 text-fg-subtle" />
-								{/if}
-							</div>
-							<div class="min-w-0 flex-1">
-								<div class="flex items-center gap-1.5">
-									<span class="t-body truncate text-fg-muted">{resource.name}</span>
-									<span class="t-code-sm shrink-0 text-fg-subtle">{resource.type}</span>
-								</div>
-								{#if resource.message && !isReady}
-									<p class="mt-0.5 break-words t-meta text-fg-subtle">{resource.message}</p>
-								{/if}
-							</div>
-							{#if isFailing || isReconciling}
-							<span class="chip t-label shrink-0
-								{isFailing ? 'border-danger-line text-danger'
-								: 'border-progress-line text-progress'}">
-								{resourceStatusWord(resource.status)}
-							</span>
-							{/if}
-							<!-- Fixed chevron column — see the note beside the HTTPRoute
-							     row (finding 13). -->
-							<span class="invisible shrink-0 rounded p-0.5" aria-hidden="true">
-								<ChevronRightOutline class="h-3 w-3" />
-							</span>
-						</div>
+						{@render otherRow(resource)}
 					{/each}
 				</div>
 			{/if}
 		{/if}
+		<!-- One group per HelmRelease: header (name, chart + version, helm revision, Ready word), then the same rows as above. -->
+		{#each helmGroups as g, gi (g.key)}
+			{@const showReady = showReadyInGroup.has(g.key)}
+			<section data-testid="helm-group" data-helm-word={g.view.word} class={hasPlain || gi > 0 ? 'border-t border-line-subtle' : ''}>
+				<div class="bg-subtle px-4 py-2.5" data-testid="helm-group-header">
+					<div class="flex items-center gap-2">
+						<span class="flex h-5 w-5 shrink-0 items-center justify-center">
+							<CubeSolid class="h-4 w-4 text-fg-subtle" aria-hidden="true" />
+						</span>
+						<span class="t-code-sm min-w-0 flex-1 truncate text-fg" title="{g.view.name} (HelmRelease)">{g.view.name}</span>
+						{#if g.view.word === 'Pending'}
+							<!-- the same amber outlined chip as a reconciling resource row above, so one card spells pending one way -->
+							<span class="chip t-label shrink-0 border-progress-line text-progress">{g.view.word}</span>
+						{:else}
+							<Chip role={helmChip[g.view.word]} label={g.view.word} dot={false} />
+						{/if}
+					</div>
+					<div class="mt-0.5 flex flex-wrap items-baseline gap-x-2 pl-7 t-meta text-fg-muted" data-testid="helm-group-meta">
+						{#if g.view.chart}
+							<span class="t-code-sm min-w-0 [overflow-wrap:anywhere]" title="chart {g.view.chart} {g.view.chartVersion}">{g.view.chart}{g.view.chartVersion ? ` ${g.view.chartVersion}` : ''}</span>
+						{/if}
+						{#if g.view.revision !== null}
+							<span class="shrink-0" title="Helm release revision">rev {g.view.revision}</span>
+						{/if}
+						{#if g.view.appVersion}
+							<span class="shrink-0 text-fg-subtle" title="Chart appVersion">app {g.view.appVersion}</span>
+						{/if}
+					</div>
+					{#if g.view.word !== 'Ready' && g.view.message}
+						<p class="mt-0.5 break-words pl-7 t-meta text-fg-subtle">{g.view.message}</p>
+					{/if}
+				</div>
+				{#if g.resources.length === 0}
+					<p class="border-t border-line-subtle px-4 py-3 t-meta {helmNotes[g.key]?.error ? 'text-danger' : 'text-fg-subtle'}" data-testid="helm-group-empty">
+						{helmEmptyLine(helmNotes[g.key])}
+					</p>
+				{:else}
+					<div class="divide-y divide-line-subtle border-t border-line-subtle">
+						{#each g.deployments as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
+							{@render deploymentRow(resource)}
+						{/each}
+						{#each g.routes as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
+							{@render routeRow(resource)}
+						{/each}
+						{#each g.visibleOthers as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
+							{@render otherRow(resource)}
+						{/each}
+					</div>
+					{#if g.readyOthers.length > 0}
+						<button
+							type="button"
+							onclick={() => toggleReadyInGroup(g.key)}
+							aria-expanded={showReady}
+							class="t-ui-sm flex h-10 w-full items-center gap-2 border-t border-line-subtle px-4 text-left text-fg-subtle hover:bg-hover"
+						>
+							{#if showReady}
+								<ChevronDownOutline class="h-3 w-3" aria-hidden="true" />
+							{:else}
+								<ChevronRightOutline class="h-3 w-3" aria-hidden="true" />
+							{/if}
+							{showReady ? 'Hide' : 'Show'} {g.readyOthers.length} ready resource{g.readyOthers.length !== 1 ? 's' : ''}
+						</button>
+						{#if showReady}
+							<div class="divide-y divide-line-subtle border-t border-line-subtle">
+								{#each g.readyOthers as resource (resource.type + '/' + (resource.namespace || '') + '/' + resource.name)}
+									{@render otherRow(resource)}
+								{/each}
+							</div>
+						{/if}
+					{/if}
+				{/if}
+			</section>
+		{/each}
 	</Card>
 {/if}
 

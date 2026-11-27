@@ -6,7 +6,7 @@
 
 import { categorizeFailure } from '$lib/utils';
 import { sourceDashboardURL } from '$lib/source-dashboard';
-import type { Rollout, Kustomization, KruiseRollout } from '../types';
+import type { Rollout, Kustomization, KruiseRollout, HelmRelease } from '../types';
 
 export type StageState = 'done' | 'active' | 'fail' | 'cancelled' | 'pending';
 
@@ -26,18 +26,24 @@ export type PipelineSummary = {
 };
 
 const SUBSTITUTE_FROM_RE = /^rollout\.kuberik\.com\/substitute\.[^/]+\.from$/;
+// The same opt-in on a HelmRelease: `values.<dot.path>.from`, `chart-version.from`, or the read-only `rollout` annotation.
+const HELM_FROM_RE = /^rollout\.kuberik\.com\/(values\..+\.from|chart-version\.from|rollout)$/;
 
 // Find every KruiseRollout that belongs to a given kuberik Rollout. Walks
 // the Kustomizations in the same namespace, picks those whose
 // `rollout.kuberik.com/substitute.*.from` annotations name this rollout,
 // and reads their inventory entries for `rollouts.kruise.io/_/Rollout` IDs.
+// HelmReleases (`helmReleases`, optional: the rollout detail payload carries
+// them, the fleet list does not yet) are scanned the same way through their
+// own `status.inventory` (Flux 2.8+), linked by the HelmRelease annotations.
 // In multi-cluster fanout the hub merges resources from every spoke into one
 // list, so match by source-cluster annotation too — otherwise a KR with the
 // same ns+name on another cluster gets picked up as a phantom extra track.
 export function kruiseRolloutsForRollout(
 	rollout: Rollout,
 	kustomizations: Kustomization[],
-	kruiseRollouts: KruiseRollout[]
+	kruiseRollouts: KruiseRollout[],
+	helmReleases: HelmRelease[] = []
 ): KruiseRollout[] {
 	const ns = rollout.metadata?.namespace;
 	const name = rollout.metadata?.name;
@@ -55,6 +61,19 @@ export function kruiseRolloutsForRollout(
 		if (!linked) continue;
 		const entries = (k as any).status?.inventory?.entries ?? [];
 		for (const e of entries) {
+			if (typeof e?.id !== 'string') continue;
+			if (e.id.endsWith('_rollouts.kruise.io_Rollout')) ids.add(e.id);
+		}
+	}
+	for (const h of helmReleases) {
+		if (h.metadata?.namespace !== ns) continue;
+		// a HelmRelease inside one rollout payload is not source-stamped; one that is stamped must come from the rollout's cluster
+		const hs = sourceDashboardURL(h as never);
+		if (hs && hs !== rolloutSource) continue;
+		const annotations = h.metadata?.annotations || {};
+		const linked = Object.entries(annotations).some(([key, value]) => HELM_FROM_RE.test(key) && value === name);
+		if (!linked) continue;
+		for (const e of h.status?.inventory?.entries ?? []) {
 			if (typeof e?.id !== 'string') continue;
 			if (e.id.endsWith('_rollouts.kruise.io_Rollout')) ids.add(e.id);
 		}

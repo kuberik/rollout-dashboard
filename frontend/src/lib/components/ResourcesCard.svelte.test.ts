@@ -143,3 +143,37 @@ describe('ResourcesCard — Deployment row expand/collapse', () => {
 		await waitFor(() => expect(screen.getByText('No active ReplicaSets')).toBeInTheDocument());
 	});
 });
+
+describe('ResourcesCard — HelmRelease group with nothing to list', () => {
+	const hr = { metadata: { name: 'hello-helm', namespace: 'dev' }, spec: {}, status: {} } as never;
+	function renderHelm(helmNotes: Record<string, { hint?: string; error?: string }>) {
+		return render(WithQueryClient, {
+			props: {
+				component: ResourcesCard as never,
+				props: {
+					kustomizations: [],
+					helmReleases: [hr],
+					helmNotes,
+					ociRepositories: [],
+					filteredManagedResources: { 'helmrelease/dev/hello-helm': [] }
+				}
+			}
+		});
+	}
+	test('empty, OK, no hint: not reporting yet', () => {
+		renderHelm({});
+		expect(screen.getByTestId('helm-group-empty')).toHaveTextContent('Not reporting resources yet.');
+	});
+	test('a hint is the one line', () => {
+		renderHelm({ 'helmrelease/dev/hello-helm': { hint: 'No status.inventory before Flux 2.8.' } });
+		const el = screen.getByTestId('helm-group-empty');
+		expect(el).toHaveTextContent('No status.inventory before Flux 2.8.');
+		expect(el).not.toHaveTextContent('Not reporting');
+	});
+	test('a failed fetch says so, with the status', () => {
+		renderHelm({ 'helmrelease/dev/hello-helm': { error: "Couldn't load what this HelmRelease manages (403)." } });
+		const el = screen.getByTestId('helm-group-empty');
+		expect(el).toHaveTextContent("Couldn't load what this HelmRelease manages (403).");
+		expect(el.className).toContain('text-danger');
+	});
+});

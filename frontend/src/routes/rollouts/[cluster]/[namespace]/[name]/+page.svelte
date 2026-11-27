@@ -20,6 +20,7 @@
 	import ReleaseSourceNotice from '$lib/components/ReleaseSourceNotice.svelte';
 	import { chainWaitLabel, skippedPredicate, stageBuilds } from '$lib/view-models/skipped-builds';
 	import { clusterErrorsFor } from '$lib/view-models/cluster-errors';
+	import { helmKey, withoutExpandedHelm, type HelmNote, hasHelm, HELM_POLL_CEILING_MS } from '$lib/view-models/helm';
 	import { sourceTreeUrl } from '$lib/source-url';
 	import HeldGlyph from '$lib/components/HeldGlyph.svelte';
 	import { MediaQuery } from 'svelte/reactivity';
@@ -28,6 +29,7 @@
 	import type {
 		Rollout,
 		Kustomization,
+		HelmRelease,
 		OCIRepository,
 		ManagedResourceStatus,
 		HealthCheck,
@@ -192,7 +194,7 @@
 	import { rolloutPath, rolloutMatchesEnvironment, SOURCE_CLUSTER_ANNOTATION } from '$lib/source-dashboard';
 	import { DEPLOY_PARAM, deployKey } from '$lib/history-deeplink';
 	import { formatTimeUntil } from '$lib/api/schedules';
-	import { createQuery, createQueries } from '@tanstack/svelte-query';
+	import { createQuery, createQueries, useQueryClient } from '@tanstack/svelte-query';
 	import {
 		rolloutQueryOptions,
 		rolloutsListQueryOptions,
@@ -236,7 +238,9 @@
 			name,
 			cluster,
 			options: {
-				refetchInterval: pollWhenHealthy(5000, 300_000, cluster),
+				// a HelmRelease has no event stream: while the page shows one, poll faster than the streamed 300s ceiling
+				refetchInterval: (query) =>
+					pollWhenHealthy(5000, hasHelm(query.state.data) ? HELM_POLL_CEILING_MS : 300_000, cluster)(query),
 				staleTime: staleTimeWhenHealthy(1000, 120_000, cluster)
 			}
 		})
@@ -563,6 +567,8 @@
 	// lists go back to empty while the new query is in flight, rather than
 	// lingering with the previously-selected rollout's data.
 	const kustomizations = $derived<Kustomization[]>(rolloutQuery.data?.kustomizations?.items ?? []);
+	/** the rollout's HelmReleases (backend: annotation, chartRef or Kustomization-inventory association); each is one group in the Resources card */
+	const helmReleases = $derived<HelmRelease[]>(rolloutQuery.data?.helmReleases?.items ?? []);
 	const ociRepositories = $derived<OCIRepository[]>(
 		rolloutQuery.data?.ociRepositories?.items ?? []
 	);
@@ -1048,18 +1054,47 @@
 	// (namespace, cluster, name) instead of namespace alone, and so this page
 	// never serves another cluster's cached managed-resources for a
 	// same-named rollout.
+	// what each HelmRelease's fetch said besides the list (backend hint, or the failure). The managed-resources
+	// query writes it into its own cache entry: the managed-resources data stays a plain kustomization -> list map
+	// (events.ts patches it in place), and a client-side revisit reads the cached notes with the cached list.
+	const queryClient = useQueryClient();
+	const managedResourcesNames = $derived([
+		...kustomizations.map((k) => k.metadata?.name),
+		...helmReleases.map((h) => helmKey(h.metadata?.namespace || namespace, h.metadata?.name as string))
+	]);
+	const helmNotesKey = $derived(['helm-notes', namespace, name, cluster, managedResourcesNames]);
+	const helmNotesQuery = createQuery(() => ({
+		queryKey: helmNotesKey,
+		queryFn: () => queryClient.getQueryData<Record<string, HelmNote>>(helmNotesKey) ?? {},
+		enabled: false,
+		staleTime: Infinity
+	}));
+	const helmNotes = $derived<Record<string, HelmNote>>(helmNotesQuery.data ?? {});
 	const managedResourcesQuery = createQuery(() => ({
-		queryKey: [
-			'managed-resources',
-			namespace,
-			name,
-			cluster,
-			kustomizations.map((k) => k.metadata?.name)
-		],
-		queryFn: async () => {
+		queryKey: ['managed-resources', namespace, name, cluster, managedResourcesNames],
+		queryFn: async ({ queryKey }) => {
 			const result: Record<string, ManagedResourceStatus[]> = {};
-			await Promise.all(
-				kustomizations
+			const notes: Record<string, HelmNote> = {};
+			// HelmReleases: one fetch each, beside the Kustomizations' under their own key (see helmKey)
+			const helmFetches = helmReleases
+				.filter((h) => Boolean(h.metadata?.name))
+				.map(async (h) => {
+					const hName = h.metadata!.name as string;
+					const hNamespace = h.metadata?.namespace || namespace;
+					const res = await fetch(
+						apiPath(cluster, `/helmreleases/${hNamespace}/${hName}/managed-resources`)
+					);
+					const key = helmKey(hNamespace, hName);
+					if (res.ok) {
+						const data = await res.json();
+						result[key] = data.managedResources || [];
+						if (data.hint) notes[key] = { hint: data.hint };
+					} else {
+						notes[key] = { error: `Couldn't load what this HelmRelease manages (${res.status}).` };
+					}
+				});
+			await Promise.all([
+				...kustomizations
 					.filter((k) => Boolean(k.metadata?.name))
 					.map(async (k) => {
 						const kName = k.metadata!.name as string;
@@ -1069,18 +1104,22 @@
 						);
 						if (res.ok) {
 							const data = await res.json();
-							result[kName] = data.managedResources || [];
+							// a HelmRelease in the inventory comes back expanded; it has its own group below
+							result[kName] = withoutExpandedHelm(data.managedResources || []);
 						}
-					})
-			);
+					}),
+				...helmFetches
+			]);
+			queryClient.setQueryData(['helm-notes', ...queryKey.slice(1)], notes);
 			return result;
 		},
-		enabled: kustomizations.length > 0,
+		enabled: kustomizations.length > 0 || helmReleases.length > 0,
 		// ⭐ STREAM-AWARE, CLUSTER-AWARE — `managed-resources` is in
 		// `ROLLOUT_SCOPED_KEY_TAGS`; `cluster` scopes the cadence to this
 		// rollout's own cluster (see the rolloutQuery comment above).
 		// ⭐ PERF-2026-09-04 — lifted to the app-wide 300s healthy ceiling.
-		refetchInterval: pollWhenHealthy(5000, 300_000, cluster)
+		// a HelmRelease has no event stream (see HELM_POLL_CEILING_MS)
+		refetchInterval: pollWhenHealthy(5000, helmReleases.length > 0 ? HELM_POLL_CEILING_MS : 300_000, cluster)
 	}));
 	const managedResources = $derived<Record<string, ManagedResourceStatus[]>>(
 		managedResourcesQuery.data ?? {}
@@ -1102,7 +1141,7 @@
 	 * to fetch, so the answer (no managed resources) is already final.
 	 */
 	const managedResourcesKnown = $derived(
-		kustomizations.length === 0 || managedResourcesQuery.isSuccess || managedResourcesQuery.isError
+		(kustomizations.length === 0 && helmReleases.length === 0) || managedResourcesQuery.isSuccess || managedResourcesQuery.isError
 	);
 
 	// Query for health checks
@@ -4851,6 +4890,8 @@
 							{:else}
 								<ResourcesCard
 									{kustomizations}
+									{helmReleases}
+									{helmNotes}
 									{ociRepositories}
 									{filteredManagedResources}
 									{cluster}

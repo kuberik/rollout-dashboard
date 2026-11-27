@@ -16,6 +16,8 @@ import (
 
 	"bytes"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"sync"
 
 	"github.com/docker/cli/cli/config"
@@ -655,6 +657,8 @@ func setupRouter() *gin.Engine {
 				kustomizationsRaw *kustomizev1.KustomizationList
 				ociRepositories   *sourcev1.OCIRepositoryList
 				kustomizations    interface{}
+				helmReleasesRaw   *unstructured.UnstructuredList
+				helmReleases      interface{}
 				rolloutGates      interface{}
 				environment       interface{}
 				kruiseRollout     interface{}
@@ -694,6 +698,16 @@ func setupRouter() *gin.Engine {
 					return nil
 				}
 				ociRepositories = res
+				return nil
+			})
+			g.Go(func() error {
+				// A cluster without the HelmRelease CRD answers with an empty list.
+				res, err := k8sClient.ListHelmReleases(gctx, namespace)
+				if err != nil {
+					log.Printf("Error fetching helmreleases: %v", err)
+					return nil
+				}
+				helmReleasesRaw = res
 				return nil
 			})
 			g.Go(func() error {
@@ -753,7 +767,13 @@ func setupRouter() *gin.Engine {
 					// gracefully instead of losing kustomizations entirely.
 					oci = &sourcev1.OCIRepositoryList{}
 				}
-				kustomizations = kubernetes.FilterKustomizationsByRolloutAnnotation(kustomizationsRaw, oci, name)
+				filtered := kubernetes.FilterKustomizationsByRolloutAnnotation(kustomizationsRaw, oci, name)
+				kustomizations = filtered
+				if helmReleasesRaw != nil {
+					helmReleases = k8sClient.ResolveHelmReleasesForRollout(c.Request.Context(), helmReleasesRaw, oci, filtered, name)
+				}
+			} else if helmReleasesRaw != nil {
+				helmReleases = k8sClient.ResolveHelmReleasesForRollout(c.Request.Context(), helmReleasesRaw, ociRepositories, nil, name)
 			}
 
 			var rolloutOut interface{} = rollout
@@ -771,6 +791,7 @@ func setupRouter() *gin.Engine {
 			writeJSONWithETag(c, http.StatusOK, gin.H{
 				"rollout":           rolloutOut,
 				"kustomizations":    kustomizations,
+				"helmReleases":      helmReleases,
 				"ociRepositories":   ociRepositories,
 				"rolloutGates":      rolloutGates,
 				"environment":       environment,
@@ -1707,6 +1728,29 @@ func setupRouter() *gin.Engine {
 			}
 
 			c.JSON(http.StatusOK, response)
+		})
+
+		// GET /api/helmreleases/:namespace/:name/managed-resources: the objects a
+		// HelmRelease manages (status.inventory, Flux 2.8+), through the same
+		// inventory path as the Kustomization endpoint above, plus the
+		// HelmRelease's own release summary. A HelmRelease without an inventory
+		// answers with an empty list and a hint.
+		api.GET("/helmreleases/:namespace/:name/managed-resources", func(c *gin.Context) {
+			k8sClient, ok := getK8sReadClient(c)
+			if !ok {
+				return
+			}
+			namespace := c.Param("namespace")
+			if !requireRolloutVisibility(c, namespace) {
+				return
+			}
+			res, err := k8sClient.GetHelmReleaseManagedResources(context.Background(), namespace, c.Param("name"))
+			if err != nil {
+				log.Printf("Error fetching helmrelease managed resources: %v", err)
+				writeUpstreamError(c, "Failed to fetch helmrelease managed resources", err)
+				return
+			}
+			c.JSON(http.StatusOK, res)
 		})
 
 		api.GET("/kustomizations/:namespace/:name/test", func(c *gin.Context) {

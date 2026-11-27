@@ -92,6 +92,7 @@ describe('health-failures (observations only)', () => {
 		expect(classOf({ spec: { class: 'datadog-incidents' } })).toBe('incidents');
 		expect(classOf({ spec: { class: 'datadog-monitor-crd' } })).toBe('datadog');
 		expect(classOf({ spec: { class: 'prometheus-alert' } })).toBe('prometheus');
+		expect(classOf({ spec: { class: 'helmrelease' } })).toBe('helmrelease');
 	});
 	it('windowStrip clamps to the axis and keeps ok after failed', () => {
 		const s = windowStrip({ failedAt: T(20), okSince: T(25), rows: [] }, new Date(T(0)), new Date(T(40)));

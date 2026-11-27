@@ -1171,11 +1171,15 @@ lib/components/ReleaseSourceNotice.svelte	text	on the ReleaseSource to read from
 lib/components/RepoCard.svelte	title	deploys …
 lib/components/ResourcesCard.svelte	title	… — Deployment
 lib/components/ResourcesCard.svelte	text	… … … ready resource …
+lib/components/ResourcesCard.svelte	title	… (HelmRelease)
 lib/components/ResourcesCard.svelte	text	… / … ready
 lib/components/ResourcesCard.svelte	text	… failed …
 lib/components/ResourcesCard.svelte	text	… not ready
 lib/components/ResourcesCard.svelte	title	…/… pods
+lib/components/ResourcesCard.svelte	title	chart … …
+lib/components/ResourcesCard.svelte	title	Chart appVersion
 lib/components/ResourcesCard.svelte	text	Flux reports issues
+lib/components/ResourcesCard.svelte	title	Helm release revision
 lib/components/ResourcesCard.svelte	code	Not found
 lib/components/RestGlyph.svelte	code	behind the newest build
 lib/components/RestGlyph.svelte	text	deploy succeeded
@@ -1781,6 +1785,8 @@ lib/view-models/held.ts	code	its upstream environment
 lib/view-models/held.ts	code	Nothing promotes itself here yet; a deploy you start by hand still applies immediately.
 lib/view-models/held.ts	code	promotion order
 lib/view-models/held.ts	code	running …
+lib/view-models/helm.ts	code	generation … not yet observed
+lib/view-models/helm.ts	code	Not reporting resources yet.
 lib/view-models/history-approval.ts	code	Approved (no verified approver)
 lib/view-models/history-approval.ts	code	approved by …
 lib/view-models/history-approval.ts	code	Approved by …
@@ -2268,6 +2274,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Clearing the pin 
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Clearing the pin is what lets this deploy automatically.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Commit message and author need GitHub. …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Couldn't check dependency holds
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Couldn't load what this HelmRelease manages (…).
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Custom build
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Deploy requested — starting
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	deployed … ago

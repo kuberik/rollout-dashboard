@@ -843,12 +843,17 @@ type ManagedResourceStatus struct {
 	Message          string                     `json:"message"`
 	LastModified     time.Time                  `json:"lastModified"`
 	Object           *unstructured.Unstructured `json:"object"`
+	// HelmRelease is "<namespace>/<name>" of the HelmRelease this resource
+	// was expanded from, set only on entries a Kustomization's managed
+	// resources gained by expanding a HelmRelease in its inventory.
+	HelmRelease string `json:"helmRelease,omitempty"`
 }
 
 // managedResourceStatusFromObject computes the ManagedResourceStatus fields
 // (LastModified, kstatus Status/Message) shared by both the batched-LIST path
 // and the per-item GET fallback in GetKustomizationManagedResources.
 func managedResourceStatusFromObject(obj *unstructured.Unstructured, gvkStr, name, namespace string) ManagedResourceStatus {
+	obj = redactSecret(obj)
 	lastModified := time.Time{}
 	if managedFields := obj.GetManagedFields(); len(managedFields) > 0 {
 		for _, field := range managedFields {
@@ -894,6 +899,27 @@ func managedResourceStatusFromObject(obj *unstructured.Unstructured, gvkStr, nam
 		LastModified:     lastModified,
 		Object:           obj,
 	}
+}
+
+// redactSecret returns obj unchanged unless it is a core/v1 Secret, in which
+// case it returns a deep copy with data, stringData and the
+// last-applied-configuration annotation (which can carry the data) removed.
+// The type and metadata stay so the UI can show that the Secret exists. The
+// input is never mutated: it may be shared with the informer cache.
+func redactSecret(obj *unstructured.Unstructured) *unstructured.Unstructured {
+	if obj == nil || obj.GetKind() != "Secret" || obj.GroupVersionKind().Group != "" {
+		return obj
+	}
+	out := obj.DeepCopy()
+	unstructured.RemoveNestedField(out.Object, "data")
+	unstructured.RemoveNestedField(out.Object, "stringData")
+	if ann := out.GetAnnotations(); ann != nil {
+		if _, ok := ann["kubectl.kubernetes.io/last-applied-configuration"]; ok {
+			delete(ann, "kubectl.kubernetes.io/last-applied-configuration")
+			out.SetAnnotations(ann)
+		}
+	}
+	return out
 }
 
 // ManagedResourceStatusForDeployment computes the exact ManagedResourceStatus
@@ -1058,6 +1084,29 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 	entries := kustomization.Status.Inventory.Entries
 	fmt.Printf("Kustomization %s/%s inventory has %d entries\n", namespace, name, len(entries))
 
+	refs := make([]inventoryRef, 0, len(entries))
+	for _, e := range entries {
+		refs = append(refs, inventoryRef{ID: e.ID, Version: e.Version})
+	}
+	managedResources, err := c.managedResourcesFromInventory(ctx, refs)
+	if err != nil {
+		return nil, err
+	}
+	return c.expandHelmReleases(ctx, managedResources), nil
+}
+
+// inventoryRef is one Flux inventory entry (status.inventory.entries[]),
+// identical for a Kustomization and a HelmRelease: an object ID
+// ("<ns>_<name>_<group>_<kind>") and the API version it was applied with.
+type inventoryRef struct {
+	ID      string
+	Version string
+}
+
+// managedResourcesFromInventory resolves Flux inventory entries to their live
+// objects with a status word each. It is the one implementation behind both
+// GetKustomizationManagedResources and GetHelmReleaseManagedResources.
+func (c *Client) managedResourcesFromInventory(ctx context.Context, entries []inventoryRef) ([]ManagedResourceStatus, error) {
 	// Fixed-size slot per entry — each goroutine writes its own index, no mutex needed.
 	// nil slot means parse failed and entry was skipped.
 	results := make([]*ManagedResourceStatus, len(entries))
@@ -1113,6 +1162,7 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 						continue
 					}
 					rs := managedResourceStatusFromObject(obj, gvkStr, entry.objMeta.Name, entry.objMeta.Namespace)
+					slimInventoryHelmRelease(&rs)
 					results[entry.idx] = &rs
 				}
 				return nil
@@ -1138,6 +1188,7 @@ func (c *Client) GetKustomizationManagedResources(ctx context.Context, namespace
 					continue
 				}
 				rs := managedResourceStatusFromObject(obj, gvkStr, entry.objMeta.Name, entry.objMeta.Namespace)
+				slimInventoryHelmRelease(&rs)
 				results[entry.idx] = &rs
 			}
 			return nil

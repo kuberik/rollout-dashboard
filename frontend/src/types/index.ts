@@ -40,6 +40,17 @@ export type Kustomization = components['schemas']['Kustomization'];
 export type OCIRepository = components['schemas']['OCIRepository'];
 export type KruiseRollout = components['schemas']['KruiseRollout'];
 export type ManagedResourceStatus = ManagedResourceStatusType;
+/**
+ * A Flux HelmRelease (helm.toolkit.fluxcd.io/v2) as `/api/rollouts/:ns/:name` embeds it. Hand-written and loose on purpose: the
+ * backend reads HelmReleases unstructured (no typed Flux helm API), and the CRD is not part of the generated schemas.
+ */
+export type HelmRelease = {
+	apiVersion?: string;
+	kind?: string;
+	metadata?: { name?: string; namespace?: string; generation?: number; annotations?: Record<string, string> };
+	spec?: Record<string, any>;
+	status?: Record<string, any>;
+};
 
 // Auto-generated: Extract array element type from Rollout status schema
 type RolloutStatus = Required<Rollout>['status'];
