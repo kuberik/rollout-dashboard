@@ -110,7 +110,9 @@
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
-	import { readyIssue, pathParts, type ReadyIssue } from '$lib/view-models/ready-refusal';
+	import { readyIssue, readyFacts, type ReadyIssue } from '$lib/view-models/ready-refusal';
+	import GlanceSplit from '$lib/components/GlanceSplit.svelte';
+	import ConflictRow from '$lib/components/ConflictRow.svelte';
 	import FactList from '$lib/components/FactList.svelte';
 	import NotFound from '$lib/components/NotFound.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -3377,17 +3379,21 @@
 					<PartialDataNotice class="mb-4" errors={myClusterErrors} subject="this rollout" onRetry={() => fleetListQuery.refetch()} isRetrying={fleetListQuery.isFetching} />
 				{/if}
 				<!-- ══ READY=FALSE (deploy refused / not ready) ══ — first in the stack; see `readyBanner`. `open`, not `{#if}`: it collapses out when the next deploy succeeds. -->
-				<!-- The path wraps only at its dots (a `<wbr>` after each, never a character in the text, so a copied path is clean);
-				     the name after "also set by" moves to the next line whole when it fits there (design R1-DES-1, R2-DES-1, R2-DES-2). -->
+				<!-- A field conflict is DRAWN (`ConflictRow`: object, path, writer → kuberik ✕) with one short next step under it, and
+				     its record (reason code, controller hint, since) beside it on a wide banner or behind Details on a phone
+				     (`GlanceSplit`; glanceable-UI rule, owner 2026-11-26). -->
+				{#snippet readyGlance()}
+					<ConflictRow conflict={readyShown!.conflict!} title={readyShown!.line} />{#if readyShown?.nextStep}<p class="mt-1.5" data-ready-next>{readyShown.nextStep}</p>{/if}
+				{/snippet}
 				{#snippet readyMessage()}
-					{#if readyShown?.conflict}{readyShown.reason} on <span data-ready-path>{#each pathParts(readyShown.conflict.path) as part, pi (pi)}{part}{#if pi < pathParts(readyShown.conflict.path).length - 1}<wbr />{/if}{/each}</span>, also set by <span class="inline-block max-w-full break-words" data-ready-by>{readyShown.conflict.by}</span>{:else}{readyShown?.line}{/if}{#if readyShown?.nextStep}<span class="mt-1 block" data-ready-next>{readyShown.nextStep}</span>{/if}
+					{#if readyShown?.conflict}<GlanceSplit main={readyGlance} facts={readyFacts(readyShown, formatTimeAgoCompact)} />{:else}{readyShown?.line}{#if readyShown?.nextStep}<p class="mt-1.5" data-ready-next>{readyShown.nextStep}</p>{/if}{/if}
 				{/snippet}
 				<AlertPanel
 					open={!!readyBanner}
 					severity="error"
 					title={readyBanner?.title ?? 'Deploy refused'}
 					messageBody={readyMessage}
-					footnote={readyBanner?.detail ?? undefined}
+					footnote={readyBanner?.conflict ? undefined : (readyBanner?.detail ?? undefined)}
 					dataTour="ready-banner"
 				/>
 				{#if blockStory.pinnedTo}
