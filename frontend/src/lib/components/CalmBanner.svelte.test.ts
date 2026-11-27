@@ -66,3 +66,13 @@ describe('CalmBanner (the Q1L report banner)', () => {
 		expect(mount().container.querySelector('[data-act-row]')).toBeNull();
 	});
 });
+
+describe('ActRow shortLabel', () => {
+	test('a short label is drawn beside the full one (CSS picks by container width); aria-label keeps the name', () => {
+		const { container } = mount({ tone: 'danger', primary: { label: 'Retry', key: 'retry' }, secondary: { label: 'Open ledger-books', shortLabel: 'Open provider', ariaLabel: 'Open ledger-books', href: '/x', key: 'o' } });
+		const a = container.querySelector('[data-action="o"]')!;
+		expect(a.getAttribute('aria-label')).toBe('Open ledger-books');
+		expect(a.querySelector('.ar-long')!.textContent).toBe('Open ledger-books');
+		expect(a.querySelector('.ar-short')!.textContent).toBe('Open provider');
+	});
+});

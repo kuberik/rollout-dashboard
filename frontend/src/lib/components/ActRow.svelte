@@ -6,6 +6,8 @@
 	/** One action of a statement banner. Content only: the row decides how it looks. */
 	export interface Act {
 		label: string;
+		/** the label below 640px of the banner (a generic word where the full label names a thing); `ariaLabel` should carry the full name */
+		shortLabel?: string;
 		href?: string;
 		onclick?: (e?: MouseEvent) => void;
 		/** GitHub / another site: prints "↗". A same-tab link prints "›". */
@@ -132,7 +134,7 @@
 />
 
 {#snippet face(a: Act, variant: Item['variant'])}
-	{#if a.icon && !a.iconAfter}{@const I = a.icon}<I class={a.iconClass ?? 'h-4 w-4'} aria-hidden="true" />{/if}<span class="ar-label">{a.label}</span>{#if a.icon && a.iconAfter}{@const I = a.icon}<I class="{a.iconClass ?? 'h-4 w-4'} transition-transform {a.iconTurn ? 'rotate-180' : ''}" aria-hidden="true" />{/if}{#if a.href && !a.icon}<span aria-hidden="true" class="shrink-0">{a.external ? '↗' : '›'}</span>{/if}
+	{#if a.icon && !a.iconAfter}{@const I = a.icon}<I class={a.iconClass ?? 'h-4 w-4'} aria-hidden="true" />{/if}<span class="ar-label{a.shortLabel ? ' ar-long' : ''}">{a.label}</span>{#if a.shortLabel}<span class="ar-label ar-short" aria-hidden="true">{a.shortLabel}</span>{/if}{#if a.icon && a.iconAfter}{@const I = a.icon}<I class="{a.iconClass ?? 'h-4 w-4'} transition-transform {a.iconTurn ? 'rotate-180' : ''}" aria-hidden="true" />{/if}{#if a.href && !a.icon}<span aria-hidden="true" class="shrink-0">{a.external ? '↗' : '›'}</span>{/if}
 {/snippet}
 
 <div class="ar" class:ar-fill={fill} class:ar-end={align === 'end'} class:ar-equal={equal} bind:this={root} data-act-row>
@@ -172,6 +174,9 @@
 		gap: 12px;
 	}
 	.ar-more {
+		display: none;
+	}
+	.ar :global(.ar-short) {
 		display: none;
 	}
 	.ar-more-always {
@@ -228,6 +233,12 @@
 		}
 		.ar-more-btn {
 			min-height: 44px;
+		}
+		.ar :global(.ar-long) {
+			display: none;
+		}
+		.ar :global(.ar-short) {
+			display: inline;
 		}
 		/* a long label (a service name) is cut with an ellipsis inside its button, never past its edge */
 		.ar :global(.ar-item) {
