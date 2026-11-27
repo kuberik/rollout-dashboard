@@ -61,6 +61,8 @@
 		extra?: Snippet;
 		/** `{from} → {to}`: two versions in the code role, ahead of the sentence */
 		move?: { from: string; to: string };
+		/** the drawn facts (chips and arrows) in the middle cell; `move` is drawn there too */
+		shape?: Snippet;
 		/** the one sentence; `\`code\`` marks a version, a check or a path */
 		line?: string;
 		/** the body when it is more than a sentence (a measured figure, a check line); renders in the line's place */
@@ -118,11 +120,11 @@
 
 	/* the mark is the product's status disc (StatusMark's grammar) at 20px: a solid hue with a white glyph */
 	const SEV = {
-		critical: { icon: BangGlyph, disc: `${hueSolid('danger')} text-white`, face: 'field-danger border-banner-danger-line' },
-		warning: { icon: BangGlyph, disc: `${hueSolid('warning')} text-gray-900`, face: 'field-warning border-warning-line' },
-		held: { icon: HeldGlyph, disc: `${hueSolid('held')} text-white`, face: 'field-held border-held-line' },
-		info: { icon: InfoGlyph, disc: `${hueSolid('active')} text-white`, face: 'bg-surface border-line' },
-		success: { icon: CheckGlyph, disc: `${hueSolid('success')} text-white`, face: 'bg-surface border-line' }
+		critical: { icon: BangGlyph, disc: `${hueSolid('danger')} text-white`, face: 'bn-f-danger border-banner-danger-line' },
+		warning: { icon: BangGlyph, disc: `${hueSolid('warning')} text-gray-900`, face: 'bn-f-warning border-warning-line' },
+		held: { icon: HeldGlyph, disc: `${hueSolid('held')} text-white`, face: 'bn-f-held border-held-line' },
+		info: { icon: InfoGlyph, disc: `${hueSolid('active')} text-white`, face: 'bn-f-info border-active-line' },
+		success: { icon: CheckGlyph, disc: `${hueSolid('success')} text-white`, face: 'bn-f-success border-success-line' }
 	} as const;
 
 	const severity = $derived(shown.severity ?? 'info');
@@ -135,9 +137,13 @@
 	const detailsLabel = $derived(shown.detailsLabel ?? 'Details');
 	const hasDetails = $derived(rows.length > 0 || !!detailsBody);
 	const hasTag = $derived(rows.some((r) => r.tag));
-	const primary = $derived(shown.primary);
-	const secondary = $derived(shown.secondary === undefined ? [] : Array.isArray(shown.secondary) ? shown.secondary : [shown.secondary]);
-	const more = $derived(shown.more ?? []);
+	// a-tweak: text-only buttons (a disclosure chevron after the label stays)
+	const plain = (a?: Act): Act | undefined => (a && !a.iconAfter ? { ...a, icon: undefined } : a);
+	const primary = $derived(plain(shown.primary));
+	const secondary = $derived((shown.secondary === undefined ? [] : Array.isArray(shown.secondary) ? shown.secondary : [shown.secondary]).map((a) => plain(a)!));
+	const more = $derived((shown.more ?? []).map((a) => plain(a)!));
+	// throwaway switch for the review: ?bv=a2 puts title, sentence and buttons on one line
+	const variant = typeof location !== 'undefined' && new URLSearchParams(location.search).get('bv') === 'a2' ? 'a2' : 'a1';
 	const actions = $derived(shown.actions);
 	const toggle = $derived(shown.toggle);
 	const hasActs = $derived(!!primary || secondary.length > 0 || more.length > 0);
@@ -147,7 +153,8 @@
 
 	/** "Rolling back to `5.1.0` would break `checkout`" -> text and code parts */
 	const parts = $derived((shown.line ?? '').split('`').map((text, i) => ({ text, code: i % 2 === 1 })).filter((p) => p.text));
-	const hasLine = $derived(!!shown.move || parts.length > 0 || !!shown.body);
+	const hasLine = $derived(parts.length > 0 || !!shown.body);
+	const hasShape = $derived(!!shown.move || !!shown.shape);
 
 	let detailsOpen = $state(false);
 	const panelId = `bn-${Math.random().toString(36).slice(2, 8)}`;
@@ -164,14 +171,17 @@
 	>
 		<div class="bn-collapse-inner">
 			<div class="bn-cq">
-				<section class="bn rounded-md border text-fg {sev.face}" {role} data-banner data-severity={severity}>
+				<section class="bn rounded-lg border text-fg {sev.face}" class:bn--shape={hasShape} class:bn--acts={hasActions} class:is-open={detailsOpen} data-variant={variant} {role} data-banner data-severity={severity}>
+					<div class="bn-st">
 					<span class="bn-icon relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full {disc}" aria-hidden="true" data-banner-mark>
 						{#if shown.pulse}<span class="bn-halo absolute inset-0 rounded-full opacity-30 {disc}"></span>{/if}
 						<Icon class="relative h-3 w-3" />
 					</span>
+						<div class="bn-txt min-w-0">
 					<div class="bn-head min-w-0">
 						{#if shown.heading}{@render shown.heading()}{:else}<p class="t-heading inline text-fg [overflow-wrap:anywhere]" data-banner-title>{shown.title}</p>{/if}
 						{#if shown.extra}<span class="bn-extra ml-2 inline-flex align-baseline">{@render shown.extra()}</span>{/if}
+											{#if hasDetails}<button type="button" class="bn-details bn-det-ph t-ui-sm hit-32 items-center gap-1 text-fg-muted hover:text-fg" aria-expanded={detailsOpen} aria-controls={panelId} onclick={() => (detailsOpen = !detailsOpen)}>{detailsLabel}<ChevronRightOutline class="h-3 w-3 shrink-0 transition-transform {detailsOpen ? 'rotate-90' : ''}" aria-hidden="true" /></button>{/if}
 					</div>
 					{#if hasLine || hasDetails}
 						<div class="bn-row2 min-w-0" class:bn-row2--block={!!shown.body}>
@@ -181,14 +191,6 @@
 										{@render shown.body()}
 									{:else}
 										<span class="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
-											{#if shown.move}
-												<span class="inline-flex items-center gap-1.5 whitespace-nowrap" data-banner-move>
-													<span class="t-code text-fg-muted">{shown.move.from}</span>
-													<ArrowRightOutline class="h-3 w-3 shrink-0 text-fg-subtle" aria-label="replaced by" />
-													<span class="t-code text-fg">{shown.move.to}</span>
-												</span>
-												{#if parts.length > 0}<span class="text-fg-subtle" aria-hidden="true">·</span>{/if}
-											{/if}
 											{#if parts.length > 0}
 												<span class="min-w-0">{#each parts as p, i (i)}{#if p.code}<span class="t-code whitespace-nowrap text-fg">{p.text}</span>{:else}{p.text}{/if}{/each}</span>
 											{/if}
@@ -208,6 +210,18 @@
 									{detailsLabel}<ChevronRightOutline class="h-3 w-3 shrink-0 transition-transform {detailsOpen ? 'rotate-90' : ''}" aria-hidden="true" />
 								</button>
 							{/if}
+						</div>
+					{/if}
+						</div>
+					</div>
+					{#if hasShape}
+						<div class="bn-sh" data-banner-shape>
+							{#if shown.move}
+								<span class="bn-chip bn-chip--old t-code" data-banner-move>{shown.move.from}</span>
+								<ArrowRightOutline class="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-label="replaced by" />
+								<span class="bn-chip t-code">{shown.move.to}</span>
+							{/if}
+							{#if shown.shape}{@render shown.shape()}{/if}
 						</div>
 					{/if}
 					{#if hasDetails}
@@ -266,27 +280,60 @@
 	.bn-cq {
 		container-type: inline-size;
 	}
-	/* glyph | text | buttons. 12px between glyph and text: the text track starts 48px in, on every banner */
+	/* c-redesign: STATEMENT | SHAPE | ACT. Every severity is a tinted field with a 1px hue line. */
 	.bn {
+		--h-solid: var(--k-active-solid);
+		--h-tint: var(--k-active-tint);
+		--h-line: var(--k-active-line);
 		display: grid;
-		grid-template-columns: 20px minmax(0, 1fr) auto;
-		column-gap: 12px;
-		align-items: start;
-		padding: 12px 16px;
+		grid-template-columns: minmax(0, 1fr);
+		border-color: var(--h-line);
+		background: color-mix(in oklab, var(--h-tint) 62%, var(--k-surface));
+		overflow: hidden;
+	}
+	.bn--acts {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+	.bn--shape {
+		grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+	}
+	.bn--shape.bn--acts {
+		grid-template-columns: minmax(0, max-content) minmax(0, 1fr) auto;
+	}
+	.bn[data-severity='critical'] { --h-solid: var(--k-danger-solid); --h-tint: var(--k-danger-tint); --h-line: var(--k-banner-danger-line); }
+	.bn[data-severity='warning'] { --h-solid: var(--k-warning-solid); --h-tint: var(--k-warning-tint); --h-line: var(--k-warning-line); }
+	.bn[data-severity='held'] { --h-solid: var(--k-held-solid); --h-tint: var(--k-held-tint); --h-line: var(--k-held-line); }
+	.bn[data-severity='success'] { --h-solid: var(--k-success-solid); --h-tint: var(--k-success-tint); --h-line: var(--k-success-line); }
+	.bn-st,
+	.bn-sh,
+	.bn-acts {
+		display: flex;
+		align-items: center;
+		min-width: 0;
+		padding: 14px 20px;
+	}
+	.bn-sh,
+	.bn-acts {
+		border-left: 1px solid color-mix(in oklab, var(--h-line) 85%, transparent);
+	}
+	.bn-st {
+		align-items: flex-start;
+		gap: 12px;
+		max-width: 38rem;
+	}
+	.bn:not(.bn--shape) .bn-st {
+		max-width: none;
+	}
+	.bn-txt {
+		flex: 1 1 auto;
 	}
 	.bn-icon {
-		grid-column: 1;
-		grid-row: 1;
 		margin-top: 2px; /* centred on the 24px title line */
 	}
 	.bn-head {
-		grid-column: 2;
-		grid-row: 1;
 		min-height: 24px;
 	}
 	.bn-row2 {
-		grid-column: 2;
-		grid-row: 2;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: baseline;
@@ -294,27 +341,47 @@
 		row-gap: 2px;
 		margin-top: 2px;
 	}
-	/* a body block: Details follows its LAST line, inline, and wraps under it only when the line is full */
 	.bn-row2--block {
 		align-items: last baseline;
 	}
-	/* THE action position: the first button row is centred on the title line (32px button on a 24px line), always */
-	.bn-acts {
-		grid-column: 3;
-		grid-row: 1 / span 2;
-		align-self: start;
-		display: flex;
+	.bn-det-ph {
+		display: none;
+	}
+	/* SHAPE: the facts drawn, centred in their cell */
+	.bn-sh {
+		justify-content: center;
 		flex-wrap: wrap;
+		gap: 8px 10px;
+	}
+	.bn-chip,
+	.bn-sh :global(.bn-ent) {
+		display: inline-flex;
 		align-items: center;
+		gap: 6px;
+		height: 28px;
+		padding: 0 8px;
+		border-radius: 6px;
+		background: var(--k-surface);
+		border: 1px solid color-mix(in oklab, var(--h-line) 70%, var(--k-line));
+		font-size: 13px;
+		line-height: 16px;
+		font-weight: 500;
+		white-space: nowrap;
+	}
+	.bn-chip--old {
+		color: var(--k-fg-muted);
+		text-decoration: line-through;
+		text-decoration-color: color-mix(in oklab, var(--k-fg-muted) 60%, transparent);
+	}
+	/* ACT: one fixed cell at the right, buttons centred on the banner's height */
+	.bn-acts {
+		flex-wrap: wrap;
 		justify-content: flex-end;
 		gap: 4px 12px;
-		margin: -4px 0 0 16px;
-		max-width: 28rem;
 	}
 	.bn-note {
 		text-align: right;
 	}
-	/* every control in the column is the banner's height (DL §3.6: 32px inside a banner), whoever drew it */
 	.bn-acts :global(.btn),
 	.bn-acts :global(.nav-link) {
 		height: 32px;
@@ -326,7 +393,6 @@
 		padding-top: 0;
 		padding-bottom: 0;
 	}
-	/* the primary is the last button and "⋯" closes the row at EVERY width, so the phone row reads like the desktop one */
 	.bn-acts :global(.ar-end .btn-primary) {
 		order: 1;
 	}
@@ -334,21 +400,14 @@
 		order: 2;
 	}
 	.bn-panel {
-		grid-column: 2 / -1;
-		grid-row: 3;
-		margin-top: 10px;
-		border-top: 1px solid var(--k-line);
-		padding-top: 4px;
-	}
-	.bn[data-severity='critical'] .bn-panel,
-	.bn[data-severity='warning'] .bn-panel,
-	.bn[data-severity='held'] .bn-panel {
-		border-top-color: color-mix(in oklab, currentColor 12%, transparent);
+		grid-column: 1 / -1;
+		border-top: 1px solid color-mix(in oklab, var(--h-line) 85%, transparent);
+		padding: 8px 20px 12px 56px;
+		order: 5;
 	}
 	.bn-panel[hidden] {
 		display: none;
 	}
-	/* one set of columns for every row: the rows are subgrids of the list */
 	.bn-rows {
 		display: grid;
 		grid-template-columns: fit-content(18rem) minmax(0, 1fr);
@@ -384,26 +443,52 @@
 		}
 	}
 
-	/* phone: the text spans past the glyph's column, the buttons become a full-width row at the bottom */
+	/* phone: statement, shape under the text track, buttons in a 40px row under a hairline; Details joins the title row */
 	@container (max-width: 639px) {
-		.bn {
+		.bn,
+		.bn--acts,
+		.bn--shape,
+		.bn--shape.bn--acts {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.bn-st,
+		.bn-sh,
+		.bn-acts {
 			padding: 12px;
 		}
-		.bn-row2 {
-			grid-column: 2 / -1;
+		.bn-sh,
+		.bn-acts {
+			border-left: 0;
+		}
+		.bn-st {
+			max-width: none;
+		}
+		.bn-sh {
+			justify-content: flex-start;
+			padding: 0 12px 12px 48px;
+			gap: 8px;
 		}
 		.bn-head {
-			grid-column: 2 / -1;
+			display: flex;
+			align-items: baseline;
+			gap: 8px;
 		}
-		.bn-panel {
-			grid-column: 1 / -1;
+		.bn-det-ph {
+			display: inline-flex;
+			margin-left: auto;
+		}
+		.bn-row2 .bn-details {
+			display: none;
 		}
 		.bn-acts {
-			grid-column: 1 / -1;
-			grid-row: 4;
-			margin: 12px 0 0;
-			max-width: none;
+			order: 2;
+			border-top: 1px solid color-mix(in oklab, var(--h-line) 85%, transparent);
+			padding: 8px 12px;
 			justify-content: stretch;
+		}
+		.bn-panel {
+			order: 3;
+			padding: 8px 12px 12px;
 		}
 		.bn-acts > :global(*) {
 			flex: 1 1 100%;
@@ -415,27 +500,22 @@
 		.bn-own > :global(*) {
 			flex: 1 1 0;
 			display: flex;
-			min-height: 44px;
 		}
 		.bn-own :global(.btn),
-		.bn-own :global(.nav-link) {
+		.bn-own :global(.nav-link),
+		.bn-acts :global(.ar .btn) {
 			flex: 1 1 0;
 			min-width: 0;
-			height: 44px;
-			min-height: 44px;
+			height: 40px;
+			min-height: 40px;
 			justify-content: center;
 		}
-		.bn-acts :global(.ar .btn) {
-			height: 44px;
-			min-height: 44px;
-		}
-		/* "⋯" is a fixed 44px square; the buttons share what is left */
 		.bn-acts :global(.ar-more) {
-			flex: 0 0 44px;
+			flex: 0 0 40px;
 		}
 		.bn-acts :global(.ar-more-btn) {
-			width: 44px;
-			min-width: 44px;
+			width: 40px;
+			min-width: 40px;
 		}
 		.bn-note {
 			text-align: left;
