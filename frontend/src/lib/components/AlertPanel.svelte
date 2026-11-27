@@ -63,6 +63,8 @@
 		open?: boolean;
 	}
 
+	// actionBar, follow and compact are accepted from old callers and deliberately ignored
+	// eslint-disable-next-line svelte/no-unused-props
 	const p: Props = $props();
 
 	const TONE: Record<Severity, BannerSeverity> = { error: 'critical', warning: 'warning', pinned: 'held', info: 'info' };
@@ -70,9 +72,10 @@
 	/* the shell draws its own default glyph; a circled flowbite glyph would be a disc inside a disc */
 	const icon = $derived(p.icon === ExclamationCircleSolid || p.icon === InfoCircleSolid ? undefined : p.icon);
 	/* a plain sentence is the shell's own `line` (Details follows it on the line); anything richer is a body block */
-	const plainLine = $derived(typeof p.message === 'string' && !p.messageBody && !p.change ? p.message : undefined);
-	const hasBody = $derived(!plainLine && (!!p.messageBody || !!p.message || !!p.change));
-	const hasFoot = $derived(!!p.footnote || !!p.footnoteBody);
+	const plainLine = $derived(typeof p.message === 'string' && !p.messageBody ? p.message : undefined);
+	const hasBody = $derived(!plainLine && (!!p.messageBody || !!p.message));
+	/* the change line (build · title · #ref · person) is a record about the failure, not the glance: it sits in Details */
+	const hasFoot = $derived(!!p.footnote || !!p.footnoteBody || !!p.change);
 	const disclosureLabel = $derived(
 		p.footnoteCount === undefined ? (p.footnoteLabel ?? 'Details') : countLabel(p.footnoteCount, p.footnoteNoun ?? 'rule')
 	);
@@ -88,11 +91,14 @@
 	{:else if p.message}
 		<p class="break-words">{#if typeof p.message === 'string'}{p.message}{:else}<CauseText parts={p.message} />{/if}</p>
 	{/if}
+{/snippet}
+
+{#snippet foot()}
 	{#if p.change}
 		{@const change = p.change}
-		<p class="ap-change t-meta mt-1 flex min-w-0 flex-wrap items-center gap-y-0.5 overflow-hidden text-fg-subtle" data-ap-change>
+		<p class="ap-change t-meta mb-1 flex min-w-0 flex-wrap items-center gap-y-0.5 overflow-hidden text-fg-subtle" data-ap-change>
 			<span class="flex min-w-0 max-w-full items-center gap-2">
-				{#if change.build}<span class="t-code shrink-0 whitespace-nowrap text-fg-muted" data-ap-build>{change.build}</span><span class="shrink-0" aria-hidden="true">{'·'}</span>{/if}
+				{#if change.build}<span class="t-code shrink-0 whitespace-nowrap text-fg-muted" data-ap-build>{change.build}</span><span class="shrink-0" aria-hidden="true">·</span>{/if}
 				<span class="min-w-0 truncate">{change.title}</span>
 				{#if change.ref}<span class="t-code-sm shrink-0">{change.ref}</span>{/if}
 			</span>
@@ -103,9 +109,6 @@
 			{/if}
 		</p>
 	{/if}
-{/snippet}
-
-{#snippet foot()}
 	{#if p.footnoteBody}
 		<div class="min-w-0">{@render p.footnoteBody()}</div>
 	{:else if p.footnote}

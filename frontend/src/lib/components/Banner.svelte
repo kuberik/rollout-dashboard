@@ -1,7 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts" module>
-	export type { DetailRow } from '$lib/view-models/detail-rows';
+	import type { DetailRow } from '$lib/view-models/detail-rows';
+	export type { DetailRow };
 	export type BannerSeverity = 'critical' | 'warning' | 'held' | 'info' | 'success';
 </script>
 
@@ -43,7 +44,6 @@
 	import BangGlyph from './BangGlyph.svelte';
 	import InfoGlyph from './InfoMarkGlyph.svelte';
 	import CheckGlyph from './CheckMarkGlyph.svelte';
-	import type { DetailRow } from '$lib/view-models/detail-rows';
 	import { hueSolid } from '$lib/view-models/state-tone';
 
 	interface Props {
@@ -91,11 +91,12 @@
 		class?: string;
 	}
 
+	// every prop is read through `shown` (frozen while the banner collapses), which the rule cannot follow
+	// eslint-disable-next-line svelte/no-unused-props
 	const all: Props = $props();
 	const open = $derived(all.open ?? true);
 
 	// Props live while open, frozen at their last open values while the banner collapses.
-	// svelte-ignore state_referenced_locally
 	let shown = $state.raw<Props>({ ...all });
 	let closing = $state(false);
 	let wasOpen = false;
@@ -189,7 +190,7 @@
 												{#if parts.length > 0}<span class="text-fg-subtle" aria-hidden="true">·</span>{/if}
 											{/if}
 											{#if parts.length > 0}
-												<span class="min-w-0">{#each parts as p}{#if p.code}<span class="t-code whitespace-nowrap text-fg">{p.text}</span>{:else}{p.text}{/if}{/each}</span>
+												<span class="min-w-0">{#each parts as p, i (i)}{#if p.code}<span class="t-code whitespace-nowrap text-fg">{p.text}</span>{:else}{p.text}{/if}{/each}</span>
 											{/if}
 										</span>
 									{/if}
@@ -315,6 +316,11 @@
 	.bn-note {
 		text-align: right;
 	}
+	/* every control in the column is the banner's height (DL §3.6: 32px inside a banner), whoever drew it */
+	.bn-acts :global(.btn) {
+		height: 32px;
+		min-height: 32px;
+	}
 	.bn-panel {
 		grid-column: 2 / -1;
 		grid-row: 3;
@@ -395,6 +401,19 @@
 		}
 		.bn-own > :global(*) {
 			flex: 1 1 0;
+			display: flex;
+			min-height: 44px;
+		}
+		.bn-own :global(.btn),
+		.bn-own :global(.nav-link) {
+			flex: 1 1 auto;
+			width: 100%;
+			height: 44px;
+			min-height: 44px;
+			justify-content: center;
+		}
+		.bn-acts :global(.ar .btn) {
+			height: 44px;
 			min-height: 44px;
 		}
 		.bn-note {

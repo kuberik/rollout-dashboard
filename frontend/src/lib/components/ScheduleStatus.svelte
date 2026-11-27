@@ -8,7 +8,7 @@
 	} from 'flowbite-svelte-icons';
 	import type { Rollout } from '../../types';
 	import AlertPanel from './AlertPanel.svelte';
-	import { newerBuildsAre, type BlockingStory } from '$lib/view-models/blocking-story';
+	import { type BlockingStory } from '$lib/view-models/blocking-story';
 	import { iconForStory } from './BlockingStoryPanel.svelte';
 	import {
 		formatAbsoluteReopen,
@@ -511,11 +511,10 @@
 	function shapedConsequence(s: BlockingStory | null | undefined): string {
 		if (!s) return '';
 		if (s.gates.length === 1 && s.clock.length === 1 && s.clearsAt) {
-			const n = s.newerCount ?? s.candidateCount; /* the live count (failed-builds.ts) */
-			const lead = n > 0 ? `${newerBuildsAre(n, !!s.countPending)} waiting. ` : '';
-			return `${lead}Nothing promotes itself for another ${formatTimeUntil(s.clearsAt)} — ${formatAbsoluteReopen(s.clearsAt)}.`;
+			/* one sentence (the glanceable rule): the waiting count is on the page already, the clock is the fact */
+			return `Reopens in ${formatTimeUntil(s.clearsAt)} — ${formatAbsoluteReopen(s.clearsAt)}.`;
 		}
-		return s.consequence;
+		return s.line ?? s.consequence;
 	}
 </script>
 
@@ -625,9 +624,9 @@
 		message={story?.blocked
 			? shapedConsequence(story)
 			: nextChange
-				? `Nothing promotes itself for another ${formatTimeUntil(nextChange)} — ${formatAbsoluteReopen(nextChange)}. A deploy you start by hand still applies immediately.`
-				: 'Nothing promotes itself while this schedule is closed. A deploy you start by hand still applies immediately.'}
-		footnote={story?.blocked ? story.resolution : undefined}
+				? `Reopens in ${formatTimeUntil(nextChange)} — ${formatAbsoluteReopen(nextChange)}.`
+				: 'Nothing promotes itself while this schedule is closed.'}
+		footnote={story?.blocked ? story.resolution : 'A deploy you start by hand still applies immediately.'}
 		icon={story?.blocked ? iconForStory(story) : CalendarWeekSolid}
 		pulse
 	>
