@@ -451,12 +451,13 @@ lib/components/ErrorState.svelte	title	Where to look
 lib/components/EventsCard.svelte	text	… event …
 lib/components/EventsCard.svelte	text	… Nothing since the deploy started · … … No recent events …
 lib/components/EventsCard.svelte	title	Recent events
-lib/components/FailurePanel.svelte	code	… recovered
+lib/components/FailurePanel.svelte	code	` recovered
 lib/components/FailurePanel.svelte	text	+ … more
 lib/components/FailurePanel.svelte	code	A health check
 lib/components/FailurePanel.svelte	code	An error occurred during deployment.
 lib/components/FailurePanel.svelte	title	Failed, not rolled back
 lib/components/FailurePanel.svelte	code	Roll back
+lib/components/FailurePanel.svelte	code	The check
 lib/components/FailureSourceRow.svelte	text	&nbsp; …
 lib/components/FailureSourceRow.svelte	text	&nbsp;at failure
 lib/components/FailureToasts.svelte	text	+ … more failure …

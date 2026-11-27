@@ -123,7 +123,7 @@
 		<div class="cb-collapse-inner">
 			<div class="cb-cq">
 				<section
-					class="cb rounded-md border bg-surface text-fg {tone === 'danger' ? 'border-banner-danger-line' : 'border-line'}"
+					class="cb rounded-md border border-line bg-surface text-fg"
 					role={tone === 'danger' ? 'alert' : 'status'}
 					data-calm-banner
 					data-tone={tone}
@@ -171,9 +171,9 @@
 									{#each rows as r (r.key)}
 										<li class="cb-reow" title={r.title}>
 											{#if r.href}
-												<a class="cb-name nav-link min-w-0 truncate {r.mono ? 't-code-sm' : ''}" href={r.href} title={r.name}>{r.name}</a>
+												<a class="cb-name nav-link min-w-0 truncate {r.mono ? 't-code' : ''}" href={r.href} title={r.name}>{r.name}</a>
 											{:else}
-												<span class="cb-name min-w-0 truncate text-fg {r.mono ? 't-code-sm' : ''}" title={r.name}>{r.name}</span>
+												<span class="cb-name min-w-0 truncate text-fg {r.mono ? 't-code' : ''}" title={r.name}>{r.name}</span>
 											{/if}
 											{#if hasTag}<span class="cb-tag t-ui-sm whitespace-nowrap {r.tone === 'danger' ? 'text-danger' : 'text-fg-muted'}">{r.tag ?? ''}</span>{/if}
 											<span class="cb-text min-w-0 text-fg-muted [overflow-wrap:anywhere]">{r.text ?? ''}</span>
@@ -213,6 +213,13 @@
 		align-items: start;
 		padding: 12px 16px;
 	}
+	/* a live failure: the product's own danger line (dark steps it halfway toward the card line, so the outline is a tint, not the loudest edge on the page) */
+	.cb[data-tone='danger'] {
+		border-color: var(--k-danger-line);
+	}
+	:global(html.dark) .cb[data-tone='danger'] {
+		border-color: color-mix(in srgb, var(--k-danger-line) 62%, var(--k-line));
+	}
 	.cb :global(.cb-icon) {
 		grid-column: 1;
 		grid-row: 1;
@@ -227,7 +234,7 @@
 		grid-row: 2;
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
+		align-items: baseline;
 		column-gap: 12px;
 		min-width: 0;
 	}

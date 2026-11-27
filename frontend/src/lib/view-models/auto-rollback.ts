@@ -172,6 +172,11 @@ const display = (e: HistoryEntry | undefined): string => e?.version?.version || 
  * ("Not rolled back") is a separate word the banner draws as a chip, so this never repeats it.
  */
 export function notRolledBackWhy(reason: string, failed: HistoryEntry, rows: VerdictRow[]): string {
+	return notRolledBackSentence(reason, failed, rows).replaceAll('`', '');
+}
+
+/** the same line for the banner: a check's name is marked `like this` so the banner draws it in the code role */
+export function notRolledBackSentence(reason: string, failed: HistoryEntry, rows: VerdictRow[]): string {
 	switch (reason) {
 		case 'ManualDeploy':
 			return 'Deployed by hand';
@@ -196,7 +201,7 @@ export function notRolledBackWhy(reason: string, failed: HistoryEntry, rows: Ver
 
 /** why ONE failing source did not roll back, as a short sentence naming it (the severity word itself is the Details row's) */
 function notATriggerWhy(r: VerdictRow): string {
-	const name = shortRef(r.ref);
+	const name = '`' + shortRef(r.ref) + '`';
 	switch (r.rule) {
 		case 'BelowThreshold':
 			return `${name} is a ${r.severity.toLowerCase()} check`;
@@ -239,6 +244,12 @@ export function triggerLine(triggers: VerdictRow[]): string {
 	if (triggers.length === 0) return '';
 	const first = shortRef(triggers[0].ref);
 	return triggers.length === 1 ? `${first} failed` : `${first} and ${triggers.length - 1} more failed`;
+}
+
+/** the same for the banner: the check's name is marked `like this`, so the banner draws it in the code role */
+export function triggerSentence(triggers: VerdictRow[]): string {
+	const line = triggerLine(triggers);
+	return line ? '`' + line.replace(' ', '` ') : '';
 }
 
 /** `ns/name` -> `name` */

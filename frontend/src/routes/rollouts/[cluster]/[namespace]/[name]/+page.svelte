@@ -109,7 +109,7 @@
 	import { ledgerSpine } from '$lib/ledger-spine';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
-	import { autoRollbackView, failedBakeHeld, triggerLine, verdictDetailRows } from '$lib/view-models/auto-rollback';
+	import { autoRollbackView, failedBakeHeld, triggerSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
 	import CalmBanner from '$lib/components/CalmBanner.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
@@ -3793,7 +3793,7 @@
 								icon={UndoOutline}
 								title="Rolled back automatically"
 								move={{ from: failedName, to: autoRolled.target }}
-								line={triggerLine(autoRolled.triggers)}
+								line={triggerSentence(autoRolled.triggers)}
 								rows={verdictDetailRows([...autoRolled.triggers, ...autoRolled.spared])}
 								secondary={canModify && failedBakeHeld(rollout, autoRolled.failed.version.tag)
 									? {

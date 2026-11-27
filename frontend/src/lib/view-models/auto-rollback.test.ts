@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rollout } from '../../types';
-import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
+import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, triggerSentence, notRolledBackSentence, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
 
 const v = (tag: string) => ({ tag, version: `1.${tag.slice(-1)}.0`, revision: 'a'.repeat(40), created: '2026-11-21T10:00:00Z' });
 const failed = {
@@ -88,12 +88,15 @@ describe('auto-rollback view-model', () => {
 		expect(triggerLine(rows)).toBe('smoke failed');
 		expect(triggerLine([...rows, ...rows])).toBe('smoke and 1 more failed');
 		expect(triggerLine([])).toBe('');
+		expect(triggerSentence(rows)).toBe('`smoke` failed');
+		expect(triggerSentence([...rows, ...rows])).toBe('`smoke` and 1 more failed');
 	});
 	it('NotATrigger names the one source that did not trigger', () => {
 		const only = { ...failed, failedHealthChecks: [{ ...failed.failedHealthChecks[0], failures: [failed.failedHealthChecks[0].failures[0]] }] };
 		const rows = verdictRows(only as never);
 		expect(notRolledBackWhy('NotATrigger', only as never, rows)).toBe('flaky-ui is a warning check');
 		expect(notRolledBackHeadline('NotATrigger', only as never, rows)).toBe('Not rolled back · flaky-ui is a warning check');
+		expect(notRolledBackSentence('NotATrigger', only as never, rows)).toBe('`flaky-ui` is a warning check');
 		expect(notRolledBackWhy('Blocked', only as never, rows)).toBe('No earlier build is safe to roll back to');
 	});
 	it('details rows: a name, a severity word and the checks own message, never a chip', () => {

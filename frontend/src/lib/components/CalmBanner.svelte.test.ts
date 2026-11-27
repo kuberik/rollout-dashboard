@@ -24,11 +24,11 @@ describe('CalmBanner (the Q1L report banner)', () => {
 	test('a successful rollback has the normal card border, a live failure a danger one; no tinted fill', () => {
 		const ok = mount().container.querySelector('[data-calm-banner]')!;
 		expect(ok.className).toContain('border-line');
-		expect(ok.className).not.toContain('border-banner-danger-line');
+		expect(ok.getAttribute('data-tone')).toBe('neutral');
 		expect(ok.className).toContain('bg-surface');
 		const bad = mount({ tone: 'danger' }).container.querySelector('[data-calm-banner]')!;
-		expect(bad.className).toContain('border-banner-danger-line');
-		expect(bad.className).not.toMatch(/field-|border-l/);
+		expect(bad.getAttribute('data-tone')).toBe('danger');
+		expect(bad.className).not.toMatch(/field-|border-l-/);
 	});
 	test('Details holds severity and the failure list; it is in the DOM closed and opens on press', async () => {
 		const { container } = mount();

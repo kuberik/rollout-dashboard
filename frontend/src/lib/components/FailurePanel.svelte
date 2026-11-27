@@ -15,7 +15,7 @@
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
-	import { autoRollbackView, verdictDetailRows } from '$lib/view-models/auto-rollback';
+	import { autoRollbackView, notRolledBackSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
 	import { poolOf, worstOf, failingNowList, failingSummary, type SnapCheck } from '$lib/view-models/health-failures';
 
 	interface Props {
@@ -203,7 +203,7 @@
 	const autoView = $derived(autoRollbackView(rollout));
 	const notRolled = $derived(autoView?.state === 'not-rolled-back' ? autoView : null);
 	/* the banner's one sentence (12 words or fewer, no age: the page header has it): why it was not rolled back, else what is failing */
-	const sentence = $derived(notRolled ? notRolled.why : allRecovered ? `${worst?.row?.name ?? worst?.check.name ?? 'The check'} recovered` : bannerMessage);
+	const sentence = $derived(notRolled ? notRolledBackSentence(notRolled.reason, notRolled.failed, notRolled.rows) : allRecovered ? '`' + (worst?.row?.name ?? worst?.check.name ?? 'The check') + '` recovered' : bannerMessage);
 	const retryFirst = $derived(allRecovered);
 	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
 	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback, ...(isDashboardManagingWantedVersion ? {} : { ...(canHover.current ? {} : { title: WANTED_VERSION_OWNED_REASON }), describedBy: 'failure-owned-reason' }) });
