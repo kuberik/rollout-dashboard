@@ -86,7 +86,7 @@ import {
 	type DepsStep
 } from './deps-story';
 import { mkHwEnvironment } from './mock-promote';
-import { extraHealthChecks, extraFleetHealthChecks } from './extra-fixtures';
+import { extraHealthChecks, extraFleetHealthChecks, extraRollbackCheck } from './extra-fixtures';
 import { WAVES_STEPS, wavesStoryStep, type WavesStep } from './waves-story';
 
 /** the detail response, in the served shape and stamped with its source cluster like the list items */
@@ -581,6 +581,17 @@ export function respond(method: string, rawUrl: string, opts: MockOptions = {}):
 				}
 			}
 		};
+	}
+
+	// GET /api/rollouts/:namespace/:name/rollback-check?tag= — what a rollback to `tag` would break (rollback-deps fixtures; 404 elsewhere, as an older backend answers)
+	{
+		const m = reqPath.match(/^\/api\/rollouts\/([^/]+)\/([^/]+)\/rollback-check$/);
+		if (m) {
+			const tag = new URLSearchParams(url.split('?')[1] ?? '').get('tag') ?? '';
+			const check = extraRollbackCheck(m[1], m[2], tag);
+			if (!check) return json({ error: 'not found' }, 404);
+			return json({ tag, breaks: check.breaks, ...(check.hiddenConsumers ? { hiddenConsumers: check.hiddenConsumers } : {}) });
+		}
 	}
 
 	// GET /api/rollouts/:namespace/:name/events. `MOCK_FAIL` keeps its own

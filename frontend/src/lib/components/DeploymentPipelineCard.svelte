@@ -31,7 +31,8 @@
 		TerminalOutline,
 		ClipboardCheckOutline,
 		ChartMixedOutline,
-		LinkOutline
+		LinkOutline,
+		UndoOutline
 	} from 'flowbite-svelte-icons';
 	import {
 		formatTimeAgo,
@@ -93,6 +94,8 @@
 		namespace: string;
 		name: string;
 		cluster?: string;
+		/** ROLLBACK PREVIEW (`previewLine`): where an automatic rollback would go while this build bakes, when it would not go to the usual build. Reference region: the card's own rows (a hairline above, `px-4 py-3`, a 16px mark column like the step marks). Null draws nothing. */
+		rollbackPreview?: string | null;
 		onContinue: (kruiseRolloutName: string, kruiseRolloutNamespace: string) => void;
 	}
 
@@ -108,6 +111,7 @@
 		namespace,
 		name,
 		cluster,
+		rollbackPreview = null,
 		onContinue
 	}: Props = $props();
 
@@ -1571,6 +1575,12 @@
 			{/each}
 		</ol>
 	</div>
+	{#if rollbackPreview}
+		<div class="t-meta flex items-start gap-2 border-t border-line px-4 py-3 text-fg-muted" data-testid="rollback-preview">
+			<UndoOutline class="mt-0.5 h-4 w-4 shrink-0 text-fg-subtle" aria-hidden="true" />
+			<span class="min-w-0 [overflow-wrap:anywhere]">{rollbackPreview}</span>
+		</div>
+	{/if}
 	</div>
 </div>
 

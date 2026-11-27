@@ -68,6 +68,8 @@ export type RolloutDependencySpec = {
 	 * `providerRef.name`), so it is always populated here.
 	 */
 	contract: string;
+	/** What an automatic rollback of the provider may do to this consumer. Absent = Allow (the default); Block opts this consumer in to protection. */
+	providerRollback?: 'Allow' | 'Block';
 };
 
 /** Why a consumer release candidate cannot ship. The adverse case. */

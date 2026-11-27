@@ -2,7 +2,6 @@ github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c h1:udKWzYgxTojEK
 github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/MakeNowJust/heredoc v1.0.0 h1:cXCdzVdstXyiTqTvfqk9SDHpKNjxuom+DOlyEeQ4pzQ=
 github.com/MakeNowJust/heredoc v1.0.0/go.mod h1:mG5amYoWBHf8vpLOuehzbGGw0EHxpZZ6lCpQ4fNJ8LE=
-github.com/Masterminds/semver v1.5.0 h1:H65muMkzWKEuNDnfl9d70GUjFniHKHRbFPGBuZ3QEww=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
@@ -168,8 +167,8 @@ github.com/kuberik/environment-controller v0.2.0-rc.0.0.20261109131018-e596aabd2
 github.com/kuberik/environment-controller v0.2.0-rc.0.0.20261109131018-e596aabd24bd/go.mod h1:zspF0vX+/dYnu5u5DaF0rxd95ABRwboYptk5590POTs=
 github.com/kuberik/openkruise-controller v0.3.1-0.20260427061036-696fddeeb5bd h1:KI5Drf1YnZ2uNMDVLF3GY8CdMZ4WARPOS1lXOicojh0=
 github.com/kuberik/openkruise-controller v0.3.1-0.20260427061036-696fddeeb5bd/go.mod h1:03WmZ9qq4oNkSD8A5zGKlG29kVsJ3ofhHuNyKjNoVfw=
-github.com/kuberik/rollout-controller v0.11.1-0.20261127120716-08cdd28e38a8 h1:wA1YxWAggvq1trjsatMCFTzHk7qOvFa3cqLBFoROIgI=
-github.com/kuberik/rollout-controller v0.11.1-0.20261127120716-08cdd28e38a8/go.mod h1:dCjvl2y6jc2B3wsG3rdenmnxlNVmVl2yBKSY9XnkXvU=
+github.com/kuberik/rollout-controller v0.11.1-0.20261127122335-63a64a14a157 h1:SaFUxpOsEhWDOr2aixZK8VyvA2jM0Gfeb/SUXrOpr/s=
+github.com/kuberik/rollout-controller v0.11.1-0.20261127122335-63a64a14a157/go.mod h1:dCjvl2y6jc2B3wsG3rdenmnxlNVmVl2yBKSY9XnkXvU=
 github.com/leodido/go-urn v1.2.0/go.mod h1:+8+nEpDfqqsY+g338gtMEUOtuK+4dEMhiQEgxpxOKII=
 github.com/leodido/go-urn v1.4.0 h1:WT9HwE9SGECu3lg4d/dIA+jxlljEa1/ffXKmRjqdmIQ=
 github.com/leodido/go-urn v1.4.0/go.mod h1:bvxc+MVxLKB4z00jd1z+Dvzr47oO32F/QSNjSBOlFxI=

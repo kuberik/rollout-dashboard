@@ -3,6 +3,44 @@
  * Do not make direct changes to the file.
  */
 
+/** One dependency a rollback target would break (rollout-controller `DependencyBreak`). */
+export type DependencyBreak = {
+    /** ConsumerRequires: the target does not serve what a running consumer needs. TargetRequires: the target needs a contract version its provider does not serve now. */
+    kind: "ConsumerRequires" | "TargetRequires";
+    /** the other side: the consumer (ConsumerRequires) or the provider (TargetRequires) */
+    rollout: string;
+    namespace: string;
+    /** the RolloutDependency, in the consumer's namespace */
+    dependency: string;
+    contract: string;
+    /** the constraint, verbatim; empty when it could not be read */
+    requires?: string;
+    /** ConsumerRequires: the consumer's running build. TargetRequires: the contract version the provider serves now. */
+    version?: string;
+    reason: "ConstraintNotSatisfied" | "RequirementUnreadable" | "InvalidVersion" | "ProviderVersionUnknown" | string;
+    /** how the consumer's running build was deployed (ConsumerRequires only) */
+    deployKind?: "Automatic" | "GateBypass" | "Unblock" | "Pin" | "ForceDeploy" | "AutoRollback";
+    /** the edge (or the provider default) allows rolling back under this consumer */
+    allowed?: boolean;
+};
+/** An earlier good build an automatic rollback passed over. */
+export type SkippedRollbackTarget = { tag: string; version?: string; breaks: DependencyBreak[] };
+/** How an automatic rollback target was chosen against the dependencies. */
+export type RollbackSelection = {
+    /** the newest earlier good build before dependency checks (tag) */
+    usualTarget?: string;
+    /** the build chosen (tag); empty when none is safe */
+    target?: string;
+    /** earlier good builds passed over, newest first */
+    skipped?: SkippedRollbackTarget[];
+    /** when target is empty: what the usual target would break */
+    blockedBy?: DependencyBreak[];
+    /** running consumers the target breaks but whose edge allows it */
+    allowed?: DependencyBreak[];
+};
+/** Where an automatic rollback would go for the newest deploy. */
+export type AutoRollbackStatus = RollbackSelection & { for: string; evaluatedTime?: string };
+
 export type paths = Record<string, never>;
 export type webhooks = Record<string, never>;
 export interface components {
@@ -220,6 +258,8 @@ export interface components {
             };
             /** @description RolloutStatus defines the observed state of Rollout. */
             status?: {
+                /** @description AutoRollback: where an automatic rollback would go for the newest deploy (preview, written while it bakes or when blocked). */
+                autoRollback?: AutoRollbackStatus;
                 /**
                  * @description ArtifactType is the media/artifact type of the image extracted from the manifest.
                  *     This includes OCI artifact types, container image types, and other media types.
@@ -529,6 +569,8 @@ export interface components {
                      * @description RollbackOf is the ID of the failed history entry this automatic rollback replaced.
                      */
                     rollbackOf?: number;
+                    /** @description AutoRollback: how an automatic rollback target was chosen against the dependencies (on the rollback deploy), or what blocked it (on the failed entry). */
+                    autoRollback?: RollbackSelection;
                     /**
                      * Format: date-time
                      * @description LastRetryTimestamp is the time when a retry was most recently requested for this deployment.

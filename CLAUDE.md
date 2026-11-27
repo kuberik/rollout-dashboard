@@ -218,6 +218,14 @@ frontend/
 └── vite.config.ts
 ```
 
+### Glanceable UI
+
+Users must see what happened at a glance, without reading paragraphs.
+- A banner or status surface is a short headline plus at most one sentence (12 words or fewer). Lists, reasons and test detail go under `Details`.
+- Draw facts that have a shape (who, needs what, serves what) with chips and arrows; do not also write them as a sentence.
+- Say each fact once per screen. Name a state with one word ("Held", "Rolled back", "Skipped").
+- Review counts text lines on each new surface; too much text is a blocker.
+
 ## Common Patterns
 
 ### Backend API Handler

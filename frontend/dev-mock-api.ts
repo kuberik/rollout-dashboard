@@ -88,6 +88,11 @@ export async function mockApiPlugin(): Promise<Plugin> {
 		(await import('./src/lib/demo/auto-rollback-fixtures')).install(true);
 		resetDemoState();
 	}
+	/** `MOCK_SCENARIO=rollback-deps` (or `MOCK_FIXTURES=rollback-deps`) adds provider/consumer pairs for every rollback-dependency state: blocked, constrained, previewed, now safe, allowed, protected, and a manual rollback that breaks a consumer (rollback-deps-fixtures.ts). */
+	if (process.env.MOCK_SCENARIO === 'rollback-deps' || fixtureFlags.includes('rollback-deps')) {
+		(await import('./src/lib/demo/rollback-deps-fixtures')).install(true);
+		resetDemoState();
+	}
 	const homeFixture = loadHomeFixture();
 	/**
 	 * ⭐ SCENARIO PER REQUEST (r39). `MOCK_SCENARIO=home-incident|home-calm|home-quiet` is the default; the `kuberik_scenario` cookie (set by

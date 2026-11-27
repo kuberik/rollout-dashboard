@@ -80,6 +80,7 @@
  * Everything here is PURE and deterministic, so it is tested without a DOM.
  */
 
+import { protectedConsumersNote, protectingConsumers, protectingMark } from './rollback-deps';
 import type { Rollout, Environment, RolloutDependency } from '../../types';
 import { SOURCE_CLUSTER_ANNOTATION } from '$lib/source-dashboard';
 import { displayVersionForTag } from '../version-utils';
@@ -176,6 +177,8 @@ export type GraphNode = {
 	blocked: boolean;
 	/** Gates holding it that are not edges. Clocks, checks, approvals, pins. */
 	holds: NodeHold[];
+	/** The provider's side of an edge about ROLLBACK (never drawn for the norm): `protecting` while its failed build is held so a running consumer is not broken, `allowed` on an edge whose policy lets it roll back under the consumer. */
+	rollbackNotes?: { kind: 'protecting'; text: string }[];
 };
 
 export type EdgeKind = 'tier' | 'wave' | 'follow';
@@ -217,6 +220,8 @@ export type GraphEdge = {
 	 * one edge in two states — see the edge-state loop in `buildRolloutGraph`.
 	 */
 	held: string[];
+	/** `contract` only — the PROVIDER's side of the link while its failed build is held to protect this consumer (`protectingMark`): a link that holds something, drawn in the held list beside the ones the consumer's gate holds. Absent otherwise. */
+	protecting?: string;
 };
 
 export type RolloutGraph = {
@@ -622,6 +627,7 @@ export function buildRolloutGraph(args: {
 	// namespace on ONE cluster, so this edge is already environment-scoped.
 	// That is exactly what lets it be an edge between two nodes rather than a
 	// property of a service.
+	const protectingByProvider = new Map<string, { rollout: Rollout; consumers: string[] }>();
 	for (const dep of dependencies) {
 		const ns = dep.metadata?.namespace;
 		const consumer = dep.spec?.rolloutRef?.name;
@@ -635,6 +641,9 @@ export function buildRolloutGraph(args: {
 		const satisfied = (dep.status?.conditions ?? []).find((c) => c?.type === 'Satisfied');
 		const key = `contract:${to.id}:${gate}`;
 		depOfEdge.set(key, dep);
+		// ── ROLLBACK, the provider's side: its failed build is held so this running consumer is not broken
+		const providerRollout = rolloutById.get(from.id);
+		const protectingText = providerRollout && protectingConsumers(providerRollout).some((p) => p.namespace === ns && p.name === consumer) ? protectingMark(providerRollout, consumer) : null;
 		edges.push({
 			key,
 			from: from.id,
@@ -648,8 +657,21 @@ export function buildRolloutGraph(args: {
 			edgeKind: null,
 			message: satisfied?.message ?? '',
 			cyclic: false,
-			held: []
+			held: [],
+			...(protectingText ? { protecting: protectingText } : {})
 		});
+		if (protectingText && providerRollout) {
+			const held = protectingByProvider.get(from.id) ?? { rollout: providerRollout, consumers: [] as string[] };
+			held.consumers.push(consumer);
+			protectingByProvider.set(from.id, held);
+		}
+	}
+
+	// ONE rollback note per provider node, sentence case: the node already names the provider, so the note says what it holds and for whom
+	// (the full sentence, per consumer, lives on the Held links row). Allow is the default edge and is never painted.
+	for (const [id, held] of protectingByProvider) {
+		const n = nodes.get(id);
+		if (n) n.rollbackNotes = [{ kind: 'protecting', text: protectedConsumersNote(held.rollout, held.consumers) }, ...(n.rollbackNotes ?? [])];
 	}
 
 	// ── THE FOCUS, EVEN WITH NO EDGE ─────────────────────────────────────

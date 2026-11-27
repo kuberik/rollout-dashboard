@@ -96,6 +96,7 @@
 		releaseMetadataUnresolved,
 		releaseRequires
 	} from '../../../../../../types/rollout-dependency-types';
+	import { consumerVerdicts, heldBuildName, protectedByMark, protectingConsumers } from '$lib/view-models/rollback-deps';
 	import {
 		buildOrder,
 		chain,
@@ -572,6 +573,15 @@
 		})
 	);
 
+	/** ROLLBACK, the consumer's side: its provider keeps a failed build on purpose so this rollout keeps working ("Stays on 6.0.0 for this service") */
+	function protectedByText(b: ContractBlock): string | null {
+		const prov = listRollouts.find((r) => r.metadata?.name === b.providerName && r.metadata?.namespace === b.providerNamespace);
+		if (!prov || !protectingConsumers(prov).some((p) => p.name === name && p.namespace === namespace)) return null;
+		return protectedByMark(heldBuildName(prov));
+	}
+	/** ROLLBACK, the provider's side: per consumer, what a rollback would break */
+	const verdictByConsumer = $derived(consumerVerdicts(rollout));
+
 	function providerHref(b: ContractBlock): string {
 		// A consumer, its provider and the dependency are always in ONE
 		// namespace on ONE cluster, so the dependency's own source-cluster
@@ -788,6 +798,8 @@
 		href: string | undefined;
 		running: string | null;
 		adverse: boolean;
+		/** what a rollback of THIS rollout would break in this consumer, while a block or preview says so */
+		verdict: string | null;
 	};
 	const downstreamRows = $derived.by<DownstreamRow[]>(() => {
 		const byName = new Map<string, DownstreamRow>();
@@ -800,7 +812,8 @@
 					name: d.name,
 					href: consumerHref(d),
 					running: !d.runningVaries && d.running ? d.running : (existing?.running ?? null),
-					adverse: d.adverse || (existing?.adverse ?? false)
+					adverse: d.adverse || (existing?.adverse ?? false),
+					verdict: verdictByConsumer.get(d.name) ?? existing?.verdict ?? null
 				});
 			}
 		}
@@ -2223,7 +2236,7 @@
 													<div class="flex min-w-0 items-start gap-2.5">
 														<span class="mt-0.5"
 															><StatusMark
-																state={scope?.held ? 'held' : 'none'}
+																state={scope?.held || protectedByText(b) ? 'held' : 'none'}
 															/></span
 														>
 														<div class="min-w-0">
@@ -2279,6 +2292,10 @@
 																	{/if}
 																{/if}
 															</p>
+															{#if protectedByText(b)}
+																<!-- ROLLBACK: why the provider is held on a failed build, said to the consumer's owner (nothing is wrong with this rollout) -->
+																<p class="t-meta text-fg-muted mt-0.5" data-protected-by>{protectedByText(b)}</p>
+															{/if}
 														</div>
 													</div>
 													<!-- Adverse (held) is the only state that spends hue — a
@@ -2295,7 +2312,7 @@
 													>
 														{#if b.adverse}
 															{scopeLabel(b.providerName, b.blocked.length)}
-														{:else}
+														{:else if !protectedByText(b)}
 															not holding
 														{/if}
 													</span>
@@ -2339,8 +2356,8 @@
 											<!-- Leading status column — `held` ink only on the
 										     mark itself when this row is adverse, since colour is the
 										     one thing that may vary with state here. -->
-											<li class="flex items-center gap-3 px-4 py-2.5">
-												<StatusMark state={d.adverse ? 'held' : 'newest'} />
+											<li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+												<StatusMark state={d.adverse || d.verdict ? 'held' : 'newest'} />
 												{#if d.href}
 													<a
 														href={d.href}
@@ -2358,12 +2375,16 @@
 												<!-- Adverse (waiting) is the only state that spends hue —
 											     see the "Waiting on" card's identical note above. -->
 												<span
-													class="t-meta ml-auto shrink-0 {d.adverse
+													class="t-meta ml-auto shrink-0 {d.adverse || d.verdict
 														? 'text-held'
 														: 'text-fg-subtle'}"
 												>
-													{d.adverse ? 'waiting' : 'ok'}
+													{d.adverse ? 'waiting' : d.verdict ? 'at risk' : 'ok'}
 												</span>
+												{#if d.verdict}
+													<!-- ROLLBACK: the verdict the provider's owner needs BEFORE rolling back; held ink, on its own line under the row's text (28px = mark 16 + gap 12) -->
+													<span class="t-meta text-fg-muted basis-full pl-7" data-rollback-verdict>{d.verdict}</span>
+												{/if}
 											</li>
 										{/each}
 									</ul>

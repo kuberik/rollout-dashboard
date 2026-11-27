@@ -12,6 +12,8 @@
 import type { Rollout } from '../../types';
 import { classOf } from './health-failures';
 import type { DetailRow } from './detail-rows';
+import { blockedSelection, blockedWhy, breakRows, buildName, historyBlockedNote, type BreakRow } from './rollback-deps';
+import type { DependencyBreak } from '../../types';
 
 type Status = NonNullable<Rollout['status']>;
 export type HistoryEntry = NonNullable<Status['history']>[number];
@@ -162,6 +164,14 @@ export type AutoRollbackView =
 			why: string;
 			failed: HistoryEntry;
 			rows: VerdictRow[];
+			/** ConsumerRequires | TargetRequires: what the usual rollback target would break, one row each (empty otherwise) */
+			breaks: BreakRow[];
+			/** the breaks themselves, verbatim from the controller */
+			blockedBy: DependencyBreak[];
+			/** the build a rollback would go to if the person overrides the block (display name) */
+			usualTarget: string;
+			/** the same build's tag, for opening the Roll back dialog on it */
+			usualTag: string;
 			message?: string;
 	  };
 
@@ -269,7 +279,14 @@ export function autoRollbackView(r: Rollout | null | undefined): AutoRollbackVie
 	}
 	if (c.status === 'False' && head.bakeStatus === 'Failed') {
 		const rows = verdictRows(head);
-		return { state: 'not-rolled-back', reason: c.reason, headline: notRolledBackHeadline(c.reason, head, rows), why: notRolledBackWhy(c.reason, head, rows), failed: head, rows, message: c.message };
+		if (c.reason === 'ConsumerRequires' || c.reason === 'TargetRequires') {
+			const sel = blockedSelection(r);
+			const blockedBy = sel?.blockedBy ?? [];
+			const usual = buildName(r, sel?.usualTarget);
+			const why = blockedWhy(blockedBy);
+			return { state: 'not-rolled-back', reason: c.reason, headline: `Not rolled back \u00b7 ${why}`, why, failed: head, rows, breaks: breakRows(blockedBy, usual), blockedBy, usualTarget: usual, usualTag: sel?.usualTarget ?? '', message: c.message };
+		}
+		return { state: 'not-rolled-back', reason: c.reason, headline: notRolledBackHeadline(c.reason, head, rows), why: notRolledBackWhy(c.reason, head, rows), failed: head, rows, breaks: [], blockedBy: [], usualTarget: '', usualTag: '', message: c.message };
 	}
 	return null;
 }
@@ -303,6 +320,8 @@ export function entryRollbackNote(r: Rollout | null | undefined, entry: HistoryE
 	if (!r?.spec?.autoRollback) return noteOf(false, rows.some((x) => x.rollsBack) ? 'Would roll back' : 'Not rolled back', 'Automatic rollback is off');
 	if (deployedByHand(entry.deployKind)) return noteOf(false, 'Not rolled back', 'Deployed by hand');
 	if (!entry.deployKind) return noteOf(false, 'Not rolled back', 'Deployed before rollback decisions were recorded');
+	const blocked = historyBlockedNote(entry);
+	if (blocked) return noteOf(false, 'Not rolled back', blocked);
 	const head = r?.status?.history?.[0];
 	const c = cond(r);
 	if (head === entry && c?.status === 'False' && c.reason) return noteOf(false, 'Not rolled back', notRolledBackWhy(c.reason, entry, rows));

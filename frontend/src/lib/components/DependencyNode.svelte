@@ -72,7 +72,9 @@
 		QuestionCircleOutline,
 		ClockOutline,
 		UserOutline,
-		ExclamationCircleOutline
+		ExclamationCircleOutline,
+		ShieldCheckOutline,
+		UndoOutline
 	} from 'flowbite-svelte-icons';
 	import Chip from '$lib/components/Chip.svelte';
 	import RestGlyph from '$lib/components/RestGlyph.svelte';
@@ -508,6 +510,18 @@
 						>{hc.requiredVersion}</span
 					>{/if}{#if hc.providedVersion}{' '}· has {hc.providedVersion}{:else}{' '}· not served here{/if}</span
 			>
+		</span>
+	{/each}
+
+	<!--
+		ROLLBACK, THE PROVIDER'S SIDE (same row shape as the held constraint above, this node's counterpart on the consumer: a 12px
+		icon, then `t-meta` `text-fg-subtle`; colour is spent on the icon only). `protecting` = this provider holds its failed build so a
+		running consumer is not broken (held-ink shield). One note per node; the norm (an Allow edge, nothing failed) draws nothing.
+	-->
+	{#each data.rollbackNotes as note (note.kind)}
+		<span class="flex min-w-0 items-start gap-1.5" data-rollback-note={note.kind}>
+			<ShieldCheckOutline class="mt-px h-3 w-3 shrink-0 text-held" />
+			<span class="t-meta min-w-0 text-wrap text-fg-subtle">{note.text}</span>
 		</span>
 	{/each}
 </svelte:element>

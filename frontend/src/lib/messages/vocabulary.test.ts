@@ -335,6 +335,8 @@ const DENY: Array<{
 		allow: [
 			// tooltip (a title attribute, never the visible label) of the tab header's Roll back; built in script so a disabled button can show the pin-owner reason instead
 			'lib/components/RolloutTabHeader.svelte\tcode\tRoll back to …',
+			// tooltip and aria-label (never the visible label) of the failed-deploy banner's Roll back when a blocked rollback becomes safe
+			'lib/components/FailurePanel.svelte\tcode\tRoll back to …',
 			// dialog title
 			'lib/components/ChangeVersionModal.svelte\tcode\tDeploy … to …',
 			// dialog title/confirm
@@ -369,6 +371,11 @@ const DENY: Array<{
 		// the capitalized one-word button/title verb ("Rollback" instead of
 		// "Roll back").
 		re: /\bRollback\b/,
+		// The noun, capitalised only because it starts the line: the rollback-dependency-safety preview ("Rollback goes to")
+		// names the automatic rollback, never a button a person presses.
+		allow: [
+			'lib/view-models/rollback-deps.ts\tcode\tRollback goes to …, skipping …'
+		],
 		why: '"Rollback" (one word) is retired as a button/title VERB — the verb is "Roll back" (two words); "rollback" (lowercase, one word) survives only as the noun. See CLAUDE.md (e).'
 	}
 ];

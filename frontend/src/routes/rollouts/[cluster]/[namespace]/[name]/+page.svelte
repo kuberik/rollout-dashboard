@@ -111,6 +111,7 @@
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
 	import { autoRollbackView, failedBakeHeld, triggerSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
 	import CalmBanner from '$lib/components/CalmBanner.svelte';
+	import { previewLine, skippedDetailRows, skippedSentence } from '$lib/view-models/rollback-deps';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
 	import ActRow from '$lib/components/ActRow.svelte';
@@ -3530,6 +3531,7 @@
 						canUpdate={canUpdate || !permissionsKnown}
 						canModify={canModify || !permissionsKnown}
 						actionsPending={!permissionsKnown}
+						fleet={(listQuery.data?.rollouts?.items ?? []) as Rollout[]}
 						{isDashboardManagingWantedVersion}
 						{cluster}
 						environmentName={environment?.spec?.environment ?? null}
@@ -3793,8 +3795,8 @@
 								icon={UndoOutline}
 								title="Rolled back automatically"
 								move={{ from: failedName, to: autoRolled.target }}
-								line={triggerSentence(autoRolled.triggers)}
-								rows={verdictDetailRows([...autoRolled.triggers, ...autoRolled.spared])}
+								line={skippedSentence(autoRolled.rollback.autoRollback) || triggerSentence(autoRolled.triggers)}
+								rows={[...verdictDetailRows([...autoRolled.triggers, ...autoRolled.spared]), ...skippedDetailRows(autoRolled.rollback.autoRollback, cluster, name)]}
 								secondary={canModify && failedBakeHeld(rollout, autoRolled.failed.version.tag)
 									? {
 											label: 'Deploy anyway',
@@ -3903,6 +3905,7 @@
 									{namespace}
 									{name}
 									{cluster}
+									rollbackPreview={previewLine(rollout)}
 									onContinue={continueRollout}
 								/>
 							{/if}
