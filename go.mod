@@ -18,7 +18,7 @@ require (
 	github.com/google/go-github/v88 v88.0.0
 	github.com/kuberik/environment-controller v0.2.0-rc.0.0.20261109131018-e596aabd24bd
 	github.com/kuberik/openkruise-controller v0.3.1-0.20260427061036-696fddeeb5bd
-	github.com/kuberik/rollout-controller v0.11.1-0.20261121115828-c461f44280b5
+	github.com/kuberik/rollout-controller v0.11.1-0.20261126220845-e932b696b8fe
 	github.com/openkruise/kruise-rollout-api v0.6.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.24.0
@@ -126,5 +126,3 @@ require (
 // (spec.releaseSourceRef, status.releaseSource, status.candidates), HealthCheck
 // observations[].message and the bake hold history fields. The requirement
 // moves to a release tag once one carries them.
-
-replace github.com/kuberik/rollout-controller => /home/luka/projects/kuberik/.work/rollback-api/wt-rc
