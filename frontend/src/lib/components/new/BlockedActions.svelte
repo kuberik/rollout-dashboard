@@ -6,7 +6,7 @@
 	 * is start-justified, so a collapse removes only empty trailing space and Gates stays put. From 640px of the banner the
 	 * actions are `Banner`'s right-hand column, where the primary is the rightmost control on every banner (banners system,
 	 * 2026-11-27): Approve (or its reserved 104px slot while the ask loads) ends the row, Gates sits left of it.
-	 * Proportions borrowed from the Home lead row (`btn-sm` + `nav-link`).
+	 * Gates is drawn like every navigation item in a banner's action column (`Open rollout ›`): a bordered secondary.
 	 */
 	import { fade } from 'svelte/transition';
 	import { ChevronRightOutline } from 'flowbite-svelte-icons';
@@ -16,7 +16,7 @@
 	let { state: slotState, ask, gatesHref }: { state: 'approve' | 'reserved' | 'none'; ask: ApprovalTarget | null | unknown; gatesHref: string } = $props();
 </script>
 
-<a href={gatesHref} class="nav-link" data-gates-link>
+<a href={gatesHref} class="btn btn-secondary btn-sm gap-1.5" data-gates-link>
 	Gates
 	<ChevronRightOutline class="h-3 w-3" />
 </a>

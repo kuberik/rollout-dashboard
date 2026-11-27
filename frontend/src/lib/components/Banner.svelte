@@ -294,11 +294,9 @@
 		row-gap: 2px;
 		margin-top: 2px;
 	}
-	/* a body that is more than a sentence (a figure, a check line, a change line): Details goes under it, at the text's left */
+	/* a body block: Details follows its LAST line, inline, and wraps under it only when the line is full */
 	.bn-row2--block {
-		flex-direction: column;
-		align-items: flex-start;
-		row-gap: 4px;
+		align-items: last baseline;
 	}
 	/* THE action position: the first button row is centred on the title line (32px button on a 24px line), always */
 	.bn-acts {
@@ -411,7 +409,8 @@
 			flex: 1 1 100%;
 		}
 		.bn-own {
-			justify-content: stretch;
+			flex-wrap: nowrap;
+			gap: 8px;
 		}
 		.bn-own > :global(*) {
 			flex: 1 1 0;
@@ -421,7 +420,6 @@
 		.bn-own :global(.btn),
 		.bn-own :global(.nav-link) {
 			flex: 1 1 auto;
-			width: 100%;
 			height: 44px;
 			min-height: 44px;
 			justify-content: center;

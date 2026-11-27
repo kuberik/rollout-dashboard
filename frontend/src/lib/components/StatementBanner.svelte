@@ -164,12 +164,18 @@
 	const hasBody = $derived(!!(figure || check || place || since || build || cause || fact || message || body));
 </script>
 
+{#snippet checkLine(c: { name?: string; message?: string; cls?: string })}
+	<!-- one line format on every banner: `<check> · <message>`, no second status mark (the banner's disc is the one);
+	     a recovered check keeps FailedCheckLine's recovered ring, which IS the news -->
+	{#if recovered}<FailedCheckLine check={c} danger ink={checkInk} {recovered} body />
+	{:else}<p class="min-w-0" data-statement-check>{#if c.name}<span class="text-fg">{c.name}</span>{#if c.message}<span class="mx-1.5 text-fg-subtle" aria-hidden="true">·</span>{/if}{/if}{c.message ?? ''}</p>{/if}
+{/snippet}
 {#snippet bodySnip()}
 			<div class="flex min-w-0 flex-col gap-2" data-statement-body>
 				{#if figure}
 					<!-- the measured figure as ONE line (banners system: title + one line); the big 32px figure is the card's, not the banner's -->
 					<p class="min-w-0" data-observation-figure data-lead={figure.kind}><span class="font-semibold tabular-nums text-fg">{figure.value}{figure.unit && figure.unit !== '%' && figure.unit !== '‰' ? ' ' : ''}{figure.unit}</span> {figure.label}{#if shownCheck?.message}<span class="mx-1.5 text-fg-subtle" aria-hidden="true">·</span>{shownCheck.message}{/if}</p>
-				{:else if shownCheck && !checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} {recovered} body />{/if}
+				{:else if shownCheck && !checkAfterMeta}{@render checkLine(shownCheck)}{/if}
 				{#if place || since || build || cause || fact}
 					<!-- one .dot-list row at every width and in every banner (no fixed tracks: a track left a 50px hole between the sha and the badge) -->
 					<div class="dot-list min-w-0" data-statement-meta>
@@ -188,7 +194,7 @@
 						</div>
 					</div>
 				{/if}
-				{#if shownCheck && checkAfterMeta && !figure}<FailedCheckLine check={shownCheck} danger ink={checkInk} {recovered} body />{/if}
+				{#if shownCheck && checkAfterMeta && !figure}{@render checkLine(shownCheck)}{/if}
 				{#if message && !figure}<p class="min-w-0 {messageDesktopOnly ? 'max-sm:hidden' : ''}">{#if typeof message !== 'string'}<CauseText parts={message} />{:else}{#each splitOpensClause(message) as part}{#if part.unit}<span class="whitespace-nowrap" data-opens-clause>{part.text}</span>{:else}{part.text}{/if}{/each}{/if}</p>{/if}
 				{#if body}{@render body()}{/if}
 			</div>
