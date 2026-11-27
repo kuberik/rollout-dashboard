@@ -3813,6 +3813,26 @@
 							paused (`autoDeploy.paused`) — never a duplicate claim when
 							clearing the pin just reopened it.
 						-->
+						{#snippet releaseHoldAction()}
+							{#if autoRolled}
+								{@const failedName = getDisplayVersion(autoRolled.failed.version)}
+								<!-- the release for the hold, in the banner's own action slot like every other banner's buttons (owner 2026-11-27): the same `Deploy anyway` the held build's row in Newer builds carries -->
+								<button
+									type="button"
+									class="btn btn-secondary btn-sm"
+									data-release-hold
+									disabled={!isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout)}
+									onclick={() => {
+										const tag = autoRolled.failed.version.tag;
+										selectedVersion = tag;
+										isPinVersionMode = isOlderThanCurrent(tag) || isSelectedVersionCustom(tag);
+										deployExplanation = '';
+										requestChangeVersionModal();
+									}}
+									aria-label={`Deploy ${failedName} anyway`}>Deploy anyway</button
+								>
+							{/if}
+						{/snippet}
 						{#snippet rollbackMessage()}
 							{#if autoRolled}
 								{@const failedName = getDisplayVersion(autoRolled.failed.version)}
@@ -3825,27 +3845,7 @@
 									line={rolledBackLine(autoRolled.triggers, failedName, held)}
 									rows={glanceRows([...autoRolled.triggers, ...autoRolled.spared], true)}
 									moreHref={rolloutPath(cluster, namespace, name, 'history')}
-								>
-									{#snippet actions()}
-										{#if canModify && held}
-											<!-- the release for the hold: the same `Deploy anyway` the held build's row in Newer builds carries, here where the hold is stated -->
-											<button
-												type="button"
-												class="btn btn-secondary btn-sm"
-												data-release-hold
-												disabled={!isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout)}
-												onclick={() => {
-													const tag = autoRolled.failed.version.tag;
-													selectedVersion = tag;
-													isPinVersionMode = isOlderThanCurrent(tag) || isSelectedVersionCustom(tag);
-													deployExplanation = '';
-													requestChangeVersionModal();
-												}}
-												aria-label={`Deploy ${failedName} anyway`}>Deploy anyway</button
-											>
-										{/if}
-									{/snippet}
-								</RollbackGlance>
+								/>
 							{:else}
 							<p>
 								{justClearedPin
@@ -3862,6 +3862,7 @@
 							icon={UndoOutline}
 							title={autoRolled ? 'Rolled back automatically' : 'Rolled back'}
 							messageBody={rollbackMessage}
+							actions={autoRolled && canModify && failedBakeHeld(rollout, autoRolled.failed.version.tag) ? releaseHoldAction : undefined}
 							footnoteBody={autoRolled ? undefined : rollbackDetail}
 						>
 							{#snippet extra()}
