@@ -161,9 +161,11 @@ describe('BlockingStoryPanel: the verdict and the rule handle are the disclosed 
 		expect(story.headline).toBe('DEV is waiting for hello-api-app to ship a newer api');
 		render(BlockingStoryPanel, { props: { story } });
 
-		// PRINTED — the fact with its subject, and one consequence line.
+		// PRINTED — the fact with its subject, and ONE sentence: `story.line` (the `until` clause), which is what the banner
+		// prints; the fuller `consequence` (with the waiting-count lead) is no longer on the banner.
+		expect(story.line).toBe('Nothing promotes itself until hello-api-app ships a newer api than 1.66.0.');
 		expect(screen.getByText(story.headline).closest(PANEL)).toBeNull();
-		expect(screen.getByText(story.consequence).closest(PANEL)).toBeNull();
+		expect(screen.getByText(story.line!).closest(PANEL)).toBeNull();
 
 		// DISCLOSED — the mechanism and the generated object id an operator
 		// cannot act on directly. Still in the DOM: `subject.svelte.test.ts`
