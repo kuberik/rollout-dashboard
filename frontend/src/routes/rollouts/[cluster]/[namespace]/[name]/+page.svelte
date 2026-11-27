@@ -112,6 +112,7 @@
 	import RollbackGlance from '$lib/components/RollbackGlance.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
+	import ActRow from '$lib/components/ActRow.svelte';
 	import { readyIssue, readyFacts, type ReadyIssue } from '$lib/view-models/ready-refusal';
 	import GlanceSplit from '$lib/components/GlanceSplit.svelte';
 	import ConflictRow from '$lib/components/ConflictRow.svelte';
@@ -3816,21 +3817,27 @@
 						{#snippet releaseHoldAction()}
 							{#if autoRolled}
 								{@const failedName = getDisplayVersion(autoRolled.failed.version)}
-								<!-- the release for the hold, in the banner's own action slot like every other banner's buttons (owner 2026-11-27): the same `Deploy anyway` the held build's row in Newer builds carries -->
-								<button
-									type="button"
-									class="btn btn-secondary btn-sm"
-									data-release-hold
-									disabled={!isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout)}
-									onclick={() => {
-										const tag = autoRolled.failed.version.tag;
-										selectedVersion = tag;
-										isPinVersionMode = isOlderThanCurrent(tag) || isSelectedVersionCustom(tag);
-										deployExplanation = '';
-										requestChangeVersionModal();
-									}}
-									aria-label={`Deploy ${failedName} anyway`}>Deploy anyway</button
-								>
+								<!-- the release for the hold, in the same action row every failure banner uses (ActRow in the panel's actionBar
+								     mode: right on wide, the phone's full-width lead), owner 2026-11-27; the same `Deploy anyway` the held build's
+								     row in Newer builds carries -->
+								<ActRow
+									secondary={[
+										{
+											label: 'Deploy anyway',
+											key: 'release-hold',
+											data: { 'release-hold': '' },
+											ariaLabel: `Deploy ${failedName} anyway`,
+											disabled: !isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout),
+											onclick: () => {
+												const tag = autoRolled.failed.version.tag;
+												selectedVersion = tag;
+												isPinVersionMode = isOlderThanCurrent(tag) || isSelectedVersionCustom(tag);
+												deployExplanation = '';
+												requestChangeVersionModal();
+											}
+										}
+									]}
+								/>
 							{/if}
 						{/snippet}
 						{#snippet rollbackMessage()}
@@ -3863,6 +3870,7 @@
 							title={autoRolled ? 'Rolled back automatically' : 'Rolled back'}
 							messageBody={rollbackMessage}
 							actions={autoRolled && canModify && failedBakeHeld(rollout, autoRolled.failed.version.tag) ? releaseHoldAction : undefined}
+							actionBar={!!autoRolled}
 							footnoteBody={autoRolled ? undefined : rollbackDetail}
 						>
 							{#snippet extra()}

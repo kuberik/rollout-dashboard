@@ -2231,7 +2231,6 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Clearing the pin 
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Commit message and author need GitHub. …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Couldn't check dependency holds
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Custom build
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Deploy anyway
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Deploy requested — starting
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	deployed … ago
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Deployment pipeline
