@@ -174,7 +174,7 @@
 			<div class="flex min-w-0 flex-col gap-2" data-statement-body>
 				{#if figure}
 					<!-- the measured figure as ONE line (banners system: title + one line); the big 32px figure is the card's, not the banner's -->
-					<p class="min-w-0" data-observation-figure data-lead={figure.kind}><span class="font-semibold tabular-nums text-fg">{figure.value}{figure.unit && figure.unit !== '%' && figure.unit !== '‰' ? ' ' : ''}{figure.unit}</span> {figure.label}{#if shownCheck?.message}<span class="mx-1.5 text-fg-subtle" aria-hidden="true">·</span>{shownCheck.message}{/if}</p>
+					<p class="min-w-0" data-observation-figure data-lead={figure.kind}><span class="tabular-nums">{figure.value}{figure.unit && figure.unit !== '%' && figure.unit !== '‰' ? ' ' : ''}{figure.unit}</span> {figure.label}{#if shownCheck?.message}<span class="mx-1.5 text-fg-subtle" aria-hidden="true">·</span>{shownCheck.message}{/if}</p>
 				{:else if shownCheck && !checkAfterMeta}{@render checkLine(shownCheck)}{/if}
 				{#if place || since || build || cause || fact}
 					<!-- one .dot-list row at every width and in every banner (no fixed tracks: a track left a 50px hole between the sha and the badge) -->

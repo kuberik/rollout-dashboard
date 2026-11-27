@@ -195,8 +195,10 @@
 			?? []) as HealthObservation[]
 	);
 	const figure = $derived.by(() => { const l = failingLead(null, observations); return l.kind === 'check' ? null : l; });
-	/* with a figure the sentence keeps the check's NAME and the budget; the number is not said twice */
-	const bannerMessage = $derived(figure?.budget && shownList.length === 1 ? `${findDisplayName(shownList[0])}: ${figure.budget}` : summaryLine);
+	/* with a figure the line is the one every banner draws for a measured check: `8.2% error rate · over a 1% budget`
+	   (StatementBanner's figure line); the check's name is in Details and the Health checks card, not on the line */
+	const figureLine = $derived(figure?.budget ? `${figure.value}${figure.unit && figure.unit !== '%' && figure.unit !== '‰' ? ' ' : ''}${figure.unit} ${figure.label} · ${figure.budget}` : null);
+	const bannerMessage = $derived(figureLine && shownList.length === 1 ? figureLine : summaryLine);
 	/* the checks the banner draws evidence from, read from observations only: the live HealthCheck when we have it, else the history snapshot */
 	const pool = $derived(poolOf(healthChecks, failedHCList as SnapCheck[], deployWindowStart(rollout)));
 	const worst = $derived(worstOf(pool));

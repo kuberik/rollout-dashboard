@@ -419,7 +419,8 @@
 		}
 		.bn-own :global(.btn),
 		.bn-own :global(.nav-link) {
-			flex: 1 1 auto;
+			flex: 1 1 0;
+			min-width: 0;
 			height: 44px;
 			min-height: 44px;
 			justify-content: center;
