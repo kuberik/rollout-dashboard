@@ -317,9 +317,23 @@
 		text-align: right;
 	}
 	/* every control in the column is the banner's height (DL §3.6: 32px inside a banner), whoever drew it */
-	.bn-acts :global(.btn) {
+	.bn-acts :global(.btn),
+	.bn-acts :global(.nav-link) {
 		height: 32px;
 		min-height: 32px;
+	}
+	.bn-acts :global(.nav-link) {
+		display: inline-flex;
+		align-items: center;
+		padding-top: 0;
+		padding-bottom: 0;
+	}
+	/* the primary is the last button and "⋯" closes the row at EVERY width, so the phone row reads like the desktop one */
+	.bn-acts :global(.ar-end .btn-primary) {
+		order: 1;
+	}
+	.bn-acts :global(.ar-end .ar-more) {
+		order: 2;
 	}
 	.bn-panel {
 		grid-column: 2 / -1;
