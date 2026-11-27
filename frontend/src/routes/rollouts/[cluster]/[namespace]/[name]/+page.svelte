@@ -45,6 +45,7 @@
 	import {
 		CodePullRequestSolid,
 		UndoOutline,
+		BanOutline,
 		EditOutline,
 		CheckCircleSolid,
 		ExclamationCircleSolid,
@@ -108,11 +109,12 @@
 	import { ledgerSpine } from '$lib/ledger-spine';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import FailurePanel from '$lib/components/FailurePanel.svelte';
+	import { autoRollbackView, failedBakeHeld, triggerSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
+	import CalmBanner from '$lib/components/CalmBanner.svelte';
 	import { smoothHeight } from '$lib/smooth-height';
 	import AlertPanel from '$lib/components/AlertPanel.svelte';
-	import { readyIssue, readyFacts, type ReadyIssue } from '$lib/view-models/ready-refusal';
-	import GlanceSplit from '$lib/components/GlanceSplit.svelte';
-	import ConflictRow from '$lib/components/ConflictRow.svelte';
+	import ActRow from '$lib/components/ActRow.svelte';
+	import { readyIssue, readyLine, readyRows, type ReadyIssue } from '$lib/view-models/ready-refusal';
 	import FactList from '$lib/components/FactList.svelte';
 	import NotFound from '$lib/components/NotFound.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -784,6 +786,8 @@
 		return $now.getTime() - new Date(ts).getTime();
 	});
 	const rollbackIsStale = $derived(rollbackAgeMs > 24 * 60 * 60 * 1000);
+	/** the controller rolled this back (and the banner says so): the rollback already happened, so the header offers no second Roll back */
+	const autoRolledJustNow = $derived(!!rolledBack && !rollbackIsStale && autoRollbackView(rollout)?.state === 'rolled-back');
 
 	const rollbackFoldedIntoGateBanner = $derived(
 		!!rolledBack &&
@@ -793,6 +797,17 @@
 			blockStory.gates.some((g) => g.kind === 'dependency') &&
 			!rollbackIsStale
 	);
+
+	// The build whose hold the rolled-back banner releases ("Deploy anyway" there).
+	// Its Newer builds row drops its own button while the banner shows, so the one
+	// action has one place on the page. Only while the full banner draws that button:
+	// a stale rollback (one-line note) or one folded into the gate banner has none.
+	const bannerHoldTag = $derived.by(() => {
+		if (!rolledBack || rollbackIsStale || rollbackFoldedIntoGateBanner) return null;
+		const v = autoRollbackView(rollout);
+		if (v?.state !== 'rolled-back') return null;
+		return failedBakeHeld(rollout, v.failed.version.tag) ? v.failed.version.tag : null;
+	});
 
 	/**
 	 * ⭐ THE PROVIDER FACT, ON THE PROVIDER'S OWN OVERVIEW. (2026-09-02)
@@ -3161,7 +3176,7 @@
 										     for one fact. `!isFailed` hides this one only while that
 										     banner offers the action; it returns the moment the
 										     banner itself leaves (a retry, a recovered check). -->
-						{#if rollbackNow && !isFailed}
+						{#if rollbackNow && !isFailed && !autoRolledJustNow}
 							<button
 								type="button"
 								id="status-rollback-btn"
@@ -3379,21 +3394,15 @@
 					<PartialDataNotice class="mb-4" errors={myClusterErrors} subject="this rollout" onRetry={() => fleetListQuery.refetch()} isRetrying={fleetListQuery.isFetching} />
 				{/if}
 				<!-- ══ READY=FALSE (deploy refused / not ready) ══ — first in the stack; see `readyBanner`. `open`, not `{#if}`: it collapses out when the next deploy succeeds. -->
-				<!-- A field conflict is DRAWN (`ConflictRow`: object, path, writer → kuberik ✕) with one short next step under it, and
-				     its record (reason code, controller hint, since) beside it on a wide banner or behind Details on a phone
-				     (`GlanceSplit`; glanceable-UI rule, owner 2026-11-26). -->
-				{#snippet readyGlance()}
-					<ConflictRow conflict={readyShown!.conflict!} title={readyShown!.line} />{#if readyShown?.nextStep}<p class="mt-1.5" data-ready-next>{readyShown.nextStep}</p>{/if}
-				{/snippet}
-				{#snippet readyMessage()}
-					{#if readyShown?.conflict}<GlanceSplit main={readyGlance} facts={readyFacts(readyShown, formatTimeAgoCompact)} />{:else}{readyShown?.line}{#if readyShown?.nextStep}<p class="mt-1.5" data-ready-next>{readyShown.nextStep}</p>{/if}{/if}
-				{/snippet}
-				<AlertPanel
+				<!-- Q1L report banner (CalmBanner): the title, ONE short sentence naming the other writer and the field, the next step, the reason code,
+				     the controller's hint and the age behind Details (owner glanceable-UI rule, 2026-11-26/27). -->
+				<CalmBanner
 					open={!!readyBanner}
-					severity="error"
+					tone="danger"
+					icon={BanOutline}
 					title={readyBanner?.title ?? 'Deploy refused'}
-					messageBody={readyMessage}
-					footnote={readyBanner?.conflict ? undefined : (readyBanner?.detail ?? undefined)}
+					line={readyShown ? readyLine(readyShown) : undefined}
+					rows={readyShown ? readyRows(readyShown, formatTimeAgoCompact) : undefined}
 					dataTour="ready-banner"
 				/>
 				{#if blockStory.pinnedTo}
@@ -3681,6 +3690,9 @@
 					{@const trig = latestEntry?.triggeredBy}
 					{@const author = trig?.kind === 'User' && trig?.name ? trig.name : null}
 					{@const rollbackAge = formatTimeAgoCompact(latestEntry.timestamp, $now)}
+					<!-- AUTO-ROLLBACK PREVIEW: when the CONTROLLER rolled this back (condition AutoRollback=True/RolledBack, history[0].deployKind AutoRollback) the same panel names the failed build, what triggered it, and the hold -->
+					{@const autoView = autoRollbackView(rollout)}
+					{@const autoRolled = autoView?.state === 'rolled-back' ? autoView : null}
 					<!--
 						⛔ NOT `warning`, AND NOT `pinned`. MEASURED ON THE PAGE,
 						NOT CHOSEN FROM THE ENUM.
@@ -3723,7 +3735,7 @@
 						-->
 						<p class="t-meta text-fg-subtle mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1">
 							<UndoOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
-							Rolled back {rollbackAge} ago{author ? ` · by ${author}` : ''}.
+							Rolled back {autoRolled ? 'automatically ' : ''}{rollbackAge} ago{author ? ` · by ${author}` : ''}.
 							<a href={rolloutPath(cluster, namespace, name, 'history')} class="nav-link">History</a
 							>
 						</p>
@@ -3762,69 +3774,53 @@
 						     find an email address and ONE record is not a set. -->
 						{#snippet rollbackDetail()}
 							<p class="break-words">{rollbackNext(rolledBack, autoDeploy)}</p>
+							{#if autoDeploy.paused && !justClearedPin}<p class="mt-1 break-words">A deploy you start by hand still applies immediately.</p>{/if}
 							{#if author}
 								<FactList
 									class="mt-2"
-									tone="banner"
+									tone="card"
 									facts={[{ label: 'Rolled back by', value: author, handle: true }]}
 								/>
 							{/if}
 						{/snippet}
-						<!--
-							⭐ THE PRINTED SENTENCE CONFIRMS AN ACTION JUST TAKEN, WHEN
-							ONE WAS. (P4, operator-walk finding) `rollbackWent` reads
-							CURRENT server state fresh on every render — before a clear
-							it says "…and pinned there.", after it says "…and it is not
-							pinned there." Both true, but a reader who just pressed
-							`Clear pin` and watches this exact sentence mutate one
-							clause cannot tell "that worked" from "the rollback never
-							pinned in the first place." `justClearedPin` swaps in an
-							explicit confirmation for a few seconds — see its own
-							comment for why a poll-gap bridge isn't needed here.
-
-							⭐ AND THE MANUAL-DEPLOY ESCAPE RIDES HERE NOW, NOT ONLY
-							BEHIND AN 18px `?` ELSEWHERE. (P4) The release-candidate
-							row's `Held by a gate` popover already states "Pressing
-							Deploy applies it immediately — gates only hold back
-							automatic promotion" — the single most actionable fact on
-							a page where automatic promotion is stuck — but only to a
-							reader who hovers a tiny icon on a specific candidate row
-							they may never scroll to. This panel is the one an operator
-							actually reads when a rollback is the live question, so the
-							SAME fact (this product's one canonical phrasing for it,
-							`blocking-story.ts`'s own) prints here too, as a quiet
-							second line, whenever automatic promotion is genuinely
-							paused (`autoDeploy.paused`) — never a duplicate claim when
-							clearing the pin just reopened it.
-						-->
-						{#snippet rollbackMessage()}
-							<p>
-								{justClearedPin
-									? 'The pin has been cleared; automatic promotion is back on.'
-									: rollbackWent(rolledBack, autoDeploy)}
-							</p>
-							{#if autoDeploy.paused && !justClearedPin}
-								<p class="mt-1 opacity-80">A deploy you start by hand still applies immediately.</p>
-							{/if}
-						{/snippet}
-						<AlertPanel
-							severity="info"
-							icon={UndoOutline}
-							title="Rolled back"
-							messageBody={rollbackMessage}
-							footnoteBody={rollbackDetail}
-						>
-							{#snippet extra()}
-								<!-- ⭐ THE PANEL CARRIES ITS OWN AGE. (P4, operator-walk
-								     finding) The event this panel is ABOUT was invisible
-								     as a fact — three days old with nothing on screen
-								     saying so, next to a `Rolled back` headline that reads
-								     identically whether it happened a minute or a week
-								     ago. Same slot `AlertPanel`'s `extra` already reserves
-								     beside the headline for exactly this kind of chip. -->
-								<span class="t-meta text-fg-subtle tabular-nums">{rollbackAge} ago</span>
-							{/snippet}
-						</AlertPanel>
+						{#if autoRolled}
+							{@const failedName = getDisplayVersion(autoRolled.failed.version)}
+							<!-- Q1L (signed 2026-11-27): the same report banner every failure uses. A rollback that worked has the normal card
+							     border; the mark carries the hue. The sentence is the move and what triggered it; the hold is the button's
+							     own business ("Deploy anyway"), and the checks sit behind Details. -->
+							<CalmBanner
+								tone="neutral"
+								icon={UndoOutline}
+								title="Rolled back automatically"
+								move={{ from: failedName, to: autoRolled.target }}
+								line={triggerSentence(autoRolled.triggers)}
+								rows={verdictDetailRows([...autoRolled.triggers, ...autoRolled.spared])}
+								secondary={canModify && failedBakeHeld(rollout, autoRolled.failed.version.tag)
+									? {
+											label: 'Deploy anyway',
+											key: 'release-hold',
+											data: { 'release-hold': '' },
+											ariaLabel: `Deploy ${failedName} anyway`,
+											disabled: !isDashboardManagingWantedVersion && !hasForceDeployAnnotation(rollout),
+											onclick: () => {
+												const tag = autoRolled.failed.version.tag;
+												selectedVersion = tag;
+												isPinVersionMode = isOlderThanCurrent(tag) || isSelectedVersionCustom(tag);
+												deployExplanation = '';
+												requestChangeVersionModal();
+											}
+										}
+									: undefined}
+							/>
+						{:else}
+							<CalmBanner
+								tone="neutral"
+								icon={UndoOutline}
+								title="Rolled back"
+								line={justClearedPin ? 'The pin has been cleared; automatic promotion is back on.' : rollbackWent(rolledBack, autoDeploy)}
+								detailsBody={rollbackDetail}
+							/>
+						{/if}
 					{/if}
 				{/if}
 				<!-- ⛔ THE `Version pinned` BANNER THAT USED TO SIT IN THE
@@ -4119,7 +4115,7 @@
 											 (below) now checks `justFailed` FIRST, for the same
 											 reason. -->
 												{@const failedHere = failedHereVerdict(rollout, version)}
-												{@const justFailed = rowShowsFailed(failedHere)}
+												{@const justFailed = rowShowsFailed(failedHere) || failedBakeHeld(rollout, version)}
 												<!-- ⭐ ITEM 1 (coordinator, 2026-10-09): a row that passes every
 										     known gate and has not just failed is NOT thereby `Ready` —
 										     it is `Ready` only once `holdGraphKnown` says so. Scoped to
@@ -4201,7 +4197,7 @@
 
 												{@const isOlderRow = candidateIndex > 0}
 												{#snippet deployBtn()}
-													{#if canModify}
+													{#if canModify && version !== bannerHoldTag}
 														<!-- ⭐ DEPLOY: ONLY THE NEWEST CARRIES IT AT REST (AD r3 #5). An older build's
 														     Deploy is hover/focus at >=512px of card (in the actions cluster that
 														     replaces the age, History §4.13), and on a narrow card appears after one
@@ -4313,7 +4309,9 @@
 															 for why the precedence flipped. -->
 																<span
 																	class="inline-flex min-w-0 items-center gap-1"
-																	title="The last deploy of this build on this rollout failed its checks. Nothing has re-checked it since; deploying again tries it fresh."
+																	title={failedBakeHeld(rollout, version)
+										? 'Failed its bake here, so automatic deploys skip it until someone deploys it.'
+										: 'The last deploy of this build on this rollout failed its checks. Nothing has re-checked it since; deploying again tries it fresh.'}
 																>
 																	<span class="t-meta text-danger shrink-0">failed here</span>
 																	{#if failedHere.kind === 'failed' && failedHere.rolledBackAt}

@@ -190,7 +190,7 @@
 			</div>
 {/snippet}
 {#snippet actionsSnip()}
-			<ActRow {primary} secondary={acts} {phoneMax} />
+			<ActRow {primary} secondary={acts} {phoneMax} align="start" />
 			{#if note}<p class="t-meta basis-full opacity-80">{note}</p>{/if}
 			{#if canHover.current && tooltips}
 				{#each Object.entries(tooltips) as [id, text] (id)}

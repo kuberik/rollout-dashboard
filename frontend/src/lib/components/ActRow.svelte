@@ -6,6 +6,8 @@
 	/** One action of a statement banner. Content only: the row decides how it looks. */
 	export interface Act {
 		label: string;
+		/** the label below 640px of the banner (a generic word where the full label names a thing); `ariaLabel` should carry the full name */
+		shortLabel?: string;
 		href?: string;
 		onclick?: (e?: MouseEvent) => void;
 		/** GitHub / another site: prints "↗". A same-tab link prints "›". */
@@ -66,15 +68,24 @@
 		secondary = [],
 		fill = true,
 		phoneMax = 2,
-		align = 'start'
+		align = 'start',
+		more = [],
+		size = 'sm',
+		equal = false
 	}: {
 		primary?: Act;
 		secondary?: Act[];
 		fill?: boolean;
 		/** how many actions stay on the phone row (lead + one side by default); the rest go to "⋯" */
 		phoneMax?: number;
-		/** `end`: from 640 the actions end on the right edge (a pane's action row) */
+		/** `end`: from 640 the actions end on the right edge, primary rightmost (a pane's action row, a banner's bottom row) */
 		align?: 'start' | 'end';
+		/** actions that live in the "⋯" menu at EVERY width (a banner shows two buttons at most: "Roll back anyway…" goes here) */
+		more?: Act[];
+		/** `md` is the page header's button (36px); `sm` (32px) is the in-card default */
+		size?: 'sm' | 'md';
+		/** below 640 every visible button takes an equal share of the row (a banner's two buttons), not just the lead */
+		equal?: boolean;
 	} = $props();
 
 	type Item = { act: Act; variant: 'primary' | 'secondary' | 'quiet'; phone: 'lead' | 'side' | 'menu' | 'none' };
@@ -97,7 +108,8 @@
 			phone: !onPhone(o) ? 'none' : i === leadAt ? 'lead' : i === sideAt ? 'side' : 'menu'
 		}));
 	});
-	const menu = $derived(items.filter((i) => i.phone === 'menu'));
+	const menu = $derived([...items.filter((i) => i.phone === 'menu'), ...more.map((act) => ({ act }))]);
+	const btnSize = $derived(size === 'md' ? '' : 'btn-sm');
 
 	let menuOpen = $state(false);
 	let root: HTMLElement | undefined = $state();
@@ -122,12 +134,12 @@
 />
 
 {#snippet face(a: Act, variant: Item['variant'])}
-	{#if a.icon && !a.iconAfter}{@const I = a.icon}<I class={a.iconClass ?? 'h-4 w-4'} aria-hidden="true" />{/if}<span>{a.label}</span>{#if a.icon && a.iconAfter}{@const I = a.icon}<I class="{a.iconClass ?? 'h-4 w-4'} transition-transform {a.iconTurn ? 'rotate-180' : ''}" aria-hidden="true" />{/if}{#if a.href && !a.icon}<span aria-hidden="true" class="shrink-0">{a.external ? '↗' : '›'}</span>{/if}
+	{#if a.icon && !a.iconAfter}{@const I = a.icon}<I class={a.iconClass ?? 'h-4 w-4'} aria-hidden="true" />{/if}<span class="ar-label{a.shortLabel ? ' ar-long' : ''}">{a.label}</span>{#if a.shortLabel}<span class="ar-label ar-short" aria-hidden="true">{a.shortLabel}</span>{/if}{#if a.icon && a.iconAfter}{@const I = a.icon}<I class="{a.iconClass ?? 'h-4 w-4'} transition-transform {a.iconTurn ? 'rotate-180' : ''}" aria-hidden="true" />{/if}{#if a.href && !a.icon}<span aria-hidden="true" class="shrink-0">{a.external ? '↗' : '›'}</span>{/if}
 {/snippet}
 
-<div class="ar" class:ar-fill={fill} class:ar-end={align === 'end'} bind:this={root} data-act-row>
+<div class="ar" class:ar-fill={fill} class:ar-end={align === 'end'} class:ar-equal={equal} bind:this={root} data-act-row>
 	{#each items as { act, variant, phone } (act.key ?? act.label)}
-		{@const cls = `${act.busy ? 'opacity-60 cursor-progress' : ''} ar-item ar-${phone} ${act.phoneOnly ? 'ar-phoneonly' : ''} ${act.desktopOnly ? 'ar-desktoponly' : ''} relative z-[1] shrink-0 gap-1.5 ${variant === 'quiet' ? 'nav-link inline-flex h-8 min-h-0 items-center' : variant === 'primary' ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm'}`}
+		{@const cls = `${act.busy ? 'opacity-60 cursor-progress' : ''} ar-item ar-${phone} ${act.phoneOnly ? 'ar-phoneonly' : ''} ${act.desktopOnly ? 'ar-desktoponly' : ''} relative z-[1] shrink-0 gap-1.5 ${variant === 'quiet' ? 'nav-link inline-flex h-8 min-h-0 items-center' : variant === 'primary' ? `btn btn-primary ${btnSize}` : `btn btn-secondary ${btnSize}`}`}
 		{#if act.href}
 			<a href={act.href} class={cls} id={act.id} data-action={act.key} {...act.data} title={act.title} aria-label={act.ariaLabel} target={act.external ? '_blank' : undefined} rel={act.external ? 'noopener noreferrer' : undefined}>{@render face(act, variant)}</a>
 		{:else}
@@ -135,8 +147,8 @@
 		{/if}
 	{/each}
 	{#if menu.length}
-		<div class="ar-more relative shrink-0">
-			<button type="button" class="btn btn-secondary btn-sm relative z-[1] min-h-11 min-w-11 !px-0" aria-label="More actions" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)} data-action="more">
+		<div class="ar-more relative shrink-0" class:ar-more-always={more.length > 0}>
+			<button type="button" class="btn btn-secondary {btnSize} ar-more-btn relative z-[1] min-w-11 !px-0" aria-label="More actions" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)} data-action="more">
 				<svg viewBox="0 0 16 16" class="h-4 w-4" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" /></svg>
 			</button>
 			{#if menuOpen}
@@ -164,9 +176,24 @@
 	.ar-more {
 		display: none;
 	}
+	.ar :global(.ar-short) {
+		display: none;
+	}
+	.ar-more-always {
+		display: block;
+	}
 	@container (min-width: 640px) {
 		.ar-end {
 			justify-content: flex-end;
+			flex: 1 1 auto;
+		}
+		/* an end-aligned row reads like a dialog's: the primary is the rightmost button (DOM order, and so the phone row, unchanged) */
+		.ar-end :global(.btn-primary) {
+			order: 1;
+		}
+		/* the "⋯" menu closes the row, after the primary */
+		.ar-end .ar-more {
+			order: 2;
 		}
 	}
 	@media (min-width: 640px) {
@@ -203,6 +230,29 @@
 		}
 		.ar-more {
 			display: block;
+		}
+		.ar-more-btn {
+			min-height: 44px;
+		}
+		.ar :global(.ar-long) {
+			display: none;
+		}
+		.ar :global(.ar-short) {
+			display: inline;
+		}
+		/* a long label (a service name) is cut with an ellipsis inside its button, never past its edge */
+		.ar :global(.ar-item) {
+			min-width: 0;
+		}
+		.ar :global(.ar-label) {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+		.ar-equal.ar-fill :global(.ar-item:not(.ar-menu)) {
+			flex: 1 1 auto;
+			min-width: 0;
 		}
 	}
 </style>

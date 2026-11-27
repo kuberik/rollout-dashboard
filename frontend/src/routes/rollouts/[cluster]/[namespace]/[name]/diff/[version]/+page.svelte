@@ -56,7 +56,7 @@
 		hasUnblockFailedAnnotation
 	} from '$lib/utils';
 	import { githubOwnerRepo, repoKeyFor } from '$lib/version-utils';
-	import { deployActs, historyAtLimit } from '$lib/history-marks';
+	import { deployActs, historyAtLimit, heldPastLimit } from '$lib/history-marks';
 	import { deployKey } from '$lib/history-deeplink';
 	import { rollbackTarget } from '$lib/view-models/deploy-risk';
 	import {
@@ -97,7 +97,10 @@
 	let noManifestFor = $state<string[]>([]);
 	let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-	const history = $derived(rollout?.status?.history ?? []);
+	// Entries kept past versionHistoryLimit for a hold sit after a gap; never diff across it.
+	const history = $derived(
+		(rollout?.status?.history ?? []).slice(0, (rollout?.status?.history?.length ?? 0) - heldPastLimit(rollout))
+	);
 	const located = $derived.by(() => {
 		if (!rollout) return null;
 		const acts = deployActs(rollout);

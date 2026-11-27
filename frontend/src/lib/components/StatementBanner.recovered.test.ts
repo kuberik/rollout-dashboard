@@ -11,8 +11,7 @@ it.each([
 	['new/FailureBanner.svelte', 'recovered={!!b.recovered}'],
 	['new/change/ChangeDetail.svelte', 'recovered={!!lead?.row?.failure?.recovered}'],
 	['new/Facia.svelte', 'recovered={recoveredFail}'],
-	['new/app/AppDetail.svelte', 'recovered={!!failRow.failure?.recovered}'],
-	['FailurePanel.svelte', 'recovered={allRecovered}']
+	['new/app/AppDetail.svelte', 'recovered={!!failRow.failure?.recovered}']
 ])('%s sets it on its failed banner', (f, expr) => {
 	expect(read(f)).toContain(expr);
 });

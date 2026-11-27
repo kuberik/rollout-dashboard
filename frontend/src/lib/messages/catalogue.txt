@@ -199,6 +199,7 @@ lib/components/CadenceStrip.svelte	label	Time range
 lib/components/CadenceStrip.svelte	aria-label	View diff
 lib/components/CadenceStrip.svelte	text	View diff
 lib/components/CadenceStrip.svelte	title	View diff
+lib/components/CalmBanner.svelte	aria-label	replaced by
 lib/components/Card.svelte	code	text-fg-subtle !font-normal
 lib/components/ChangeList.svelte	text	… commit … went live here
 lib/components/ChangeList.svelte	code	… commit…
@@ -315,7 +316,6 @@ lib/components/CommitSummary.svelte	text	… commits …
 lib/components/CommitSummary.svelte	text	… file …
 lib/components/CommitSummary.svelte	text	… file … …
 lib/components/CommitSummary.svelte	text	No commit changes
-lib/components/ConflictRow.svelte	aria-label	kuberik won't overwrite it
 lib/components/ConnectGithubAction.svelte	text	Connect GitHub
 lib/components/ContractHopEdge.svelte	code	M … … L … … L … … L … …
 lib/components/CopyButton.svelte	text	… Copied … …
@@ -451,12 +451,13 @@ lib/components/ErrorState.svelte	title	Where to look
 lib/components/EventsCard.svelte	text	… event …
 lib/components/EventsCard.svelte	text	… Nothing since the deploy started · … … No recent events …
 lib/components/EventsCard.svelte	title	Recent events
+lib/components/FailurePanel.svelte	code	` recovered
 lib/components/FailurePanel.svelte	text	+ … more
 lib/components/FailurePanel.svelte	code	A health check
 lib/components/FailurePanel.svelte	code	An error occurred during deployment.
-lib/components/FailurePanel.svelte	text	Automated deployments are held until this is resolved.
-lib/components/FailurePanel.svelte	title	Deployment failed
+lib/components/FailurePanel.svelte	title	Failed, not rolled back
 lib/components/FailurePanel.svelte	code	Roll back
+lib/components/FailurePanel.svelte	code	The check
 lib/components/FailureSourceRow.svelte	text	&nbsp; …
 lib/components/FailureSourceRow.svelte	text	&nbsp;at failure
 lib/components/FailureToasts.svelte	text	+ … more failure …
@@ -1275,6 +1276,7 @@ lib/history-marks.ts	code	Redeployed the same release, ….
 lib/history-marks.ts	code	Rolled back
 lib/history-marks.ts	code	Rolled back … release…: … → ….
 lib/history-marks.ts	code	What … replaced is unknown — it is the oldest deploy the retained history (last …) still holds.
+lib/history-marks.ts	code	What … replaced is unknown — this entry is kept past the retention limit because automatic deploys still skip this build.
 lib/MobileTabBar.svelte	aria-label	Main navigation
 lib/Navbar.svelte	title	Open app …
 lib/Navbar.svelte	code	Times shown in local time (…). Switch to UTC
@@ -1387,6 +1389,40 @@ lib/view-models/auto-deploy.ts	code	Nothing moves off … until the pin is clear
 lib/view-models/auto-deploy.ts	code	the last deploy failed its checks
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there.
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there.
+lib/view-models/auto-rollback.ts	code	… and … more failed
+lib/view-models/auto-rollback.ts	code	… could not run
+lib/view-models/auto-rollback.ts	code	… failed
+lib/view-models/auto-rollback.ts	code	… failed for a reason that does not roll back
+lib/view-models/auto-rollback.ts	code	… failures, none severe enough
+lib/view-models/auto-rollback.ts	code	… is a … check
+lib/view-models/auto-rollback.ts	code	… was failing before this deploy
+lib/view-models/auto-rollback.ts	code	…, at or above the rollout's severity
+lib/view-models/auto-rollback.ts	code	…, below the rollout's severity
+lib/view-models/auto-rollback.ts	code	a check that cannot run never rolls back
+lib/view-models/auto-rollback.ts	code	A deploy was already requested by hand
+lib/view-models/auto-rollback.ts	code	Apply failed
+lib/view-models/auto-rollback.ts	code	Automatic rollback
+lib/view-models/auto-rollback.ts	code	Automatic rollback is off
+lib/view-models/auto-rollback.ts	code	before deploy
+lib/view-models/auto-rollback.ts	code	check error
+lib/view-models/auto-rollback.ts	code	Check error
+lib/view-models/auto-rollback.ts	code	Deployed before rollback decisions were recorded
+lib/view-models/auto-rollback.ts	code	Deployed by hand
+lib/view-models/auto-rollback.ts	code	does not roll back
+lib/view-models/auto-rollback.ts	code	Force deployed
+lib/view-models/auto-rollback.ts	code	it started failing before this deploy
+lib/view-models/auto-rollback.ts	code	No earlier build is safe to roll back to
+lib/view-models/auto-rollback.ts	code	No earlier build passed its bake
+lib/view-models/auto-rollback.ts	code	Not ready
+lib/view-models/auto-rollback.ts	code	Not rolled back
+lib/view-models/auto-rollback.ts	code	Not rolled back · …
+lib/view-models/auto-rollback.ts	code	Rolled back
+lib/view-models/auto-rollback.ts	code	rolls back
+lib/view-models/auto-rollback.ts	code	Rules bypassed
+lib/view-models/auto-rollback.ts	code	Test failed
+lib/view-models/auto-rollback.ts	code	The rollback deploy could not be written
+lib/view-models/auto-rollback.ts	code	this build
+lib/view-models/auto-rollback.ts	code	Would roll back
 lib/view-models/banner.ts	code	… … in …${place ?
 lib/view-models/blocking-story.ts	code	— it is on
 lib/view-models/blocking-story.ts	code	, not 1
@@ -1842,9 +1878,11 @@ lib/view-models/pr-pipeline.ts	code	waiting on … to reach …
 lib/view-models/promotion-lanes.ts	code	minmax(160px, 1.5fr)
 lib/view-models/promotion-lanes.ts	code	minmax(88px, 1fr)
 lib/view-models/ready-refusal.ts	code	… … …, also set by …
+lib/view-models/ready-refusal.ts	code	` also sets `
 lib/view-models/ready-refusal.ts	code	another field manager
 lib/view-models/ready-refusal.ts	code	Deploy refused
 lib/view-models/ready-refusal.ts	code	Field manager
+lib/view-models/ready-refusal.ts	code	Next step
 lib/view-models/ready-refusal.ts	code	No releases available
 lib/view-models/ready-refusal.ts	code	Not ready
 lib/view-models/ready-refusal.ts	code	Rollout …
@@ -2225,12 +2263,12 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Retry started
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Roll back
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Rolled back
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	rolled back …
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Rolled back … ago … .
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Rolled back … … ago … .
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Rolled back automatically
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Rollout continued
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Running here
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Running here
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	See gates
-routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	The last deploy of this build on this rollout failed its checks. Nothing has re-checked it since; deploying again tries it fresh.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	The running build is not in this rollout's release list, so no rule here vouches for it.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This clears on its own once the check passes.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	This clears on its own.
@@ -2317,7 +2355,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	… rolle
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	… showing the last …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	· … ago
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	(of … total)
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	(retention limit)
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	(retention limit … )
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	All healthy
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	Automatic deploys are paused until this pin is cleared.
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Choose "All" on the cadence strip above to see every deploy.
@@ -2337,12 +2375,13 @@ routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Recorded 
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Roll back
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	aria-label	Roll back to this build
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	rolled back
-routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Rolled back from
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Rolled back automatically
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Same build as …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Show … earlier deploy …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Skipped … … , … …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Skipped … release …
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	code	Started …, checks finished ….
+routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	title	The controller put the previous build back after this one failed its bake.
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	headline	This rollout does not exist
 routes/rollouts/[cluster]/[namespace]/[name]/history/+page.svelte	text	Triggered by
 routes/rollouts/[cluster]/[namespace]/[name]/logs/+page.svelte	text	… pod …

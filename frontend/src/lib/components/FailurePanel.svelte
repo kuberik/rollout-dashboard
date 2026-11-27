@@ -3,22 +3,20 @@
 <script lang="ts">
 	import { canHover } from '$lib/can-hover.svelte';
 	import type { Rollout, HealthCheck, KruiseRollout, RolloutTest } from '../../types';
-	import { PlaySolid, UndoOutline } from 'flowbite-svelte-icons';
+	import { PlaySolid, UndoOutline, ExclamationCircleOutline } from 'flowbite-svelte-icons';
 	import { WANTED_VERSION_OWNED_REASON, rollbackTooltip } from '$lib/view-models/pin-hold';
-	import StatementBanner from './StatementBanner.svelte';
+	import CalmBanner from './CalmBanner.svelte';
 	import ChangeVersionFlow from './ChangeVersionFlow.svelte';
 	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import RetryTestsModal from './RetryTestsModal.svelte';
 	import RetryConfirmModal from './RetryConfirmModal.svelte';
 	import { retryConfirm } from '$lib/view-models/retry-confirm';
-	import { checkFailure, deployWindowStart } from '$lib/view-models/health-witness';
-	import { historyEntrySince } from '$lib/view-models/event-age';
-	import { formatTimeAgoCompact } from '$lib/utils';
-	import { now } from '$lib/stores/time';
+	import { deployWindowStart } from '$lib/view-models/health-witness';
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
-	import { poolOf, worstOf, bannerEvidence, failingNowList, failingSummary, checkView, failureSince as checksFailingSince, type SnapCheck } from '$lib/view-models/health-failures';
+	import { autoRollbackView, notRolledBackSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
+	import { poolOf, worstOf, failingNowList, failingSummary, type SnapCheck } from '$lib/view-models/health-failures';
 
 	interface Props {
 		open?: boolean;
@@ -186,20 +184,6 @@
 		return msg ? msg.split(/;\s*/).filter(Boolean)[0] : 'An error occurred during deployment.';
 	});
 
-	/**
-	 * ⭐ shared/age-lag-total: ONE AGE PER EVENT. This banner used to state no
-	 * instant at all — a reader had no way to tell "this just happened" from
-	 * "this has been failing since yesterday" except by opening the history
-	 * tab. `checkFailure(rollout)?.since` (the `DeploymentBlocked` condition's
-	 * own transition) when a health check is what is holding the rollout —
-	 * the deploy itself can have succeeded well before that — else
-	 * `historyEntrySince` (`bakeEndTime ?? timestamp`), the SAME instant
-	 * `event-age.ts`'s `eventAge(card, 'failed')` reads for every OTHER
-	 * failed-card surface (FleetRow, BlockedRow/NeedsYouCard, PromotionMap).
-	 */
-	const failureSince = $derived(
-		checkFailure(rollout)?.since ?? historyEntrySince(rollout.status?.history?.[0])
-	);
 	/* the same figure the app page's banner and the failure cards lead with: the first drawable observation of the failing check (the live HealthCheck first, the history snapshot otherwise) */
 	const observations = $derived<HealthObservation[]>(
 		((failingNow[0]?.status as { observations?: HealthObservation[] } | undefined)?.observations
@@ -215,17 +199,11 @@
 	/* a failing check without observations has no evidence row: the panel keeps its sentence */
 	const evidence = $derived(!!worst && (worst.recovered || !!worst.row));
 	const allRecovered = $derived(!!worst?.recovered);
-	const evAgo = $derived.by(() => {
-		const since = checksFailingSince(pool);
-		return since ? formatTimeAgoCompact(since, $now) : failureAgo;
-	});
-	const pendingN = $derived(healthChecks.filter((h) => checkView(h, deployWindowStart(rollout), failedHCList as SnapCheck[]).verdict === 'pending').length);
-	/* the one evidence function every failure banner shares (view-models/health-failures.ts bannerEvidence) */
-	const ev = $derived(bannerEvidence(pool, pendingN, evAgo));
-	const evObservations = $derived<HealthObservation[]>(ev?.observations ?? []);
-	const evCheck = $derived(ev?.check);
-	const evMessage = $derived(ev?.message);
-	const failureAgo = $derived(failureSince ? formatTimeAgoCompact(failureSince, $now) : null);
+	/* AUTO-ROLLBACK PREVIEW: the controller's decision for this failed bake (condition AutoRollback=False): the sentence, then which failures would or would not roll back */
+	const autoView = $derived(autoRollbackView(rollout));
+	const notRolled = $derived(autoView?.state === 'not-rolled-back' ? autoView : null);
+	/* the banner's one sentence (12 words or fewer, no age: the page header has it): why it was not rolled back, else what is failing */
+	const sentence = $derived(notRolled ? notRolledBackSentence(notRolled.reason, notRolled.failed, notRolled.rows) : allRecovered ? '`' + (worst?.row?.name ?? worst?.check.name ?? 'The check') + '` recovered' : bannerMessage);
 	const retryFirst = $derived(allRecovered);
 	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
 	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: handleRollback, ...(isDashboardManagingWantedVersion ? {} : { ...(canHover.current ? {} : { title: WANTED_VERSION_OWNED_REASON }), describedBy: 'failure-owned-reason' }) });
@@ -263,46 +241,42 @@
      headline + the failing check in one sentence + actions inline. The
      per-check bullets and the "deployments are paused" note live under
      `Details`; the `N issues` chip is gone (the sentence already counts). -->
-<StatementBanner
+<CalmBanner
 	{open}
 	class="mb-4"
-	severity="failed"
-	recovered={allRecovered}
-	title="Deployment failed"
-	observations={evidence ? evObservations : observations}
-	check={evidence ? evCheck : undefined}
-	message={evidence ? evMessage : failureAgo ? `${bannerMessage} \u00b7\u00a0${failureAgo}\u00a0ago` : bannerMessage}
-	footnoteLabel="Details"
-	pulse={true}
+	tone="danger"
+	icon={ExclamationCircleOutline}
+	title="Failed, not rolled back"
+	line={sentence}
+	rows={notRolled ? verdictDetailRows(notRolled.rows) : undefined}
+	detailsBody={notRolled ? undefined : evidenceBody}
 	primary={retryFirst ? (canUpdate ? retryAct : undefined) : rollbackShown ? rollbackAct : undefined}
-	secondary={retryFirst ? (rollbackShown ? [rollbackAct] : []) : canUpdate ? [{ ...retryAct, after: true }] : []}
+	secondary={retryFirst ? (rollbackShown ? rollbackAct : undefined) : canUpdate ? retryAct : undefined}
 	tooltips={{
 		...(canUpdate ? { 'failure-retry-btn': 'Reset health checks and failed tests, then retry the deployment.' } : {}),
 		...(rollbackShown ? { 'failure-rollback-btn': rollbackTooltip(isDashboardManagingWantedVersion) } : {})
 	}}
 	note={rollbackShown && !canHover.current && !isDashboardManagingWantedVersion ? WANTED_VERSION_OWNED_REASON : undefined}
->
-	{#snippet footnoteBody()}
-		{#if evidence}
-			<FailureDetails {pool} />
-		{:else if failedHCList.length > 0}
-			<ul class="list-disc space-y-0.5 pl-4">
-				{#each failedHCList.slice(0, 6) as hc}
-					{@const parts = (hc.message || '').split(/;\s*/).filter(Boolean)}
-					<li class="break-words">
-						<span class="text-fg">{findDisplayName(hc)}</span>{#if parts.length} — {parts.join('; ')}{/if}
-					</li>
-				{/each}
-				{#if failedHCList.length > 6}
-					<li class="opacity-60">+{failedHCList.length - 6} more</li>
-				{/if}
-			</ul>
-		{:else if (rollout.status?.history?.[0] as any)?.bakeStatusMessage}
-			<p class="break-words">{(rollout.status?.history?.[0] as any).bakeStatusMessage}</p>
-		{/if}
-		<p class="mt-1">Automated deployments are held until this is resolved.</p>
-	{/snippet}
-</StatementBanner>
+/>
+{#snippet evidenceBody()}
+	{#if evidence}
+		<FailureDetails {pool} />
+	{:else if failedHCList.length > 0}
+		<ul class="list-disc space-y-0.5 pl-4">
+			{#each failedHCList.slice(0, 6) as hc}
+				{@const parts = (hc.message || '').split(/;\s*/).filter(Boolean)}
+				<li class="break-words">
+					<span class="text-fg">{findDisplayName(hc)}</span>{#if parts.length} — {parts.join('; ')}{/if}
+				</li>
+			{/each}
+			{#if failedHCList.length > 6}
+				<li class="text-fg-muted">+{failedHCList.length - 6} more</li>
+			{/if}
+		</ul>
+	{:else if (rollout.status?.history?.[0] as any)?.bakeStatusMessage}
+		<p class="break-words">{(rollout.status?.history?.[0] as any).bakeStatusMessage}</p>
+	{/if}
+{/snippet}
 
 {#if rollbackShown && !isDashboardManagingWantedVersion}
 	<span id="failure-owned-reason" class="sr-only">{WANTED_VERSION_OWNED_REASON}</span>

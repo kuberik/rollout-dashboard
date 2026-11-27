@@ -105,6 +105,11 @@ export interface components {
                  *     If not specified, the rollout will wait indefinitely for bake to start.
                  */
                 deployTimeout?: string;
+                /** @description AutoRollback rolls a failed bake back automatically (preview). Present means on, absent means off. MinSeverity is the lowest failure severity that rolls back (default Critical). */
+                autoRollback?: {
+                    /** @enum {string} */
+                    minSeverity?: "Critical" | "Warning";
+                };
                 /** @description HealthCheckSelector specifies how to select HealthChecks for this rollout */
                 healthCheckSelector?: {
                     /**
@@ -286,6 +291,8 @@ export interface components {
                     firstSeen?: string;
                     /** @description Gated is true when the release passes every gate. */
                     gated: boolean;
+                    /** @description FailedBake is true when this build's newest attempt on this Rollout failed its bake; automatic selection skips it until it is named. */
+                    failedBake?: boolean;
                     /** @description Tag is the release tag. */
                     tag: string;
                 }[];
@@ -450,6 +457,21 @@ export interface components {
                         name: string;
                         /** @description Namespace is the namespace of the health check. */
                         namespace: string;
+                        /** @description Class is the health check's class (kustomization, prometheus-alert, ...). */
+                        class?: string;
+                        /** @description Failures is one verdict per failed source: whether it rolls the Rollout back, and why. */
+                        failures?: {
+                            source: string;
+                            /** @description Kind is a display hint only. */
+                            kind?: "Alert" | "Incident" | "ApplyFailed" | "NotReady" | "TestFailed" | "CheckError" | "Unclassified";
+                            /** @enum {string} */
+                            severity?: "Critical" | "Warning";
+                            reason?: string;
+                            message?: string;
+                            rollsBack: boolean;
+                            /** @enum {string} */
+                            why: "AtOrAboveThreshold" | "BelowThreshold" | "CheckErrorNever" | "PredatesDeploy";
+                        }[];
                         /**
                          * @description Observations is a snapshot of the health check's status.observations taken
                          *     when the failure was recorded. It is not updated afterwards, so the figure
@@ -496,6 +518,17 @@ export interface components {
                      * @description ID is a unique auto-incrementing identifier for this history entry.
                      */
                     id?: number;
+                    /**
+                     * @description DeployKind says why this build was deployed (automatic-rollback preview). Written on
+                     *     every deploy by controllers that know the field; absent on older entries.
+                     * @enum {string}
+                     */
+                    deployKind?: "Automatic" | "GateBypass" | "Unblock" | "Pin" | "ForceDeploy" | "AutoRollback";
+                    /**
+                     * Format: int64
+                     * @description RollbackOf is the ID of the failed history entry this automatic rollback replaced.
+                     */
+                    rollbackOf?: number;
                     /**
                      * Format: date-time
                      * @description LastRetryTimestamp is the time when a retry was most recently requested for this deployment.

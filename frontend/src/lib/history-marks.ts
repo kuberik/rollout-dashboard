@@ -62,6 +62,19 @@ export function historyAtLimit(r: Rollout | null | undefined): boolean {
 	return history.length >= limit;
 }
 
+/**
+ * How many entries past `spec.versionHistoryLimit` the controller kept because
+ * their build is held (auto-rollback: a failed bake's newest entry per tag stays
+ * past the limit so the hold survives, rollout-controller trimHistory). Those
+ * entries sit after a gap: `history[limit-1]` and later are NOT adjacent deploys,
+ * so neither "what it replaced" nor "the last N deploys" may be read across them.
+ */
+export function heldPastLimit(r: Rollout | null | undefined): number {
+	const history = r?.status?.history ?? [];
+	const limit = r?.spec?.versionHistoryLimit ?? DEFAULT_VERSION_HISTORY_LIMIT;
+	return Math.max(0, history.length - limit);
+}
+
 /** What one history entry DID, relative to the entry it replaced. */
 export type DeployAct =
 	| {
@@ -110,8 +123,21 @@ export function deployActs(r: Rollout | null | undefined): DeployAct[] {
 	const releases = availableReleases(r) ?? [];
 	const keys = releases.map((x) => releaseKey(x));
 
+	const limit = r?.spec?.versionHistoryLimit ?? DEFAULT_VERSION_HISTORY_LIMIT;
+	const kept = heldPastLimit(r) > 0;
+
 	return history.map((entry, i) => {
-		const prev = history[i + 1];
+		if (kept && i >= limit) {
+			// Kept past the limit for its hold; the deploy before it was evicted.
+			const to = getDisplayVersion(entry.version);
+			return {
+				kind: 'unknown' as const,
+				word: 'Unknown',
+				sentence: `What ${to} replaced is unknown — this entry is kept past the retention limit because automatic deploys still skip this build.`
+			};
+		}
+		// Past the contiguous window the next entry is a kept hold, not the predecessor.
+		const prev = kept && i === limit - 1 ? undefined : history[i + 1];
 		if (!prev) {
 			// The oldest entry the array still holds. If retention could have
 			// evicted one before it, its "from" is unknown — say so, rather than
@@ -121,7 +147,7 @@ export function deployActs(r: Rollout | null | undefined): DeployAct[] {
 				return {
 					kind: 'unknown' as const,
 					word: 'Unknown',
-					sentence: `What ${to} replaced is unknown — it is the oldest deploy the retained history (last ${history.length}) still holds.`
+					sentence: `What ${to} replaced is unknown — it is the oldest deploy the retained history (last ${Math.min(history.length, r?.spec?.versionHistoryLimit ?? DEFAULT_VERSION_HISTORY_LIMIT)}) still holds.`
 				};
 			}
 			return null;

@@ -13,16 +13,15 @@ const props = (observations: unknown[]) => ({
 }) as never;
 
 describe('rollout detail failure banner', () => {
-	test('leads with the measured figure; the name is the caption, the line under it is the budget', () => {
+	test('the sentence names the check and its budget; the measured figure is behind Details', () => {
 		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: props([obs]) } });
-		expect(container.querySelector('[data-observation-figure]')?.textContent).toContain('4.2%');
-		expect(container.textContent).toContain('over a 1% budget');
-		expect(container.querySelector('[data-observation-figure]')?.textContent).toContain('error rate');
-		expect(container.textContent).not.toContain('error rate: over');
+		const line = container.querySelector('[data-calm-line]')?.textContent ?? '';
+		expect(line).toContain('over a 1% budget');
+		expect(container.querySelector('[data-calm-panel]')?.textContent).toContain('4.2%');
+		expect(container.querySelector('[data-calm-banner]')?.textContent).toContain('Failed, not rolled back');
 	});
 	test('no observations: no figure, the sentence is unchanged', () => {
 		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: props([]) } });
-		expect(container.querySelector('[data-observation-figure]')).toBeNull();
 		expect(container.textContent).toContain('of requests failed');
 		/* the banner's own sentence, not the Details list below it */
 		expect((container.textContent ?? '').split('Details')[0]).toContain('of requests failed');
@@ -36,7 +35,7 @@ describe('rollout detail failure banner', () => {
 		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: p } });
 		const head = (container.textContent ?? '').split('Details')[0];
 		expect(head).not.toContain('retry is reasonable');
-		expect(head.length).toBeGreaterThan('Deployment failed'.length + 5);
+		expect(head.length).toBeGreaterThan('Failed, not rolled back'.length + 5);
 	});
 	test('one check failing now and one recovered: the sentence counts and names only the failing one', () => {
 		const live = [
@@ -50,7 +49,7 @@ describe('rollout detail failure banner', () => {
 		expect(head).not.toContain('latency');
 		expect(head).toContain('error-rate: 4.2% of requests failed');
 	});
-	/* the pair reads Roll back, then Retry in every state; only the blue one follows the state */
+	/* the blue one follows the state and is rightmost (ActRow `align=end` puts the primary last); DOM order is the visual order */
 	const pair = (live: unknown[]) => {
 		const r = { ...rollout, status: { history: [{ version: { tag: '1.0.1' }, timestamp: '2026-11-10T10:00:00Z', bakeStatus: 'Failed' }, { version: { tag: '1.0.0' }, timestamp: '2026-11-09T10:00:00Z', bakeStatus: 'Succeeded' }] } };
 		const p = { ...(props([]) as object), rollout: r, canUpdate: true, canModify: true, healthChecks: live, failedHCList: [{ name: 'error-rate', message: 'error-rate: 4.2% of requests failed' }] } as never;
@@ -59,7 +58,7 @@ describe('rollout detail failure banner', () => {
 	};
 	test('failing now: Roll back (blue) first, then Retry', () => {
 		const live = [{ metadata: { name: 'error-rate' }, spec: { class: 'datadog' }, status: { status: 'Unhealthy', lastChangeTime: '2026-11-10T10:05:00Z' } }];
-		expect(pair(live)).toEqual(['rollback:primary', 'retry:secondary']);
+		expect(pair(live)).toEqual(['retry:secondary', 'rollback:primary']);
 	});
 	test('recovered: Roll back first, then Retry (blue)', () => {
 		const live = [{ metadata: { name: 'error-rate' }, spec: { class: 'datadog' }, status: { status: 'Healthy', lastErrorTime: '2026-11-10T10:03:00Z', lastChangeTime: '2026-11-10T10:06:00Z' } }];

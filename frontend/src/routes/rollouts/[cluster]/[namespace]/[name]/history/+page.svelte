@@ -11,6 +11,8 @@
 	import { behindWhenSettled, fleetSettled } from '$lib/view-models/behind';
 	import RolloutTabHeader from '$lib/components/RolloutTabHeader.svelte';
 	import FailedCheckLine from '$lib/components/FailedCheckLine.svelte';
+	import { deployKindLabel, entryRollbackNote, verdictRows } from '$lib/view-models/auto-rollback';
+	import AutoRollbackVerdicts from '$lib/components/AutoRollbackVerdicts.svelte';
 	import FailureSourceRow from '$lib/components/FailureSourceRow.svelte';
 	import { historyPool, failureSince } from '$lib/view-models/health-failures';
 	import { deployWindowStart } from '$lib/view-models/health-witness';
@@ -74,6 +76,7 @@
 	import {
 		deployActs,
 		historyAtLimit,
+		heldPastLimit,
 		isSystemDefaultNote,
 		systemNoteDescription
 	} from '$lib/history-marks';
@@ -751,6 +754,10 @@
 	 * "from" is unknown; here it gates whether the header has to say so.
 	 */
 	const atLimit = $derived(historyAtLimit(rollout));
+	/** entries kept past the limit because their build is held (auto-rollback); not part of "the last N" */
+	const heldKept = $derived(heldPastLimit(rollout));
+	/** the contiguous window: a diff never pairs an entry with a kept hold past the gap */
+	const diffWindow = $derived((rollout?.status?.history ?? []).slice(0, (rollout?.status?.history?.length ?? 0) - heldKept));
 
 	/**
 	 * ⭐ THE CURRENT PIN STATE, IN THE HISTORY HEAD. (2026-09-03,
@@ -1249,7 +1256,8 @@
 	function diffHrefForIndex(index: number): string | undefined {
 		const history = rollout?.status?.history ?? [];
 		const entry = history[index];
-		if (!entry || index >= history.length - 1) return undefined;
+		// entries kept past the limit for a hold sit after a gap: no adjacent predecessor to diff against
+		if (!entry || index >= history.length - 1 - heldKept) return undefined;
 		return href(
 			`/rollouts/${cluster}/${rollout?.metadata?.namespace}/${rollout?.metadata?.name}/diff/${entry.version.tag}`
 		);
@@ -1584,16 +1592,16 @@
 					{:else}
 						<span
 							title={atLimit
-								? `Showing the last ${totalDeploys} deploys — the retention limit (spec.versionHistoryLimit). Earlier deploys have already been evicted.`
+								? `Showing the last ${totalDeploys - heldKept} deploys — the retention limit (spec.versionHistoryLimit). Earlier deploys have already been evicted.${heldKept > 0 ? ` ${heldKept} older failed ${heldKept === 1 ? 'build is' : 'builds are'} kept past the limit because automatic deploys still skip ${heldKept === 1 ? 'it' : 'them'}.` : ''}`
 								: undefined}
 						>
 							{#if atLimit}
 								showing the last
 							{/if}
-							<span class="text-fg tabular-nums">{totalDeploys}</span>
-							{totalDeploys === 1 ? 'deploy' : 'deploys'}
+							<span class="text-fg tabular-nums">{totalDeploys - heldKept}</span>
+							{totalDeploys - heldKept === 1 ? 'deploy' : 'deploys'}
 							{#if atLimit}
-								<span class="text-fg-subtle">(retention limit)</span>
+								<span class="text-fg-subtle">(retention limit{heldKept > 0 ? `, + ${heldKept} failed kept` : ''})</span>
 							{/if}
 						</span>
 					{/if}
@@ -1865,6 +1873,8 @@
 												{@const note = deployNote(entry.message, entry.triggeredBy)}
 												<!-- ⭐ SKIPPED RULES (bypass-only): parsed from the controller's own message. Who set the skip is NOT recorded, so this fact names no one. -->
 												{@const skipped = skippedFact(skippedRulesOf(entry.message), skipLabels)}
+												{@const kindLabel = deployKindLabel(entry.deployKind)}
+												{@const rolledBackAuto = entry.bakeStatus === 'Failed' && entry.id != null && allHistory.some((e) => e.deployKind === 'AutoRollback' && e.rollbackOf === entry.id)}
 												{@const who = entry.triggeredBy}
 												{@const actor = who ? actorFrom(who) : null}
 												{@const approved = historyApprovalFact(entry.approval, byVerified)}
@@ -2165,7 +2175,7 @@
 																				title={act.sentence}
 																			>
 																				<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
-																				Rolled back from
+																				{entry.deployKind === 'AutoRollback' ? 'Rolled back automatically from' : 'Rolled back from'}
 																				<span class="t-code-sm text-fg-muted">{act.from}</span>
 																			</span>
 																		{:else if act && act.kind === 'forward' && act.by > 1}
@@ -2207,6 +2217,16 @@
 												     after it. -->
 																			<span class="text-fg-muted" title={act.sentence}>
 																				{act.sentence.replace(/\.$/, '')}
+																			</span>
+																		{/if}
+																		{#if kindLabel && !(entry.deployKind === 'AutoRollback' && act && act.kind === 'rollback')}
+																			<!-- HOW the build was deployed (`deployKind`): the controller's own word for a rollback, a force deploy, a pin; ordinary automatic deploys say nothing -->
+																			<span class="text-fg-muted" data-history-deploy-kind>{kindLabel}</span>
+																		{/if}
+																		{#if rolledBackAuto}
+																			<span class="text-fg-muted inline-flex items-center gap-1" data-history-rolled-back-auto title="The controller put the previous build back after this one failed its bake.">
+																				<UndoOutline class="h-3 w-3 shrink-0" aria-hidden="true" />
+																				Rolled back automatically
 																			</span>
 																		{/if}
 																		{#if skipped}
@@ -2328,7 +2348,7 @@
 																			{cluster}
 																			namespace={rollout?.metadata?.namespace ?? ''}
 																			name={rollout?.metadata?.name ?? ''}
-																			history={rollout?.status?.history ?? []}
+																			history={diffWindow}
 																			index={i}
 																			{atLimit}
 																			compact
@@ -2453,7 +2473,7 @@
 															githubConnected &&
 															!!rollout?.status?.source &&
 															!!rollout.status.history &&
-															i + 1 < rollout.status.history.length}
+															i + 1 < rollout.status.history.length - heldKept}
 														{@const hasRangeDelta =
 															hasOlderSibling &&
 															!!baseRevision &&
@@ -2894,6 +2914,23 @@
 																			</div>
 																		{/if}
 																	{/if}
+																	{#if entry.bakeStatus === 'Failed' && verdictRows(entry).length > 0}
+																		{@const rbNote = entryRollbackNote(rollout, entry)}
+																		<!-- AUTO-ROLLBACK PREVIEW: which failed sources roll back, and why (the controller's verdicts, kept on the entry) -->
+																		<!-- GLANCEABLE (owner rule, 2026-11-26): one state word and a short reason; the verdict rows sit behind Details -->
+																		<div class="flex flex-col gap-1.5" data-history-verdicts>
+																			<span class="t-meta flex flex-wrap items-baseline gap-x-1.5" data-testid="history-rollback-note"
+																				><span class="font-medium {rbNote.ran ? 'text-fg' : 'text-fg-muted'}">{rbNote.word}</span
+																				>{#if rbNote.why}<span class="text-fg-subtle">{rbNote.why}</span>{/if}</span
+																			>
+																			<details class="group t-meta" data-history-verdict-details>
+																				<summary class="nav-link inline-flex cursor-pointer list-none items-center gap-1 text-fg-muted"
+																					><ChevronRightOutline class="h-3 w-3 transition-transform group-open:rotate-90" aria-hidden="true" />Details</summary
+																				>
+																				<div class="mt-1.5"><AutoRollbackVerdicts rows={verdictRows(entry)} would={!rbNote.ran} /></div>
+																			</details>
+																		</div>
+																	{/if}
 																	<!-- ⭐ DROPPED: "Checked for Xm" (AD round 2, same "drop
 												     whatever the row already says" rule). A second,
 												     DIFFERENT duration number (the check phase alone, vs
@@ -2985,7 +3022,7 @@
 																	{cluster}
 																	namespace={rollout?.metadata?.namespace ?? ''}
 																	name={rollout?.metadata?.name ?? ''}
-																	history={rollout?.status?.history ?? []}
+																	history={diffWindow}
 																	index={i}
 																	{atLimit}
 																/>
