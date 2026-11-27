@@ -64,7 +64,6 @@
 		slots = false,
 		plain = false,
 		follow = false,
-		actionsBelow = false,
 		compact = false,
 		checkAfterMeta = false,
 		fact,
@@ -126,8 +125,6 @@
 		fact?: Snippet;
 		/** the corner chevron (open in place) */
 		toggle?: { open: boolean; onclick: () => void; label: string; controls?: string };
-		/** the action row stays under the text at every width (AlertPanel `actionsBelow`) */
-		actionsBelow?: boolean;
 		/** a short fact right after the title (Folio's clock + age) */
 		age?: Snippet;
 		/** extra rows under the meta line (e.g. one slotted row per failure); they own their own actions via ActRow */
@@ -193,7 +190,7 @@
 			</div>
 {/snippet}
 {#snippet actionsSnip()}
-			<ActRow {primary} secondary={acts} {phoneMax} align={actionsBelow ? 'end' : 'start'} />
+			<ActRow {primary} secondary={acts} {phoneMax} align="start" />
 			{#if note}<p class="t-meta basis-full opacity-80">{note}</p>{/if}
 			{#if canHover.current && tooltips}
 				{#each Object.entries(tooltips) as [id, text] (id)}
@@ -218,7 +215,6 @@
 	{footnoteBody}
 	class={className}
 	actionBar={true}
-	{actionsBelow}
 	messageBody={hasBody ? bodySnip : undefined}
 	actions={hasActions ? actionsSnip : undefined}
 

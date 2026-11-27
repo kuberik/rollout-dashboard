@@ -30,6 +30,8 @@
  * `updateRolloutStatusOnError`.
  */
 
+import type { DetailRow } from './detail-rows';
+
 type Cond = { type: string; status: string; reason?: string; message?: string; lastTransitionTime?: string };
 
 export type ReadyIssue = {
@@ -117,6 +119,24 @@ export function readyFacts(issue: ReadyIssue, ago: (iso: string) => string): { l
 	else if (!c && issue.detail) facts.push({ label: 'Controller', value: issue.detail });
 	if (issue.since) facts.push({ label: 'Since', value: `${ago(issue.since)} ago` });
 	return facts;
+}
+
+/** the banner's one sentence: a conflict names the other writer and the field (code role in the banner), else the controller's line */
+export function readyLine(issue: ReadyIssue): string {
+	const c = issue.conflict;
+	return c ? '`' + c.by + '` also sets `' + c.path + '`' : issue.line;
+}
+
+/**
+ * The banner's Details as rows: what to do, the object, the reason code, the controller's own hint, and since when
+ * (`readyFacts` words the record; the next step and the object lead it because they are what a person acts on).
+ */
+export function readyRows(issue: ReadyIssue, ago: (iso: string) => string): DetailRow[] {
+	const rows: DetailRow[] = [];
+	if (issue.nextStep) rows.push({ key: 'next', name: 'Next step', text: issue.nextStep });
+	if (issue.conflict) rows.push({ key: 'object', name: 'Object', text: issue.conflict.kind + ' ' + issue.conflict.name });
+	for (const f of readyFacts(issue, ago)) rows.push({ key: f.label, name: f.label, text: f.value });
+	return rows;
 }
 
 export function readyIssue(conditions: readonly Cond[] | null | undefined, o: { held?: boolean } = {}): ReadyIssue | null {

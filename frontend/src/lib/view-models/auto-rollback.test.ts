@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rollout } from '../../types';
-import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, glanceRows, rolledBackLine, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
+import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
 
 const v = (tag: string) => ({ tag, version: `1.${tag.slice(-1)}.0`, revision: 'a'.repeat(40), created: '2026-11-21T10:00:00Z' });
 const failed = {
@@ -88,22 +88,18 @@ describe('auto-rollback view-model', () => {
 		expect(triggerLine(rows)).toBe('smoke failed');
 		expect(triggerLine([...rows, ...rows])).toBe('smoke and 1 more failed');
 		expect(triggerLine([])).toBe('');
-		expect(rolledBackLine(rows, '1.4.0', true)).toBe("smoke failed · 1.4.0 won't auto-deploy again");
-		expect(rolledBackLine(rows, '1.4.0', false)).toBe('smoke failed');
-		expect(rolledBackLine([...rows, ...rows], 'build-name-of-some-length', true).split(/\s+/).length).toBeLessThanOrEqual(12);
 	});
 	it('NotATrigger names the one source that did not trigger', () => {
 		const only = { ...failed, failedHealthChecks: [{ ...failed.failedHealthChecks[0], failures: [failed.failedHealthChecks[0].failures[0]] }] };
 		const rows = verdictRows(only as never);
-		expect(notRolledBackWhy('NotATrigger', only as never, rows)).toBe('flaky-ui failed');
-		expect(notRolledBackHeadline('NotATrigger', only as never, rows)).toBe('Not rolled back · flaky-ui failed');
+		expect(notRolledBackWhy('NotATrigger', only as never, rows)).toBe('flaky-ui is a warning check');
+		expect(notRolledBackHeadline('NotATrigger', only as never, rows)).toBe('Not rolled back · flaky-ui is a warning check');
 		expect(notRolledBackWhy('Blocked', only as never, rows)).toBe('No earlier build is safe to roll back to');
 	});
-	it('glance rows: a glyph, a name and a verdict word, never a sentence', () => {
-		const rows = verdictRows(failed as never);
-		expect(glanceRows(rows, true).map((r) => [r.name, r.verdict, r.tone])).toEqual([['smoke', 'Critical', 'danger'], ['flaky-ui', 'Warning', 'muted']]);
-		expect(glanceRows(rows, false)[0].tone).toBe('neutral');
-		for (const r of glanceRows(rows, false)) expect(r.verdict.length).toBeLessThanOrEqual(14);
+	it('details rows: a name, a severity word and the checks own message, never a chip', () => {
+		const rows = verdictDetailRows(verdictRows(failed as never));
+		expect(rows.map((r) => [r.name, r.tag, r.tone])).toEqual([['smoke', 'Critical', 'danger'], ['flaky-ui', 'Warning', 'muted']]);
+		for (const r of rows) expect((r.tag ?? '').length).toBeLessThanOrEqual(14);
 	});
 	it('reads the hold from candidates[].failedBake', () => {
 		expect(failedBakeHeld(rolledBack(), 'r4')).toBe(true);

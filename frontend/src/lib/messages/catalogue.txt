@@ -199,6 +199,7 @@ lib/components/CadenceStrip.svelte	label	Time range
 lib/components/CadenceStrip.svelte	aria-label	View diff
 lib/components/CadenceStrip.svelte	text	View diff
 lib/components/CadenceStrip.svelte	title	View diff
+lib/components/CalmBanner.svelte	aria-label	replaced by
 lib/components/Card.svelte	code	text-fg-subtle !font-normal
 lib/components/ChangeList.svelte	text	… commit … went live here
 lib/components/ChangeList.svelte	code	… commit…
@@ -315,7 +316,6 @@ lib/components/CommitSummary.svelte	text	… commits …
 lib/components/CommitSummary.svelte	text	… file …
 lib/components/CommitSummary.svelte	text	… file … …
 lib/components/CommitSummary.svelte	text	No commit changes
-lib/components/ConflictRow.svelte	aria-label	kuberik won't overwrite it
 lib/components/ConnectGithubAction.svelte	text	Connect GitHub
 lib/components/ContractHopEdge.svelte	code	M … … L … … L … … L … …
 lib/components/CopyButton.svelte	text	… Copied … …
@@ -451,10 +451,11 @@ lib/components/ErrorState.svelte	title	Where to look
 lib/components/EventsCard.svelte	text	… event …
 lib/components/EventsCard.svelte	text	… Nothing since the deploy started · … … No recent events …
 lib/components/EventsCard.svelte	title	Recent events
+lib/components/FailurePanel.svelte	code	… recovered
 lib/components/FailurePanel.svelte	text	+ … more
 lib/components/FailurePanel.svelte	code	A health check
 lib/components/FailurePanel.svelte	code	An error occurred during deployment.
-lib/components/FailurePanel.svelte	text	Automated deployments are held until this is resolved.
+lib/components/FailurePanel.svelte	title	Failed, not rolled back
 lib/components/FailurePanel.svelte	code	Roll back
 lib/components/FailureSourceRow.svelte	text	&nbsp; …
 lib/components/FailureSourceRow.svelte	text	&nbsp;at failure
@@ -1181,8 +1182,6 @@ lib/components/RetryTestsModal.svelte	text	Re-run tests. Pipeline stays paused u
 lib/components/RetryTestsModal.svelte	text	Retry tests
 lib/components/RetryTestsModal.svelte	text	Skip tests
 lib/components/RetryTestsModal.svelte	code	Unknown test
-lib/components/RollbackGlance.svelte	text	+ … more
-lib/components/RollbackGlance.svelte	aria-label	replaced by
 lib/components/RolloutHeaderFlows.svelte	code	… · Check restarted
 lib/components/RolloutHeaderFlows.svelte	code	Failed to retry
 lib/components/RolloutHeaderFlows.svelte	code	Retry started
@@ -1389,15 +1388,15 @@ lib/view-models/auto-deploy.ts	code	Nothing moves off … until the pin is clear
 lib/view-models/auto-deploy.ts	code	the last deploy failed its checks
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there.
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there.
-lib/view-models/auto-rollback.ts	code	: r.ref} · …${r.message ?
 lib/view-models/auto-rollback.ts	code	… and … more failed
+lib/view-models/auto-rollback.ts	code	… could not run
 lib/view-models/auto-rollback.ts	code	… failed
 lib/view-models/auto-rollback.ts	code	… failed for a reason that does not roll back
 lib/view-models/auto-rollback.ts	code	… failures, none severe enough
-lib/view-models/auto-rollback.ts	code	… won't auto-deploy again
+lib/view-models/auto-rollback.ts	code	… is a … check
+lib/view-models/auto-rollback.ts	code	… was failing before this deploy
 lib/view-models/auto-rollback.ts	code	…, at or above the rollout's severity
 lib/view-models/auto-rollback.ts	code	…, below the rollout's severity
-lib/view-models/auto-rollback.ts	code	${r.type ?
 lib/view-models/auto-rollback.ts	code	a check that cannot run never rolls back
 lib/view-models/auto-rollback.ts	code	A deploy was already requested by hand
 lib/view-models/auto-rollback.ts	code	Apply failed
@@ -1878,9 +1877,11 @@ lib/view-models/pr-pipeline.ts	code	waiting on … to reach …
 lib/view-models/promotion-lanes.ts	code	minmax(160px, 1.5fr)
 lib/view-models/promotion-lanes.ts	code	minmax(88px, 1fr)
 lib/view-models/ready-refusal.ts	code	… … …, also set by …
+lib/view-models/ready-refusal.ts	code	` also sets `
 lib/view-models/ready-refusal.ts	code	another field manager
 lib/view-models/ready-refusal.ts	code	Deploy refused
 lib/view-models/ready-refusal.ts	code	Field manager
+lib/view-models/ready-refusal.ts	code	Next step
 lib/view-models/ready-refusal.ts	code	No releases available
 lib/view-models/ready-refusal.ts	code	Not ready
 lib/view-models/ready-refusal.ts	code	Rollout …
@@ -2259,8 +2260,10 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Ready to deploy
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Recovery mode
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Retry started
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Roll back
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Rolled back
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	rolled back …
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Rolled back … … ago … .
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Rolled back automatically
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Rollout continued
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Running here
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	title	Running here

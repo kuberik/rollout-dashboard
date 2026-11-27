@@ -241,13 +241,6 @@
 		 */
 		actionBar?: boolean;
 		/**
-		 * ACTIONS BELOW (owner 2026-11-27, needs `actionBar`): the action row stays under the headline and the line at every
-		 * width, spanning the banner and ending at its right edge (the caller's ActRow `align="end"`: primary rightmost),
-		 * instead of moving to a right-hand rail from 640px. The body then
-		 * spans the full inner width, so a two-column glance body keeps its record on the right. Phones are unchanged.
-		 */
-		actionsBelow?: boolean;
-		/**
 		 * PLAIN (r34 S1b): the panel at rest in a LIST of statements (/needs-you's second and third
 		 * cards): the neutral surface and a 1px line instead of the severity's field and ring; the
 		 * disc keeps the severity's ink only for a failure. The lead statement is never plain.
@@ -340,7 +333,6 @@
 	const change = $derived(shown.change);
 	const actions = $derived(shown.actions);
 	const actionBar = $derived(shown.actionBar ?? false);
-	const actionsBelow = $derived(actionBar && (shown.actionsBelow ?? false));
 	const plain = $derived(shown.plain ?? false);
 	const follow = $derived(shown.follow ?? false);
 	const compact = $derived(shown.compact ?? false);
@@ -576,7 +568,7 @@
 	     going to touch. Verified: full 80px disc at scale(2), no flat edge,
 	     on the Apps banner, the failed-rollout panel and the incident
 	     banner, 1440 + 390, both themes. -->
-	<div class="ap-cq relative rounded-md {face.container}" class:ap-bar={actionBar} class:ap-below={actionsBelow} class:ap-follow={actionBar && follow} class:ap-compact={compact} class:ap-has-toggle={!!toggle}>
+	<div class="ap-cq relative rounded-md {face.container}" class:ap-bar={actionBar} class:ap-follow={actionBar && follow} class:ap-compact={compact} class:ap-has-toggle={!!toggle}>
 		{#if toggle}
 			<button type="button" class="absolute right-2 top-2 z-[2] flex h-11 w-11 items-center justify-center rounded-md text-fg-subtle hover:bg-hover focus-visible:ring-2 focus-visible:ring-line-strong focus-visible:outline-none" aria-label={toggle.label} aria-expanded={toggle.open} aria-controls={toggle.controls} onclick={toggle.onclick} data-ap-toggle>
 				<svg viewBox="0 0 16 16" class="h-4 w-4 transition-transform {toggle.open ? 'rotate-180' : ''}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" /></svg>
@@ -1274,25 +1266,6 @@
 			grid-row-end: 4;
 			margin-top: 0;
 			align-self: center;
-		}
-	}
-	/* ACTIONS BELOW: from 640 the actions keep their own row under the text, aligned with it; the text rows take the full width */
-	@container (min-width: 640px) {
-		.ap-bar.ap-below .ap-grid {
-			grid-template-columns: 2.5rem minmax(0, 1fr);
-		}
-		.ap-bar.ap-below .ap-headline-row,
-		.ap-bar.ap-below .ap-message-row,
-		.ap-bar.ap-below .ap-disclosure-cell {
-			grid-column-end: -1;
-		}
-		.ap-bar.ap-below .ap-actions-bar {
-			grid-column-start: 2;
-			grid-column-end: -1;
-			grid-row-start: 4;
-			grid-row-end: auto;
-			margin-top: 0.75rem;
-			align-self: start;
 		}
 	}
 	/* compact (r34 needs-you r2): two lines of title at most; the disc steps down to 32px on a phone, centred in its 40px slot */

@@ -11,6 +11,7 @@
  */
 import type { Rollout } from '../../types';
 import { classOf } from './health-failures';
+import type { DetailRow } from './detail-rows';
 
 type Status = NonNullable<Rollout['status']>;
 export type HistoryEntry = NonNullable<Status['history']>[number];
@@ -184,12 +185,27 @@ export function notRolledBackWhy(reason: string, failed: HistoryEntry, rows: Ver
 			return 'No earlier build is safe to roll back to';
 		case 'NotATrigger': {
 			const names = rows.filter((r) => !r.rollsBack);
-			if (names.length === 1) return `${shortRef(names[0].ref)} failed`; // the severity is the row's chip; said once
+			if (names.length === 1) return notATriggerWhy(names[0]);
 			if (names.length > 1) return `${names.length} failures, none severe enough`;
 			return `${display(failed)} failed for a reason that does not roll back`;
 		}
 		default:
 			return '';
+	}
+}
+
+/** why ONE failing source did not roll back, as a short sentence naming it (the severity word itself is the Details row's) */
+function notATriggerWhy(r: VerdictRow): string {
+	const name = shortRef(r.ref);
+	switch (r.rule) {
+		case 'BelowThreshold':
+			return `${name} is a ${r.severity.toLowerCase()} check`;
+		case 'CheckErrorNever':
+			return `${name} could not run`;
+		case 'PredatesDeploy':
+			return `${name} was failing before this deploy`;
+		default:
+			return `${name} failed`;
 	}
 }
 
@@ -199,22 +215,23 @@ export function notRolledBackHeadline(reason: string, failed: HistoryEntry, rows
 	return why ? `Not rolled back · ${why}` : 'Not rolled back';
 }
 
-/** one compact row for a banner's right column: glyph, name, verdict chip (never a sentence) */
-export type GlanceRow = { key: string; cls: string; name: string; verdict: string; tone: 'danger' | 'muted' | 'neutral'; title?: string };
-
 /**
- * Verdict rows as glance rows: the chip is the failure's severity (or "check error" / "before deploy" when the severity
- * did not decide). `ran`: the rollback happened, so a trigger is drawn in danger ink; otherwise neutral.
+ * Verdict rows as Details rows (`CalmBanner`): the check, its severity word (or "check error" / "before deploy"), and the
+ * check's own message. A row that rolls back (or would have) is drawn in the danger ink.
  */
-export function glanceRows(rows: VerdictRow[], ran: boolean): GlanceRow[] {
-	return rows.map((r) => ({
+export function verdictDetailRows(rows: VerdictRow[]): DetailRow[] {
+	return rows.map((r) => {
+		const source = r.type ? r.type + ' ' + r.ref : r.ref;
+		return {
 		key: r.key,
-		cls: r.cls,
 		name: shortRef(r.ref),
-		verdict: r.short,
-		tone: r.rollsBack ? (ran ? 'danger' : 'neutral') : 'muted',
-		title: `${r.type ? `${r.type} ${r.ref}` : r.ref} · ${r.why}${r.message ? ` · ${r.message}` : ''}`
-	}));
+		mono: true,
+		tag: r.short,
+		tone: r.rollsBack ? 'danger' : 'muted',
+		text: r.message ?? r.why,
+		title: [source, r.why, r.message].filter(Boolean).join(' · ')
+		};
+	});
 }
 
 /** which failure triggered a rollback, in a few words: `smoke failed`, `smoke and 1 more failed` */
@@ -222,14 +239,6 @@ export function triggerLine(triggers: VerdictRow[]): string {
 	if (triggers.length === 0) return '';
 	const first = shortRef(triggers[0].ref);
 	return triggers.length === 1 ? `${first} failed` : `${first} and ${triggers.length - 1} more failed`;
-}
-
-/**
- * The one line under a rolled-back banner's chips: the trigger, then what the hold DOES (owner, 2026-11-26: "held" does
- * not say what is happening; say it where it acts). At most 12 words.
- */
-export function rolledBackLine(triggers: VerdictRow[], failedName: string, held: boolean): string {
-	return [triggerLine(triggers), held ? `${failedName} won't auto-deploy again` : ''].filter(Boolean).join(' · ');
 }
 
 /** `ns/name` -> `name` */
