@@ -452,7 +452,7 @@
 				</div>
 			{/if}
 			{#if built && lane && !pipeline}
-				<div class="ad-strip flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1" data-ad-strip>
+				<div class="app-strip flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1" data-app-strip>
 					<div class="min-w-0 basis-full sm:flex-1 sm:basis-0" use:lagFit><PromotionLane {lane} {calm} words yours={!!stateRow?.needsYou} youCan={(n) => { const p = places.find((x) => x.href === hrefFor(n)); return !!p && !!rowFor(p).needsYou; }} mutedRest {hrefFor} {current} sites reserve recovered={(n) => failureRecovered(hrefFor(n))} failedSince={(n) => failureSinceAt(hrefFor(n))} /></div>
 					<a href={href('/environments')} class="nav-link t-ui-sm shrink-0 !py-0 max-sm:mt-1 max-sm:min-h-11 max-sm:items-center sm:max-xl:hidden">All environments<ChevronRightOutline class="h-3 w-3" aria-hidden="true" /></a>
 				</div>
@@ -483,7 +483,7 @@
 			{:else}
 			<div class="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start xl:grid-cols-[minmax(0,1fr)_452px]">
 				<div class="flex min-w-0 flex-col gap-4">
-					<div id="regions" class="ad-places scroll-mt-16" class:ad-owned={!!failRow}>
+					<div id="regions" class="app-places scroll-mt-16" class:app-owned={!!failRow}>
 						<AppBuilds {stops} {places} {view} {phone} nested hs={scenario} noReleases={noReleases?.label ?? ''} fromHistory={!!noReleases} onDeploy={openDeploy} />
 					</div>
 				</div>
@@ -513,9 +513,9 @@
 
 <style>
 	/* the strip is the page's drawing: it takes the row (the bare lane keeps natural width on the Overview; here it stretches) */
-	@media (min-width: 640px) { .ad-strip :global(.lane--bare .lane-chain) { width: 100%; } }
+	@media (min-width: 640px) { .app-strip :global(.lane--bare .lane-chain) { width: 100%; } }
 	/* apps-11 AS7: the opened place's facts span the pane — a wide pane (the 1920 Places card is ~1150px) lays the two fact lists side by side (the tab's facts grid), never a 400px column in a 800px void */
 	@container (min-width: 1000px) {
-		.ad-places :global(.sw-compact .sw-pane) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: 'info info' 'b1 b2' 'act act'; column-gap: 32px; align-content: start; }
+		.app-places :global(.sw-compact .sw-pane) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: 'info info' 'b1 b2' 'act act'; column-gap: 32px; align-content: start; }
 	}
 </style>
