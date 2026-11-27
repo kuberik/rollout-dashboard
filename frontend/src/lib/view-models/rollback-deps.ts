@@ -191,8 +191,8 @@ export function nowSafeView(r: Rollout | null | undefined, lookup?: (namespace: 
 	const first = was[0];
 	const now = lookup?.(first.namespace, first.rollout, first.contract) ?? null;
 	const more = breakNames(was).length - 1; // consumers the preview no longer blocks on, named
-	const tail = now?.version ? ` moved to ${now.version}` : ' moved';
-	return { target, targetTag: live.target, consumers: breakNames(was), headline: `Rollback to ${target} is now safe: ${first.rollout}${more > 0 ? ` and ${more} more` : ''}${tail}` };
+	const tail = now?.version ? ` moved to \`${now.version}\`` : ' moved';
+	return { target, targetTag: live.target, consumers: breakNames(was), headline: `Rollback to \`${target}\` is now safe: ${first.rollout}${more > 0 ? ` and ${more} more` : ''}${tail}` };
 }
 
 

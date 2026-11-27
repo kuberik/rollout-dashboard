@@ -57,9 +57,9 @@ describe('rollback-deps view-model', () => {
 		const live = { for: 'r70', target: 'r51', usualTarget: 'r51' };
 		const r = blocked({}, live);
 		const n = nowSafeView(r, () => ({ version: '2.9.0', requires: '^5.0.0' }));
-		expect(n?.headline).toBe('Rollback to 5.1.0 is now safe: checkout moved to 2.9.0');
+		expect(n?.headline).toBe('Rollback to `5.1.0` is now safe: checkout moved to `2.9.0`');
 		expect(n?.targetTag).toBe('r51');
-		expect(nowSafeView(r)?.headline).toBe('Rollback to 5.1.0 is now safe: checkout moved');
+		expect(nowSafeView(r)?.headline).toBe('Rollback to `5.1.0` is now safe: checkout moved');
 		expect(nowSafeView(blocked({}, { for: 'r70', blockedBy: [brk()] }))).toBeNull();
 		expect(nowSafeView(blocked({}, { for: 'r60', target: 'r51' }))).toBeNull();
 	});
