@@ -19,10 +19,10 @@
 	 *
 	 * Anatomy (D1; borrows Primer Banner and Atlassian section message; proportions from `Card`'s header). ONE continuous
 	 * tinted surface: no cells, no dividers, no hairlines, no side bar.
-	 *   [20px status disc] [title t-heading                         Details ›] [secondary] [primary]
+	 *   [24px status disc] [title t-heading                         Details ›] [secondary] [primary]
 	 *                      [chips · one sentence of 12 words or fewer         ]
 	 *                      [Details panel, full width, below the row above    ]
-	 * - Every severity is coloured, info and success included: a tinted field with a 1px hue line and a solid disc.
+	 * - Every severity is coloured, info and success included: a tinted field with a 1px hue line and a solid 24px disc (D2: stronger tint, roomier 16px padding, 80px high).
 	 *   Radius is the cards' (rounded-md, 8px). In dark the tints are ranked (critical > held > info) so info is calmer.
 	 *     critical  danger   failed, refused, error        warning  amber    stuck (DL: amber means stuck only)
 	 *     held      orange   a rule holds it               info     blue     pinned, partial, a note, "Rolled back" (the system acted)
@@ -280,7 +280,7 @@
 		grid-template-columns: minmax(0, 1fr);
 		align-items: start;
 		border-color: var(--h-line);
-		background: color-mix(in oklab, var(--h-tint) var(--h-mix, 62%), var(--k-surface));
+		background: color-mix(in oklab, var(--h-tint) var(--h-mix, 90%), var(--k-surface));
 		overflow: hidden;
 	}
 	.bn--acts {
@@ -291,10 +291,10 @@
 	.bn[data-severity='held'] { --h-tint: var(--k-held-tint); --h-line: var(--k-held-line); }
 	.bn[data-severity='success'] { --h-tint: var(--k-success-tint); --h-line: var(--k-success-line); }
 	/* dark: the three tints are as chromatic as each other, so rank them: critical loudest, held between, info calmest */
-	:global(.dark) .bn[data-severity='critical'] { --h-mix: 70%; }
-	:global(.dark) .bn[data-severity='held'] { --h-mix: 60%; }
-	:global(.dark) .bn[data-severity='info'] { --h-mix: 30%; }
-	:global(.dark) .bn[data-severity='success'] { --h-mix: 30%; }
+	:global(.dark) .bn[data-severity='critical'] { --h-mix: 82%; }
+	:global(.dark) .bn[data-severity='held'] { --h-mix: 70%; }
+	:global(.dark) .bn[data-severity='info'] { --h-mix: 38%; }
+	:global(.dark) .bn[data-severity='success'] { --h-mix: 38%; }
 	.bn-st,
 	.bn-acts {
 		display: flex;
@@ -377,6 +377,31 @@
 		color: var(--k-fg-muted);
 		text-decoration: line-through;
 		text-decoration-color: color-mix(in oklab, var(--k-fg-muted) 60%, transparent);
+	}
+	/* D2 (the owner's pick): a 24px disc, roomier padding, a consistent height */
+	.bn-icon {
+		width: 24px;
+		height: 24px;
+		margin-top: 0;
+	}
+	.bn-icon :global(svg) {
+		width: 14px;
+		height: 14px;
+	}
+	@container (min-width: 640px) {
+		.bn {
+			min-height: 80px;
+		}
+		.bn-st {
+			padding: 16px;
+			align-items: center;
+		}
+		.bn-acts {
+			padding: 16px 16px 16px 0;
+		}
+		.bn-panel {
+			padding-left: 52px;
+		}
 	}
 	/* ACT: the buttons at the right edge, centred on the banner's height */
 	.bn-acts {
@@ -472,7 +497,7 @@
 		}
 		.bn-panel {
 			order: 3;
-			padding: 0 12px 12px 44px;
+			padding: 0 12px 12px 48px;
 		}
 		.bn-acts > :global(*) {
 			flex: 1 1 100%;
