@@ -3868,7 +3868,7 @@
 							     border; the mark carries the hue. The sentence is the move and what triggered it; the hold is the button's
 							     own business ("Deploy anyway"), and the checks sit behind Details. -->
 							<Banner
-								severity="info"
+								severity="warning"
 								icon={UndoOutline}
 								title="Rolled back automatically"
 								move={{ from: failedName, to: autoRolled.target }}
@@ -3893,7 +3893,7 @@
 							/>
 						{:else}
 							<Banner
-								severity="info"
+								severity="warning"
 								icon={UndoOutline}
 								title="Rolled back"
 								line={justClearedPin ? 'The pin has been cleared; automatic promotion is back on.' : rollbackWent(rolledBack, autoDeploy)}

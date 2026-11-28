@@ -9,7 +9,7 @@ const rows = [
 	{ key: 'b', name: 'a-very-long-check-name-that-has-to-be-cut-off-somewhere-in-the-middle-of-it', mono: true, tag: 'Warning', text: '3 of 40 specs failed' }
 ];
 const mount = (p: object = {}) =>
-	render(Banner, { props: { icon: UndoOutline, title: 'Rolled back automatically', severity: 'info', move: { from: '2.4.0', to: '2.3.0' }, line: '`cart-smoke-test` failed', rows, ...p } as never });
+	render(Banner, { props: { icon: UndoOutline, title: 'Rolled back automatically', severity: 'warning', move: { from: '2.4.0', to: '2.3.0' }, line: '`cart-smoke-test` failed', rows, ...p } as never });
 
 describe('Banner (the one shell)', () => {
 	test('two text lines: the title, then one sentence with the versions in the code role', () => {

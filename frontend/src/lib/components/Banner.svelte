@@ -24,9 +24,9 @@
 	 *                      [Details panel, full width, below the row above    ]
 	 * - Every severity is coloured, info and success included: a tinted field with a 1px hue line and a solid 24px disc (D2: stronger tint, roomier 16px padding, 80px high).
 	 *   Radius is the cards' (rounded-md, 8px). In dark the tints are ranked (critical > held > info) so info is calmer.
-	 *     critical  danger   failed, refused, error        warning  amber    stuck (DL: amber means stuck only)
-	 *     held      orange   a rule holds it               info     blue     pinned, partial, a note, "Rolled back" (the system acted)
-	 *     success   green    DONE only: a recovery, an approval, a finished step; "Rolled back" is never success
+	 *     critical  danger   failed, refused, error        warning  amber    stuck, and "Rolled back" (something went wrong and the system acted)
+	 *     held      orange   a rule holds it               info     blue     pinned, partial, a note
+	 *     success   green    DONE only: a recovery, an approval, a finished step; "Rolled back" is never success (it is amber: it needs a look)
 	 * - The buttons are one group, vertically CENTRED on the closed statement rows (title + sentence) and flush right with the
 	 *   same 16px inset on every banner, whatever the body holds. Opening Details never moves them: the panel is a later row.
 	 *   Primary is rightmost, then the secondary, with "⋯" to the LEFT of the pair so the primary never moves; at most two
@@ -287,12 +287,14 @@
 		grid-template-columns: minmax(0, 1fr) auto;
 	}
 	.bn[data-severity='critical'] { --h-tint: var(--k-danger-tint); --h-line: var(--k-banner-danger-line); }
-	.bn[data-severity='warning'] { --h-tint: var(--k-warning-tint); --h-line: var(--k-warning-line); }
+	/* light: the amber tint is chromatic (0.058 at 90%), louder than the red field (0.030), so amber is mixed down until it reads below red */
+	.bn[data-severity='warning'] { --h-tint: var(--k-warning-tint); --h-line: var(--k-warning-line); --h-mix: 45%; }
 	.bn[data-severity='held'] { --h-tint: var(--k-held-tint); --h-line: var(--k-held-line); }
 	.bn[data-severity='success'] { --h-tint: var(--k-success-tint); --h-line: var(--k-success-line); }
 	/* dark: the three tints are as chromatic as each other, so rank them: critical loudest, held between, info calmest */
 	:global(.dark) .bn[data-severity='critical'] { --h-mix: 82%; }
 	:global(.dark) .bn[data-severity='held'] { --h-mix: 70%; }
+	:global(.dark) .bn[data-severity='warning'] { --h-mix: 58%; }
 	:global(.dark) .bn[data-severity='info'] { --h-mix: 38%; }
 	:global(.dark) .bn[data-severity='success'] { --h-mix: 38%; }
 	.bn-st,
