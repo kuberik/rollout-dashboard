@@ -36,7 +36,7 @@
 	import { dashboardManagesWantedVersion, WANTED_VERSION_OWNED_REASON } from '$lib/view-models/pin-hold';
 	import { page } from '$app/state';
 	import { href } from '$lib/paths';
-	import { UndoOutline } from 'flowbite-svelte-icons';
+	import { UndoOutline, RefreshOutline } from 'flowbite-svelte-icons';
 	import RolloutHeaderFlows from './RolloutHeaderFlows.svelte';
 	import { failureRecovered } from '$lib/components/new/data';
 	import { rolloutPath } from '$lib/source-dashboard';
@@ -208,6 +208,7 @@
 			Roll back
 		</button>
 		<button type="button" class="btn {recovered ? 'btn-primary' : 'btn-secondary'} max-lg:hidden" data-desktop-only data-action="retry" onclick={pressRetry}>
+			<RefreshOutline class="h-4 w-4" aria-hidden="true" />
 			Retry
 		</button>
 	{/if}
@@ -271,6 +272,7 @@
 				Roll back
 			</button>
 			<button type="button" class="btn {recovered ? 'btn-primary bg-none' : 'btn-secondary'} h-11 px-4" data-phone-only data-action="retry" onclick={pressRetry}>
+				<RefreshOutline class="h-4 w-4" aria-hidden="true" />
 				Retry
 			</button>
 		</div>

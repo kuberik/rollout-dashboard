@@ -57,6 +57,8 @@
 		ClockArrowOutline,
 		PlaySolid,
 		RefreshOutline,
+		ClipboardCleanOutline,
+		CheckOutline,
 		CalendarWeekSolid,
 		ChevronDownOutline,
 		ChevronUpOutline,
@@ -734,7 +736,7 @@
 	let fieldCopied = $state(false);
 	const copyFieldAct = $derived(
 		readyShown?.conflict
-			? { label: fieldCopied ? 'Copied' : 'Copy field path', key: 'copy-field-path', id: 'ready-copy-field', onclick: () => {
+			? { label: fieldCopied ? 'Copied' : 'Copy field path', icon: fieldCopied ? CheckOutline : ClipboardCleanOutline, key: 'copy-field-path', id: 'ready-copy-field', onclick: () => {
 					/* the label flips at once: the clipboard answer only matters when it fails, and then there is nothing to copy from here */
 					try { void Promise.resolve(navigator.clipboard?.writeText(readyShown!.conflict!.path)).catch(() => {}); } catch { /* no clipboard */ }
 					fieldCopied = true;

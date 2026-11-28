@@ -36,7 +36,7 @@
 	import { causeText, joinCause, mapPlain, splitCause, type Cause } from '$lib/view-models/gate-label';
 	import type { Act } from '$lib/components/ActRow.svelte';
 	import { failureActs } from '$lib/view-models/failure-actions';
-	import { CodeBranchOutline, UndoOutline, CheckOutline, ClockOutline, ArrowUpRightFromSquareOutline, ChevronDownOutline, MapPinOutline } from 'flowbite-svelte-icons';
+	import { CodeBranchOutline, UndoOutline, RefreshOutline, CheckOutline, ClockOutline, ArrowUpRightFromSquareOutline, ChevronDownOutline, MapPinOutline } from 'flowbite-svelte-icons';
 	import { getRolloutEnvironmentTheme } from '$lib/environment-theme';
 	import type { TChange } from './data';
 	import type { Lane } from '$lib/view-models/promotion-lanes';
@@ -355,7 +355,7 @@
 	const retryHrefOf = $derived(stateRow?.href ? retryActionHref(stateRow.href) : '');
 	const failActs = $derived(failureActs<Act>(recoveredFail, {
 		rollback: actAsAct() ?? null,
-		retry: recoveredFail ? { label: 'Retry', href: retryHrefOf, key: 'retry' } : null,
+		retry: recoveredFail ? { label: 'Retry', href: retryHrefOf, icon: RefreshOutline, key: 'retry' } : null,
 		rest: place ? [{ label: 'Open rollout', href: place, after: true, key: 'open-rollout' }] : []
 	}));
 	/** another controller owns the failing place's wanted version: its Roll back is drawn disabled with the header's reason */
@@ -397,7 +397,7 @@
 	{:else if act && recoveredFail}
 		<span class="inline-flex shrink-0 flex-wrap items-center gap-2" data-fp-acts>
 			{#if ownedReason}<button type="button" disabled title={ownedReason} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</button>{:else}<a href={actHref} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</a>{/if}
-			<a href={retryHrefOf} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="retry">Retry</a>
+			<a href={retryHrefOf} class="btn btn-sm btn-secondary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="retry"><RefreshOutline class="h-4 w-4" aria-hidden="true" />Retry</a>
 		</span>
 	{:else if act && ownedReason}
 		<button type="button" disabled title={ownedReason} class="btn btn-sm btn-primary relative z-[1] shrink-0 gap-2 max-sm:min-h-11" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />{label}</button>

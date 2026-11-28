@@ -210,6 +210,7 @@
 				<StatusSpinner size="4" color="white" />
 				<span class="truncate">Retrying…</span>
 			{:else}
+				<RefreshOutline class="h-4 w-4 shrink-0" aria-hidden="true" />
 				<span class="truncate">{label}</span>
 			{/if}
 		</button>

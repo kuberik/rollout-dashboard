@@ -30,8 +30,8 @@
 	 * - The buttons are one group, vertically CENTRED on the closed statement rows (title + sentence) and flush right with the
 	 *   same 16px inset on every banner, whatever the body holds. Opening Details never moves them: the panel is a later row.
 	 *   Primary is rightmost, then the secondary, with "⋯" to the LEFT of the pair so the primary never moves; at most two
-	 *   visible. Buttons are TEXT ONLY: the shell hides every SVG in the action area except the "⋯" dots (callers' icons and
-	 *   `actions` snippets included). Below 640px OF THE BANNER the group becomes one full-width 44px row at the bottom, with no
+	 *   visible. Icons on buttons only where one genuinely fits, 16px outline, the same glyph as the product's other
+	 *   triggers of that action (Roll back ↶, Approve ✓, Retry ↻, Copy ⧉); navigation buttons keep only their trailing chevron. Below 640px OF THE BANNER the group becomes one full-width 44px row at the bottom, with no
 	 *   rule above it. Labels never carry a version ("Roll back", not "Roll back to 5.1.0").
 	 * - Details is ONE fixed place per breakpoint: right after the title text on desktop, the end of the title row (right-aligned) on the phone. Chips and
 	 *   arrows (`move`, `shape`) sit inline on the sentence's row, at the product Chip's 20px height, so a banner with chips is
@@ -142,8 +142,7 @@
 	const detailsLabel = $derived(shown.detailsLabel ?? 'Details');
 	const hasDetails = $derived(rows.length > 0 || !!detailsBody);
 	const hasTag = $derived(rows.some((r) => r.tag));
-	// a-tweak: text-only buttons (a disclosure chevron after the label stays)
-	const plain = (a?: Act): Act | undefined => (a && !a.iconAfter ? { ...a, icon: undefined } : a);
+	const plain = (a?: Act): Act | undefined => a; // icons only where one genuinely fits: the caller decides (Roll back, Approve, Retry, Copy); links keep their trailing chevron
 	const primary = $derived(plain(shown.primary));
 	const secondary = $derived((shown.secondary === undefined ? [] : Array.isArray(shown.secondary) ? shown.secondary : [shown.secondary]).map((a) => plain(a)!));
 	const more = $derived((shown.more ?? []).map((a) => plain(a)!));
@@ -433,10 +432,6 @@
 	/* "⋯" sits LEFT of the visible pair, so the primary is the rightmost control at every width */
 	.bn .bn-acts :global(.ar .ar-more) {
 		order: -1;
-	}
-	/* text-only buttons, enforced here for every caller (ActRow rows and the `actions` snippet): only the "⋯" dots, a toggle chevron and a busy spinner keep their SVG */
-	.bn-acts :global(.btn:not(.ar-more-btn):not(.bn-toggle) svg:not(.animate-spin)) {
-		display: none;
 	}
 	.bn-panel {
 		grid-column: 1 / -1;

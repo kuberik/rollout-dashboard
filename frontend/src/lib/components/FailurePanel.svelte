@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { canHover } from '$lib/can-hover.svelte';
 	import type { Rollout, HealthCheck, KruiseRollout, RolloutTest } from '../../types';
-	import { UndoOutline } from 'flowbite-svelte-icons';
+	import { UndoOutline, RefreshOutline } from 'flowbite-svelte-icons';
 	import { WANTED_VERSION_OWNED_REASON, rollbackTooltip } from '$lib/view-models/pin-hold';
 	import Banner from './Banner.svelte';
 	import ChangeVersionFlow from './ChangeVersionFlow.svelte';
@@ -232,9 +232,9 @@
 		notRolled ? [...verdictDetailRows(notRolled.rows), ...(dependencyBlock && !nowSafe ? breakDetailRows(dependencyBlock.breaks, cluster ?? '', rollout?.metadata?.name ?? '') : [])] : undefined
 	);
 	const retryFirst = $derived(retryPrimary({ allRecovered, notRolledBackReason: notRolled?.reason }));
-	const retryAct = $derived({ label: 'Retry', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
+	const retryAct = $derived({ label: 'Retry', icon: RefreshOutline, id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
 	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: () => handleRollback(), ...(isDashboardManagingWantedVersion ? {} : { ...(canHover.current ? {} : { title: WANTED_VERSION_OWNED_REASON }), describedBy: 'failure-owned-reason' }) });
-	const anywayAct = $derived({ label: nowSafe ? 'Roll back' : 'Roll back anyway\u2026', ...(nowSafe ? { ariaLabel: `Roll back to ${nowSafe.target}` } : {}), icon: UndoOutline, id: 'failure-rollback-btn', key: nowSafe ? 'rollback-safe' : 'rollback-anyway', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: () => handleRollback(nowSafe?.targetTag ?? dependencyBlock?.usualTag) });
+	const anywayAct = $derived({ label: nowSafe ? 'Roll back' : 'Roll back anyway\u2026', ...(nowSafe ? { ariaLabel: `Roll back to ${nowSafe.target}` } : {}), id: 'failure-rollback-btn', key: nowSafe ? 'rollback-safe' : 'rollback-anyway', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: () => handleRollback(nowSafe?.targetTag ?? dependencyBlock?.usualTag) });
 	const openConsumerAct = $derived(
 		dependencyBlock && dependencyBlock.breaks.length === 1 && dependencyBlock.breaks[0].namespace
 			? { label: `Open ${dependencyBlock.breaks[0].name}`, ariaLabel: `Open ${dependencyBlock.breaks[0].name}`, title: `Open ${dependencyBlock.breaks[0].name}`, href: rolloutPath(cluster ?? '', dependencyBlock.breaks[0].namespace, dependencyBlock.breaks[0].name), key: 'open-consumer' }
