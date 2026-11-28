@@ -174,7 +174,7 @@
 	>
 		<div class="bn-collapse-inner">
 			<div class="bn-cq">
-				<section class="bn rounded-md border text-fg {sev.face}" class:bn--acts={hasActions} class:is-open={detailsOpen} {role} data-banner data-severity={severity}>
+				<section class="bn rounded-md border text-fg {sev.face}" class:bn--acts={hasActions} class:bn--more={more.length > 0} class:is-open={detailsOpen} {role} data-banner data-severity={severity}>
 					<div class="bn-st">
 					<span class="bn-icon relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full {disc}" aria-hidden="true" data-banner-mark>
 						{#if shown.pulse}<span class="bn-halo absolute inset-0 rounded-full opacity-30 {disc}"></span>{/if}
@@ -529,6 +529,19 @@
 		/* every visible button in the phone row shares the row equally (ActRow's own rule sizes by label, which left Retry narrower than its sibling) */
 		.bn .bn-acts :global(.ar.ar-equal.ar-fill .ar-item:not(.ar-menu)) {
 			flex: 1 1 0;
+		}
+		/* three controls would squeeze the pair and clip a label: "⋯" leaves the button row and sits at the end of the title row, beside Details (a 44px tap target), so the visible pair is equal width */
+		.bn {
+			position: relative;
+		}
+		.bn--more .bn-head {
+			padding-right: 48px;
+		}
+		.bn .bn-acts :global(.ar .ar-more) {
+			position: absolute;
+			top: 4px;
+			right: 4px;
+			order: 0;
 		}
 		.bn-acts :global(.ar-more) {
 			flex: 0 0 44px;
