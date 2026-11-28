@@ -347,8 +347,17 @@
 	.bn[data-severity='held'] .bn-icon {
 		filter: brightness(0.82);
 	}
-	:global(.dark) .bn[data-severity='held'] .bn-icon {
+	/* light: the amber disc a step darker than its cream field (3:1); the dark glyph stays above 4.5:1 on it */
+	.bn[data-severity='warning'] .bn-icon {
+		filter: brightness(0.74);
+	}
+	:global(.dark) .bn[data-severity='held'] .bn-icon,
+	:global(.dark) .bn[data-severity='warning'] .bn-icon {
 		filter: none;
+	}
+	/* a title never orphans one word on its last line */
+	.bn-head :global([data-banner-title]) {
+		text-wrap: balance;
 	}
 	/* SHAPE: the facts drawn, inline in the text column ahead of the sentence */
 	.bn-sh {
@@ -550,7 +559,7 @@
 		.bn .bn-acts :global(.ar .ar-more .ar-more-btn::after) {
 			content: '';
 			position: absolute;
-			inset: -6px;
+			inset: -7px; /* padding box 30 + 14 = a 44px tap target around the 32px border box */
 		}
 		.bn-acts :global(.ar-more) {
 			flex: 0 0 44px;

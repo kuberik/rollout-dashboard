@@ -297,7 +297,7 @@
 		<span class="bn-chip t-code-sm" data-banner-relation>{relation.name}</span>
 		<span class="t-meta text-fg-muted">needs</span>
 		<span class="bn-chip t-code-sm">{relation.left}</span>
-		<span class="t-code-sm text-danger" aria-label="the rollback target {relation.right} does not satisfy it">{relation.right}</span><span class="t-meta text-fg-muted">refused</span>
+		<span class="whitespace-nowrap"><span class="t-code-sm text-danger" aria-label="the rollback target {relation.right} does not satisfy it">{relation.right}</span> <span class="t-meta text-fg-muted">refused</span></span>
 	{/if}
 {/snippet}
 {#snippet evidenceBody()}
