@@ -18,7 +18,7 @@
 	 * The whole card is a cover link; buttons sit above it. What the lead IS lives in view-models/attention.ts (unit-tested).
 	 * Bands: `AttentionBand` below in this file's sibling `AttentionBand.svelte`.
 	 */
-	import { ExclamationCircleSolid, UndoOutline, PlaySolid, UsersGroupOutline, CodeBranchOutline } from 'flowbite-svelte-icons';
+	import { ExclamationCircleSolid, UndoOutline, UsersGroupOutline, CodeBranchOutline } from 'flowbite-svelte-icons';
 	import type { Snippet } from 'svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
 	import Chip from '$lib/components/Chip.svelte';
@@ -134,7 +134,7 @@
 						<a href={rollbackHref} class="btn {a.primary ? 'btn-primary' : 'btn-secondary'}" data-action="rollback"><UndoOutline class="h-4 w-4" aria-hidden="true" />Roll back</a>
 					{/if}
 				{:else if a.key === 'retry'}
-					<a href={retryActionHref(retryHref ?? href)} class="btn btn-secondary" data-action="retry"><PlaySolid class="h-4 w-4" aria-hidden="true" />Retry</a>
+					<a href={retryActionHref(retryHref ?? href)} class="btn btn-secondary" data-action="retry">Retry</a>
 				{:else}
 					<a href={openHref} class="btn btn-secondary" data-action="open">{openLabel} ›</a>
 				{/if}

@@ -336,7 +336,7 @@
 		min-height: 20px;
 	}
 	.bn-row2--block {
-		align-items: last baseline;
+		align-items: center;
 	}
 	/* desktop: Details follows the title text on the title row */
 	.bn-det-ph {
@@ -355,6 +355,8 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 8px;
+		min-height: 20px; /* the chip row's box is the chip's 20px, whatever sits beside it */
+		line-height: 20px;
 	}
 	/* the product Chip's geometry: 20px tall, 4px radius, so a banner with chips is as tall as one without */
 	.bn-sh :global(.bn-chip),

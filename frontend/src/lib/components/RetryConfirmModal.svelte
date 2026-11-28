@@ -44,7 +44,7 @@
 	import { Modal } from 'flowbite-svelte';
 	import { tick } from 'svelte';
 	import StatusSpinner from './StatusSpinner.svelte';
-	import { CloseOutline, ExclamationCircleSolid, PlaySolid } from 'flowbite-svelte-icons';
+	import { CloseOutline, ExclamationCircleSolid, RefreshOutline } from 'flowbite-svelte-icons';
 	import { DIALOG_ERROR_CLASS, retryFailureText } from '$lib/view-models/failure-text';
 	import { modalFocusReturn } from '$lib/a11y.svelte';
 	import {
@@ -137,7 +137,7 @@
 		<div class="flex items-start gap-3">
 			<!-- a neutral disc: Retry resends a build this place already ran, which is not the dangerous act a solid danger disc says; the typed version is the care -->
 			<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-subtle ring-1 ring-line" data-retry-icon>
-				<PlaySolid class="h-5 w-5 text-fg-muted" />
+				<RefreshOutline class="h-5 w-5 text-fg-muted" />
 			</div>
 			<div class="min-w-0 flex-1">
 				<h2 id="rcm-title" class="t-heading text-fg">{title}?</h2>
@@ -210,7 +210,6 @@
 				<StatusSpinner size="4" color="white" />
 				<span class="truncate">Retrying…</span>
 			{:else}
-				<PlaySolid class="h-4 w-4 shrink-0" />
 				<span class="truncate">{label}</span>
 			{/if}
 		</button>

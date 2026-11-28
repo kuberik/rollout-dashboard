@@ -59,7 +59,7 @@
 	import PromotionLane from '$lib/components/PromotionLane.svelte';
 	import ChangeVersionFlow from '$lib/components/ChangeVersionFlow.svelte';
 	import NotFound from '$lib/components/NotFound.svelte';
-	import { CodeBranchOutline, ClockOutline, ChevronRightOutline, UndoOutline, CheckOutline, PlaySolid } from 'flowbite-svelte-icons';
+	import { CodeBranchOutline, ClockOutline, ChevronRightOutline, UndoOutline, CheckOutline } from 'flowbite-svelte-icons';
 	import { rolloutsListQueryOptions, clusterInfoQueryOptions, rolloutQueryOptions } from '$lib/api/rollouts';
 	import { apiPath } from '$lib/api/urls';
 	import { now } from '$lib/stores/time';
@@ -303,7 +303,7 @@
 		if (!failRow) return { primary: undefined, secondary: [] as Act[] };
 		return failureActs<Act>(failureRecovered(failRow.href), {
 			rollback: failAct ? { label: 'Roll back', onclick: () => pressRollback(failRow), icon: UndoOutline, key: 'rollback', ...(rollbackOwnedReason(failRow.href) ? { disabled: true, title: rollbackOwnedReason(failRow.href)! } : {}) } : null,
-			retry: { label: retry === 'done' ? 'Retry started' : retry === 'error' ? 'Retry failed' : 'Retry', onclick: () => retryDeploy(failRow), busy: retry === 'busy', icon: PlaySolid, key: 'retry' },
+			retry: { label: retry === 'done' ? 'Retry started' : retry === 'error' ? 'Retry failed' : 'Retry', onclick: () => retryDeploy(failRow), busy: retry === 'busy', key: 'retry' },
 			rest: [{ label: 'Open rollout', href: failRow.href, after: true, key: 'open-rollout' }]
 		});
 	});

@@ -18,7 +18,7 @@ const load = () => {
 	const hc = JSON.parse(respond('GET', '/api/health-checks').body ?? 'null');
 	installLiveSource({ rollouts: l.rollouts.items, environments: l.environments.items, rolloutDependencies: l.rolloutDependencies, kustomizations: [], kruiseRollouts: [], changes: gh.changes, changesState: 'ok', healthChecks: hc?.rolloutHealthChecks?.items ?? null, github: { configured: true, connected: true, login: 'demo' }, me: 'demo', now: new Date() } as unknown as FleetSource);
 };
-const retries = (c: HTMLElement) => [...c.querySelectorAll('a')].filter((a) => a.textContent?.trim() === 'Retry');
+const retries = (c: HTMLElement) => [...c.querySelectorAll('a')].filter((a) => /^Retry\s*[›]?$/.test(a.textContent?.trim() ?? ''));
 
 describe('Retry links carry ?action=retry', () => {
 	beforeAll(() => install(true));

@@ -35,7 +35,7 @@
 	import Card from '$lib/components/Card.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import StatusMark from '$lib/components/StatusMark.svelte';
-	import { ChartLineUpOutline, UndoOutline, GithubSolid, PlaySolid, CheckOutline } from 'flowbite-svelte-icons';
+	import { ChartLineUpOutline, UndoOutline, GithubSolid, CheckOutline } from 'flowbite-svelte-icons';
 	import HoldingCard from '../HoldingCard.svelte';
 	import ChangeStrip from './ChangeStrip.svelte';
 	import { stagesOf } from '../stages/stages-model';
@@ -99,7 +99,7 @@
 	/* the one order of a failed place's actions (view-models/failure-actions.ts): Retry leads for a recovered failure, so it is the phone row's one visible action, not an entry behind "⋯" */
 	const failActs = $derived(failureActs<Act>(!!lead?.row?.failure?.recovered, {
 		rollback: backHref ? (rollbackOwnedReason(backHref) ? { label: 'Roll back', icon: UndoOutline, key: 'rollback', disabled: true, title: rollbackOwnedReason(backHref)! } : { label: 'Roll back', href: backHref, icon: UndoOutline, key: 'rollback' }) : null,
-		retry: lead ? { label: 'Retry', href: retryActionHref(lead.href), icon: PlaySolid, iconClass: 'h-5 w-5', key: 'retry' } : null,
+		retry: lead ? { label: 'Retry', href: retryActionHref(lead.href), key: 'retry' } : null,
 		rest: lead ? [{ label: 'Open rollout', href: lead.href, quiet: true, key: 'open-rollout' }] : []
 	}));
 	/* change-strip r2 (coordinator: restore the facts "Where it runs" carried): the strip's own count (stages-model rollup, so the two agree) and the builds that carry the change */

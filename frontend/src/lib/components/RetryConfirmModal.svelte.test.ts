@@ -96,9 +96,9 @@ describe('the Retry dialog says one verb in neutral ink', () => {
 	});
 });
 
-/** One glyph for Retry: the filled play triangle every Retry trigger draws, in the dialog's header disc and on its confirm button. */
-describe('the Retry dialog draws the same glyph as its triggers', () => {
-	test('header disc and confirm button both carry the play triangle', () => {
+/** Retry has no play triangle: the confirm button is text only, the header disc carries the neutral refresh mark. */
+describe('the Retry dialog carries no play triangle', () => {
+	test('confirm button is text only; the header disc is not the play glyph', () => {
 		const ref = render(PlaySolid);
 		const play = ref.container.querySelector('svg path')!.getAttribute('d');
 		ref.unmount();
@@ -106,8 +106,8 @@ describe('the Retry dialog draws the same glyph as its triggers', () => {
 		const d = document.querySelector('dialog')!;
 		const confirm = [...d.querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Retry')!;
 		const disc = d.querySelector('#rcm-title')!.parentElement!.parentElement!;
-		expect(confirm.querySelector('svg path')!.getAttribute('d')).toBe(play);
-		expect(disc.querySelector('svg path')!.getAttribute('d')).toBe(play);
+		expect(confirm.querySelector('svg')).toBeNull();
+		expect(disc.querySelector('svg path')!.getAttribute('d')).not.toBe(play);
 	});
 });
 
