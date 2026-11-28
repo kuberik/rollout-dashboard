@@ -535,13 +535,25 @@
 			position: relative;
 		}
 		.bn--more .bn-head {
-			padding-right: 48px;
+			padding-right: 44px;
 		}
 		.bn .bn-acts :global(.ar .ar-more) {
 			position: absolute;
-			top: 4px;
-			right: 4px;
+			top: 8px; /* the 32px box is centred on the 24px title line */
+			right: 12px; /* the banner's side inset */
 			order: 0;
+		}
+		/* a 32px visible box with the 44px tap target kept as an invisible hit area around it */
+		.bn .bn-acts :global(.ar .ar-more .ar-more-btn) {
+			width: 32px;
+			min-width: 32px;
+			height: 32px;
+			min-height: 32px;
+		}
+		.bn .bn-acts :global(.ar .ar-more .ar-more-btn::after) {
+			content: '';
+			position: absolute;
+			inset: -6px;
 		}
 		.bn-acts :global(.ar-more) {
 			flex: 0 0 44px;
