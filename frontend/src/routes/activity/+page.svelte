@@ -1379,14 +1379,6 @@
 		 * into `footnoteBody`, disclosed — same split `FailurePanel` already
 		 * uses for its own per-check list.
 		 */
-		const multiSubjects = unresolvedFailures.slice(0, NAMED_FAILURES).map((e) => {
-			const place = e.envLabel ? ` in ${e.envLabel}` : '';
-			return `${e.displayName}${place}`;
-		});
-		const multiMore =
-			unresolvedFailedCount > NAMED_FAILURES
-				? `, and ${unresolvedFailedCount - NAMED_FAILURES} more`
-				: '';
 		return {
 			title:
 				unresolvedFailedCount === 1 ? 'A deploy failed' : `${unresolvedFailedCount} deploys failed`,
@@ -1403,7 +1395,7 @@
 			message:
 				unresolvedFailedCount === 1
 					? `${worst.displayName}${where} failed ${formatTimeAgo(worst.timestamp, $now)}, on ${worst.version}.`
-					: `${multiSubjects.join(', ')}${multiMore}.`,
+					: '' /* several: the title counts them and Details lists them (the glanceable rule: no list in the line) */,
 			/** The disclosed set: `footnoteBody`'s own list, below — never
 			    printed at banner scale past one failure. */
 			list:

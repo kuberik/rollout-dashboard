@@ -70,10 +70,10 @@ describe('rollout detail: the newer-builds count waits for the fleet list', () =
 		const sample = () => seen.push(text().match(/\d+ newer builds?/g)?.join('|') ?? '');
 		await new Promise((r) => setTimeout(r, 300));
 		sample();
-		expect(text()).toMatch(/Newer builds are available and none of them will deploy while the pin is set/); /* pending: said without a number */
+		expect(text()).toMatch(/Newer builds are held by the pin/); /* pending: said without a number */
 		expect(seen.at(-1)).toBe('');
 		release();
-		await waitFor(() => expect(text()).toMatch(/1 newer build is available and none of them will deploy/), { timeout: 8000 });
+		await waitFor(() => expect(text()).toMatch(/1 newer build is held by the pin/), { timeout: 8000 });
 		sample();
 		expect(seen.join(',')).not.toMatch(/2 newer/);
 		expect(text()).not.toMatch(/2 newer builds/);

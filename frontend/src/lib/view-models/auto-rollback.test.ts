@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rollout } from '../../types';
-import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, triggerSentence, notRolledBackSentence, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
+import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, triggerSentence, notRolledBackSentence, retryPrimary, failureTitle, warningSentence, autoRolledBackBuild, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
 
 const v = (tag: string) => ({ tag, version: `1.${tag.slice(-1)}.0`, revision: 'a'.repeat(40), created: '2026-11-21T10:00:00Z' });
 const failed = {
@@ -154,5 +154,45 @@ describe('entryRollbackNote: verdicts follow what the controller decided', () =>
 	it('an older failed entry that was not rolled back reads plainly', () => {
 		const e = failed({ id: 3 });
 		expect(entryRollbackNote(ro(true, [ok({ id: 9 }), e]), e)).toEqual({ ran: false, word: 'Not rolled back', why: '', note: 'Not rolled back' });
+	});
+});
+
+describe('retryPrimary: the filled button follows what the controller decided', () => {
+	it('a warning-only failure the controller chose not to roll back makes Retry primary', () => {
+		expect(retryPrimary({ allRecovered: false, notRolledBackReason: 'NotATrigger' })).toBe(true);
+	});
+	it('a recovered failure keeps Retry primary', () => {
+		expect(retryPrimary({ allRecovered: true })).toBe(true);
+	});
+	it('a failure still failing, or blocked for the rollback itself, keeps Roll back primary', () => {
+		expect(retryPrimary({ allRecovered: false })).toBe(false);
+		for (const r of ['Blocked', 'NoTarget', 'ManualDeploy', 'ManualIntent', 'DeployError']) expect(retryPrimary({ allRecovered: false, notRolledBackReason: r })).toBe(false);
+	});
+});
+
+describe('failureTitle: a warning-only failure has its own headline', () => {
+	const w = { severity: 'Warning' as const, rollsBack: false };
+	it('names a warning check, singular and plural', () => {
+		expect(failureTitle({ reason: 'NotATrigger', rows: [w] })).toBe('Warning check failed');
+		expect(failureTitle({ reason: 'NotATrigger', rows: [w, w] })).toBe('Warning checks failed');
+	});
+	it('keeps the failure headline for a critical failure or any other reason', () => {
+		expect(failureTitle({ reason: 'NotATrigger', rows: [w, { severity: 'Critical', rollsBack: false }] })).toBe('Failed, not rolled back');
+		expect(failureTitle({ reason: 'Blocked', rows: [w] })).toBe('Failed, not rolled back');
+		expect(failureTitle({})).toBe('Failed, not rolled back');
+	});
+});
+
+describe('warningSentence: names the check and the consequence, not the severity again', () => {
+	it('one check', () => expect(warningSentence([{ ref: 'prod/catalog-flaky-ui-test' }])).toBe('`catalog-flaky-ui-test` does not trigger a rollback'));
+	it('several', () => expect(warningSentence([{ ref: 'a/x' }, { ref: 'a/y' }])).toBe('2 checks, none trigger a rollback'));
+});
+
+describe('autoRolledBackBuild: the build the controller deployed and rolled back', () => {
+	it('names the check that triggered the rollback, only for that build', () => {
+		expect(autoRolledBackBuild(rolledBack(), 'r4')).toEqual({ check: 'smoke' });
+		expect(autoRolledBackBuild(rolledBack(), 'r3')).toBeNull();
+		expect(autoRolledBackBuild(rolledBack(), null)).toBeNull();
+		expect(autoRolledBackBuild({ status: { history: [failed] } } as unknown as Rollout, 'r4')).toBeNull();
 	});
 });

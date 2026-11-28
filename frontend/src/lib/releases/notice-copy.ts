@@ -20,7 +20,7 @@ export function noticeLead(reason: NoticeReason, app = false): string {
 	const subject = app ? "This app's rollout" : 'This Rollout';
 	switch (reason) {
 		case 'ReleaseSourceRequired':
-			return `${subject} has no release source, so it has no releases.`;
+			return `Without one, ${subject.charAt(0).toLowerCase() + subject.slice(1)} has no releases.`;
 		case 'ReleasesImagePolicyIgnored':
 			return `${subject} sets spec.releasesImagePolicy, which is ignored.`;
 		case 'NoReleases':

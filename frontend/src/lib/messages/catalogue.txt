@@ -143,6 +143,9 @@ lib/components/AttentionCard.svelte	code	Open rollout
 lib/components/AttentionCard.svelte	text	Roll back
 lib/components/Avatar.svelte	code	… (CI)
 lib/components/Avatar.svelte	code	kuberik (automatic)
+lib/components/Banner.svelte	code	… text-gray-900
+lib/components/Banner.svelte	code	… text-white
+lib/components/Banner.svelte	aria-label	replaced by
 lib/components/BlockedRow.svelte	code	: ''}… — …${holdLabel ?
 lib/components/BlockedRow.svelte	code	… failed
 lib/components/BlockedRow.svelte	code	… release… waiting
@@ -200,7 +203,6 @@ lib/components/CadenceStrip.svelte	label	Time range
 lib/components/CadenceStrip.svelte	aria-label	View diff
 lib/components/CadenceStrip.svelte	text	View diff
 lib/components/CadenceStrip.svelte	title	View diff
-lib/components/CalmBanner.svelte	aria-label	replaced by
 lib/components/Card.svelte	code	text-fg-subtle !font-normal
 lib/components/ChangeList.svelte	text	… commit … went live here
 lib/components/ChangeList.svelte	code	… commit…
@@ -271,6 +273,7 @@ lib/components/ChangeVersionModal.svelte	code	Required for a prod …. Recorded 
 lib/components/ChangeVersionModal.svelte	code	Required: say why the rule should not apply. Recorded with the deploy.
 lib/components/ChangeVersionModal.svelte	code	Roll back
 lib/components/ChangeVersionModal.svelte	code	Roll back … to …
+lib/components/ChangeVersionModal.svelte	code	Rolled back
 lib/components/ChangeVersionModal.svelte	code	Rolling back…
 lib/components/ChangeVersionModal.svelte	code	Running in …
 lib/components/ChangeVersionModal.svelte	code	Running in … since …
@@ -455,15 +458,14 @@ lib/components/EventsCard.svelte	title	Recent events
 lib/components/FailurePanel.svelte	code	` recovered
 lib/components/FailurePanel.svelte	text	+ … more
 lib/components/FailurePanel.svelte	code	A health check
+lib/components/FailurePanel.svelte	code	A rollback would break a consumer
 lib/components/FailurePanel.svelte	code	An error occurred during deployment.
-lib/components/FailurePanel.svelte	title	Failed, not rolled back
 lib/components/FailurePanel.svelte	code	Open …
-lib/components/FailurePanel.svelte	code	Open consumer
-lib/components/FailurePanel.svelte	code	Open provider
 lib/components/FailurePanel.svelte	code	Roll back
 lib/components/FailurePanel.svelte	code	Roll back anyway…
 lib/components/FailurePanel.svelte	code	Roll back to …
 lib/components/FailurePanel.svelte	code	The check
+lib/components/FailurePanel.svelte	aria-label	the rollback target … does not satisfy it
 lib/components/FailureSourceRow.svelte	text	&nbsp; …
 lib/components/FailureSourceRow.svelte	text	&nbsp;at failure
 lib/components/FailureToasts.svelte	text	+ … more failure …
@@ -1235,12 +1237,11 @@ lib/components/RolloutTabHeader.svelte	text	Roll back
 lib/components/RolloutTabHeader.svelte	code	Roll back to …
 lib/components/ScheduleStatus.svelte	text	… Automatic deploys resume in
 lib/components/ScheduleStatus.svelte	text	… rule …
-lib/components/ScheduleStatus.svelte	code	… waiting.
-lib/components/ScheduleStatus.svelte	code	…Nothing promotes itself for another … — ….
 lib/components/ScheduleStatus.svelte	title	Automatic deploys pause soon
 lib/components/ScheduleStatus.svelte	text	Automatic deploys resume in
 lib/components/ScheduleStatus.svelte	code	Failed to load schedules
 lib/components/ScheduleStatus.svelte	text	Held by … rule … …
+lib/components/ScheduleStatus.svelte	code	Reopens in … — ….
 lib/components/SkipRuleModal.svelte	text	… failed.
 lib/components/SkipRuleModal.svelte	text	… of … selected
 lib/components/SkipRuleModal.svelte	text	… of … skipped.
@@ -1323,12 +1324,12 @@ lib/pr-cell-copy.ts	code	waiting for … to deploy it first
 lib/pr-cell-copy.ts	code	waiting on …
 lib/releases/catalogue.ts	code	No release source
 lib/releases/catalogue.ts	code	No releases yet
-lib/releases/notice-copy.ts	code	… has no release source, so it has no releases.
 lib/releases/notice-copy.ts	code	… sets spec.releasesImagePolicy, which is ignored.
 lib/releases/notice-copy.ts	code	The release source of this app's rollout has not published any releases yet.
 lib/releases/notice-copy.ts	code	This app's rollout
 lib/releases/notice-copy.ts	code	This Rollout
 lib/releases/notice-copy.ts	code	This Rollout's release source has not published any releases yet.
+lib/releases/notice-copy.ts	code	Without one, … has no releases.
 lib/rollout-cards.ts	code	… newer build… waiting.
 lib/rollout-cards.ts	code	Held: a newer build exists, but no rule lets it through yet.
 lib/rollout-cards.ts	code	Not pinned, so it can move forward again.
@@ -1400,6 +1401,7 @@ lib/view-models/auto-deploy.ts	code	the last deploy failed its checks
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and it is not pinned there.
 lib/view-models/auto-deploy.ts	code	Went back … release…, … → …, and pinned there.
 lib/view-models/auto-rollback.ts	code	… and … more failed
+lib/view-models/auto-rollback.ts	code	… checks, none trigger a rollback
 lib/view-models/auto-rollback.ts	code	… could not run
 lib/view-models/auto-rollback.ts	code	… failed
 lib/view-models/auto-rollback.ts	code	… failed for a reason that does not roll back
@@ -1408,6 +1410,7 @@ lib/view-models/auto-rollback.ts	code	… is a … check
 lib/view-models/auto-rollback.ts	code	… was failing before this deploy
 lib/view-models/auto-rollback.ts	code	…, at or above the rollout's severity
 lib/view-models/auto-rollback.ts	code	…, below the rollout's severity
+lib/view-models/auto-rollback.ts	code	` does not trigger a rollback
 lib/view-models/auto-rollback.ts	code	a check that cannot run never rolls back
 lib/view-models/auto-rollback.ts	code	A deploy was already requested by hand
 lib/view-models/auto-rollback.ts	code	Apply failed
@@ -1419,6 +1422,7 @@ lib/view-models/auto-rollback.ts	code	Check error
 lib/view-models/auto-rollback.ts	code	Deployed before rollback decisions were recorded
 lib/view-models/auto-rollback.ts	code	Deployed by hand
 lib/view-models/auto-rollback.ts	code	does not roll back
+lib/view-models/auto-rollback.ts	code	Failed, not rolled back
 lib/view-models/auto-rollback.ts	code	Force deployed
 lib/view-models/auto-rollback.ts	code	it started failing before this deploy
 lib/view-models/auto-rollback.ts	code	No earlier build is safe to roll back to
@@ -1432,6 +1436,8 @@ lib/view-models/auto-rollback.ts	code	Rules bypassed
 lib/view-models/auto-rollback.ts	code	Test failed
 lib/view-models/auto-rollback.ts	code	The rollback deploy could not be written
 lib/view-models/auto-rollback.ts	code	this build
+lib/view-models/auto-rollback.ts	code	Warning check failed
+lib/view-models/auto-rollback.ts	code	Warning checks failed
 lib/view-models/auto-rollback.ts	code	Would roll back
 lib/view-models/banner.ts	code	… … in …${place ?
 lib/view-models/blocking-story.ts	code	— it is on
@@ -1453,6 +1459,7 @@ lib/view-models/blocking-story.ts	code	… … waiting on another deploy
 lib/view-models/blocking-story.ts	code	… allows this build
 lib/view-models/blocking-story.ts	code	… and …
 lib/view-models/blocking-story.ts	code	… available and none of them will deploy while the pin is set.
+lib/view-models/blocking-story.ts	code	… held by the pin.
 lib/view-models/blocking-story.ts	code	… in … — …
 lib/view-models/blocking-story.ts	code	… is held
 lib/view-models/blocking-story.ts	code	… is waiting for …
@@ -1468,7 +1475,6 @@ lib/view-models/blocking-story.ts	code	… ships a newer … than …
 lib/view-models/blocking-story.ts	code	… ships a newer version
 lib/view-models/blocking-story.ts	code	… things are holding …
 lib/view-models/blocking-story.ts	code	… waiting.
-lib/view-models/blocking-story.ts	code	…Nothing promotes itself until ….
 lib/view-models/blocking-story.ts	code	's check
 lib/view-models/blocking-story.ts	code	's pick
 lib/view-models/blocking-story.ts	code	's pick (
@@ -1489,6 +1495,7 @@ lib/view-models/blocking-story.ts	code	another deploy
 lib/view-models/blocking-story.ts	code	another service
 lib/view-models/blocking-story.ts	code	are the same tier (
 lib/view-models/blocking-story.ts	code	Automatic updates are off here until the pin is cleared.
+lib/view-models/blocking-story.ts	code	Automatic updates are off until the pin is cleared.
 lib/view-models/blocking-story.ts	code	Clearing the pin is the only thing that restarts automatic deploys.
 lib/view-models/blocking-story.ts	code	depends on …
 lib/view-models/blocking-story.ts	code	depends on another service
@@ -1516,6 +1523,7 @@ lib/view-models/blocking-story.ts	code	Needs ……
 lib/view-models/blocking-story.ts	code	Newer builds are
 lib/view-models/blocking-story.ts	code	No approval will unblock this. Someone has to ……; until then the only way forward is a hand-started deploy, which bypasses the check.
 lib/view-models/blocking-story.ts	code	Nobody has to approve anything — this clears when the deploy in front of it lands.
+lib/view-models/blocking-story.ts	code	Nothing promotes itself until ….
 lib/view-models/blocking-story.ts	code	one name is used per tier (split with sites and waves)
 lib/view-models/blocking-story.ts	code	Outside the … deploy window
 lib/view-models/blocking-story.ts	code	pick (
@@ -1660,6 +1668,7 @@ lib/view-models/deploy-bars.ts	code	none …
 lib/view-models/deploy-bars.ts	code	rolled back
 lib/view-models/deploy-risk.ts	code	… back
 lib/view-models/deploy-risk.ts	code	… build…
+lib/view-models/deploy-risk.ts	code	… Deploying it again overrides that.…
 lib/view-models/deploy-risk.ts	code	… health checks are still failing right now — ……. Nothing has re-checked this build since.
 lib/view-models/deploy-risk.ts	code	… is still failing right now. Nothing has re-checked this build since.
 lib/view-models/deploy-risk.ts	code	… newer
@@ -1669,7 +1678,7 @@ lib/view-models/deploy-risk.ts	code	a rule is still holding back
 lib/view-models/deploy-risk.ts	code	Deploy anyway
 lib/view-models/deploy-risk.ts	code	Deploy Now
 lib/view-models/deploy-risk.ts	code	Deploy to …
-lib/view-models/deploy-risk.ts	code	Every rule here allows this build, so this is the attempt the controller would make on its own.
+lib/view-models/deploy-risk.ts	code	Every rule here allows this build. Retrying deploys it again and runs its checks again.
 lib/view-models/deploy-risk.ts	code	Goes back… to a version … has already run. It applies immediately; older code will run against data the newer version has already written.…
 lib/view-models/deploy-risk.ts	code	It also pins … to this version, so nothing newer promotes until the pin is cleared.
 lib/view-models/deploy-risk.ts	code	Nothing has vouched for this build in …. Type
@@ -1681,6 +1690,8 @@ lib/view-models/deploy-risk.ts	code	Retrying resets this rollout’s health chec
 lib/view-models/deploy-risk.ts	code	Retrying resets those checks to “Pending — reset due to new deployment”, which clears the recorded failure detail.
 lib/view-models/deploy-risk.ts	code	Roll back
 lib/view-models/deploy-risk.ts	code	Several builds are selected, so type the rule's name.
+lib/view-models/deploy-risk.ts	code	The controller rolled this build back because … failed.
+lib/view-models/deploy-risk.ts	code	The controller rolled this build back.
 lib/view-models/deploy-risk.ts	code	This build already failed here. Type
 lib/view-models/deploy-risk.ts	code	This changes …. Every rule currently allows this build, so this is the move the controller would make on its own — it just has not made it yet.…
 lib/view-models/deploy-risk.ts	code	This changes …. Type
@@ -2115,7 +2126,6 @@ routes/+error.svelte	code	Nothing in the dashboard answers to this address. It m
 routes/+error.svelte	headline	This address does not exist
 routes/+layout.svelte	code	(min-width: 640px)
 routes/+layout.svelte	text	Skip to main content
-routes/activity/+page.svelte	code	, and … more
 routes/activity/+page.svelte	code	… · … ago
 routes/activity/+page.svelte	code	… · … failed, resolved
 routes/activity/+page.svelte	code	… · … rolled back
@@ -2274,6 +2284,7 @@ routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Clear pin
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Clearing the pin is what lets this deploy automatically — the rules below may also still apply.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Clearing the pin is what lets this deploy automatically.
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Commit message and author need GitHub. …
+routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Copy field path
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Couldn't check dependency holds
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	code	Couldn't load what this HelmRelease manages (…).
 routes/rollouts/[cluster]/[namespace]/[name]/+page.svelte	text	Custom build

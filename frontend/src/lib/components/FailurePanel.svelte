@@ -3,9 +3,9 @@
 <script lang="ts">
 	import { canHover } from '$lib/can-hover.svelte';
 	import type { Rollout, HealthCheck, KruiseRollout, RolloutTest } from '../../types';
-	import { PlaySolid, UndoOutline, ExclamationCircleOutline } from 'flowbite-svelte-icons';
+	import { UndoOutline, RefreshOutline } from 'flowbite-svelte-icons';
 	import { WANTED_VERSION_OWNED_REASON, rollbackTooltip } from '$lib/view-models/pin-hold';
-	import CalmBanner from './CalmBanner.svelte';
+	import Banner from './Banner.svelte';
 	import ChangeVersionFlow from './ChangeVersionFlow.svelte';
 	import { visibleHealthChecksFor } from '$lib/view-models/change-version-entry';
 	import RetryTestsModal from './RetryTestsModal.svelte';
@@ -15,7 +15,7 @@
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
 	import FailureDetails from './FailureDetails.svelte';
-	import { autoRollbackView, notRolledBackSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
+	import { autoRollbackView, notRolledBackSentence, retryPrimary, failureTitle, warningOnly, warningSentence, verdictDetailRows } from '$lib/view-models/auto-rollback';
 	import { blockedWhy, consumerNowLookup, nowSafeView, breakDetailRows } from '$lib/view-models/rollback-deps';
 	import { rolloutPath } from '$lib/source-dashboard';
 	import { poolOf, worstOf, failingNowList, failingSummary, type SnapCheck } from '$lib/view-models/health-failures';
@@ -195,8 +195,10 @@
 			?? []) as HealthObservation[]
 	);
 	const figure = $derived.by(() => { const l = failingLead(null, observations); return l.kind === 'check' ? null : l; });
-	/* with a figure the sentence keeps the check's NAME and the budget; the number is not said twice */
-	const bannerMessage = $derived(figure?.budget && shownList.length === 1 ? `${findDisplayName(shownList[0])}: ${figure.budget}` : summaryLine);
+	/* with a figure the line is the one every banner draws for a measured check: `8.2% error rate · over a 1% budget`
+	   (StatementBanner's figure line); the check's name is in Details and the Health checks card, not on the line */
+	const figureLine = $derived(figure?.budget ? `${figure.value}${figure.unit && figure.unit !== '%' && figure.unit !== '‰' ? ' ' : ''}${figure.unit} ${figure.label} · ${figure.budget}` : null);
+	const bannerMessage = $derived(figureLine && shownList.length === 1 ? figureLine : summaryLine);
 	/* the checks the banner draws evidence from, read from observations only: the live HealthCheck when we have it, else the history snapshot */
 	const pool = $derived(poolOf(healthChecks, failedHCList as SnapCheck[], deployWindowStart(rollout)));
 	const worst = $derived(worstOf(pool));
@@ -209,10 +211,18 @@
 	/* ROLLBACK DEPENDENCY SAFETY: a block (ConsumerRequires | TargetRequires) names what the usual target would break; once it lifts, the same banner offers the rollback as the primary */
 	const dependencyBlock = $derived(notRolled && (notRolled.reason === 'ConsumerRequires' || notRolled.reason === 'TargetRequires') ? notRolled : null);
 	const nowSafe = $derived(dependencyBlock ? nowSafeView(rollout, consumerNowLookup(fleet)) : null);
+	/* ONE consumer would break: draw the relation (`checkout` needs `^6.0.0`, the rollback target is `5.1.0`) and keep the sentence short */
+	const relation = $derived.by(() => {
+		if (!dependencyBlock || nowSafe || dependencyBlock.reason !== 'ConsumerRequires' || dependencyBlock.breaks.length !== 1) return null;
+		const r = dependencyBlock.breaks[0];
+		return r && r.left !== '?' ? r : null;
+	});
 	/* the banner's one sentence (12 words or fewer, no age: the page header has it): why it was not rolled back (or that it is safe now), else what is failing */
 	const sentence = $derived(
 		nowSafe ? nowSafe.headline
+		: relation ? 'A rollback would break a consumer'
 		: dependencyBlock ? blockedWhy(dependencyBlock.blockedBy, true)
+		: notRolled && warningOnly({ reason: notRolled.reason, rows: notRolled.rows }) ? warningSentence(notRolled.rows)
 		: notRolled ? notRolledBackSentence(notRolled.reason, notRolled.failed, notRolled.rows)
 		: allRecovered ? '`' + (worst?.row?.name ?? worst?.check.name ?? 'The check') + '` recovered'
 		: bannerMessage
@@ -221,13 +231,13 @@
 	const detailRows = $derived(
 		notRolled ? [...verdictDetailRows(notRolled.rows), ...(dependencyBlock && !nowSafe ? breakDetailRows(dependencyBlock.breaks, cluster ?? '', rollout?.metadata?.name ?? '') : [])] : undefined
 	);
-	const retryFirst = $derived(allRecovered);
-	const retryAct = $derived({ label: 'Retry', icon: PlaySolid, iconClass: 'h-5 w-5', id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
+	const retryFirst = $derived(retryPrimary({ allRecovered, notRolledBackReason: notRolled?.reason }));
+	const retryAct = $derived({ label: 'Retry', icon: RefreshOutline, id: 'failure-retry-btn', key: 'retry', disabled: actionsPending, onclick: () => handleRetry() });
 	const rollbackAct = $derived({ label: 'Roll back', icon: UndoOutline, id: 'failure-rollback-btn', key: 'rollback', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: () => handleRollback(), ...(isDashboardManagingWantedVersion ? {} : { ...(canHover.current ? {} : { title: WANTED_VERSION_OWNED_REASON }), describedBy: 'failure-owned-reason' }) });
-	const anywayAct = $derived({ label: nowSafe ? 'Roll back' : 'Roll back anyway\u2026', ...(nowSafe ? { ariaLabel: `Roll back to ${nowSafe.target}` } : {}), icon: UndoOutline, id: 'failure-rollback-btn', key: nowSafe ? 'rollback-safe' : 'rollback-anyway', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: () => handleRollback(nowSafe?.targetTag ?? dependencyBlock?.usualTag) });
+	const anywayAct = $derived({ label: nowSafe ? 'Roll back' : 'Roll back anyway\u2026', ...(nowSafe ? { ariaLabel: `Roll back to ${nowSafe.target}` } : {}), id: 'failure-rollback-btn', key: nowSafe ? 'rollback-safe' : 'rollback-anyway', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: () => handleRollback(nowSafe?.targetTag ?? dependencyBlock?.usualTag) });
 	const openConsumerAct = $derived(
 		dependencyBlock && dependencyBlock.breaks.length === 1 && dependencyBlock.breaks[0].namespace
-			? { label: `Open ${dependencyBlock.breaks[0].name}`, shortLabel: dependencyBlock.reason === 'TargetRequires' ? 'Open provider' : 'Open consumer', ariaLabel: `Open ${dependencyBlock.breaks[0].name}`, title: `Open ${dependencyBlock.breaks[0].name}`, href: rolloutPath(cluster ?? '', dependencyBlock.breaks[0].namespace, dependencyBlock.breaks[0].name), key: 'open-consumer' }
+			? { label: `Open ${dependencyBlock.breaks[0].name}`, ariaLabel: `Open ${dependencyBlock.breaks[0].name}`, title: `Open ${dependencyBlock.breaks[0].name}`, href: rolloutPath(cluster ?? '', dependencyBlock.breaks[0].namespace, dependencyBlock.breaks[0].name), key: 'open-consumer' }
 			: null
 	);
 	const rollbackShown = $derived(!!(rollout?.status?.history && rollout.status.history.length > 1 && canModify));
@@ -264,14 +274,14 @@
      headline + the failing check in one sentence + actions inline. The
      per-check bullets and the "deployments are paused" note live under
      `Details`; the `N issues` chip is gone (the sentence already counts). -->
-<CalmBanner
+<Banner
 	{open}
 	class="mb-4"
-	tone="danger"
-	icon={ExclamationCircleOutline}
-	title="Failed, not rolled back"
+	severity="critical"
+	title={failureTitle({ reason: notRolled?.reason, rows: notRolled?.rows })}
 	line={sentence}
 	rows={detailRows}
+	shape={relation ? relationShape : undefined}
 	detailsBody={notRolled ? undefined : evidenceBody}
 	primary={dependencyBlock ? (nowSafe ? (rollbackShown ? anywayAct : undefined) : canUpdate ? retryAct : undefined) : retryFirst ? (canUpdate ? retryAct : undefined) : rollbackShown ? rollbackAct : undefined}
 	secondary={dependencyBlock ? (nowSafe ? (canUpdate ? retryAct : undefined) : openConsumerAct ?? undefined) : retryFirst ? (rollbackShown ? rollbackAct : undefined) : canUpdate ? retryAct : undefined}
@@ -282,6 +292,14 @@
 	}}
 	note={rollbackShown && !canHover.current && !isDashboardManagingWantedVersion ? WANTED_VERSION_OWNED_REASON : undefined}
 />
+{#snippet relationShape()}
+	{#if relation}
+		<span class="bn-chip t-code-sm" data-banner-relation>{relation.name}</span>
+		<span class="t-meta text-fg-muted">needs</span>
+		<span class="bn-chip t-code-sm">{relation.left}</span>
+		<span class="whitespace-nowrap"><span class="t-code-sm text-danger" aria-label="the rollback target {relation.right} does not satisfy it">{relation.right}</span> <span class="t-meta text-fg-muted">refused</span></span>
+	{/if}
+{/snippet}
 {#snippet evidenceBody()}
 	{#if evidence}
 		<FailureDetails {pool} />

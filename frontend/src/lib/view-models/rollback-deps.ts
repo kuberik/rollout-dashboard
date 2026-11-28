@@ -104,7 +104,7 @@ export function servicesBreakLabel(n: number): string {
 }
 
 /**
- * What a rollback would break, as the report banner's Details rows (`CalmBanner`): the consumer (a link to its rollout, text
+ * What a rollback would break, as the report banner's Details rows (`Banner`): the consumer (a link to its rollout, text
  * for this rollout itself), a state word where the rows say why they are there, and what it runs and needs.
  */
 export function breakDetailRows(rows: BreakRow[], cluster: string, self = '', tag?: string): DetailRow[] {

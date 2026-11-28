@@ -185,6 +185,45 @@ export function notRolledBackWhy(reason: string, failed: HistoryEntry, rows: Ver
 	return notRolledBackSentence(reason, failed, rows).replaceAll('`', '');
 }
 
+/**
+ * Which button is the filled primary on a failed rollout's banner. When the controller looked at the failure and
+ * deliberately did NOT roll back (reason NotATrigger: a warning-only check, a check that could not run, one failing
+ * before the deploy), the evidence says a rollback is not recommended, so Retry is primary and Roll back the secondary.
+ * Every other not-rolled-back reason (blocked, no target, manual) is about the rollback itself and keeps Roll back first.
+ */
+export function retryPrimary(o: { allRecovered: boolean; notRolledBackReason?: string | null }): boolean {
+	return o.allRecovered || o.notRolledBackReason === 'NotATrigger';
+}
+
+/**
+ * The failure banner's headline. A failure the controller chose not to roll back because every failing check is a
+ * warning gets its own words, so it is told apart from a critical failure without reading the sentence.
+ */
+export function warningOnly(o: { reason?: string | null; rows?: Pick<VerdictRow, 'severity' | 'rollsBack'>[] }): boolean {
+	const rows = o.rows ?? [];
+	return o.reason === 'NotATrigger' && rows.length > 0 && rows.every((r) => r.severity === 'Warning' && !r.rollsBack);
+}
+
+export function failureTitle(o: { reason?: string | null; rows?: Pick<VerdictRow, 'severity' | 'rollsBack'>[] }): string {
+	if (warningOnly(o)) return (o.rows ?? []).length === 1 ? 'Warning check failed' : 'Warning checks failed';
+	return 'Failed, not rolled back';
+}
+
+/** the sentence under the warning headline: the title says it was a warning, so this names the check and the consequence */
+export function warningSentence(rows: Pick<VerdictRow, 'ref'>[]): string {
+	return rows.length === 1 ? '`' + shortRef(rows[0].ref) + '` does not trigger a rollback' : `${rows.length} checks, none trigger a rollback`;
+}
+
+/**
+ * Is `tag` the build the controller just deployed and rolled back (AutoRollback=True, history[0] the rollback)? Then the
+ * deploy dialogs say so, and name the check that failed, instead of treating it as a build nobody has run here.
+ */
+export function autoRolledBackBuild(r: Rollout | null | undefined, tag: string | null | undefined): { check: string | null } | null {
+	const v = autoRollbackView(r);
+	if (!tag || v?.state !== 'rolled-back' || v.failed.version?.tag !== tag) return null;
+	return { check: v.triggers[0] ? shortRef(v.triggers[0].ref) : null };
+}
+
 /** the same line for the banner: a check's name is marked `like this` so the banner draws it in the code role */
 export function notRolledBackSentence(reason: string, failed: HistoryEntry, rows: VerdictRow[]): string {
 	switch (reason) {
@@ -231,7 +270,7 @@ export function notRolledBackHeadline(reason: string, failed: HistoryEntry, rows
 }
 
 /**
- * Verdict rows as Details rows (`CalmBanner`): the check, its severity word (or "check error" / "before deploy"), and the
+ * Verdict rows as Details rows (`Banner`): the check, its severity word (or "check error" / "before deploy"), and the
  * check's own message. A row that rolls back (or would have) is drawn in the danger ink.
  */
 export function verdictDetailRows(rows: VerdictRow[]): DetailRow[] {

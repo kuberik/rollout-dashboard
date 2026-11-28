@@ -818,6 +818,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			s.consequence,
 			'2 newer builds are available and none of them will deploy while the pin is set.'
 		);
+		says(s.line!, '2 newer builds are held by the pin.');
 		says(s.verdict, 'Clearing the pin is the only thing that restarts automatic deploys.');
 		says(shortStory(s), 'Pinned to a1');
 		expect(s.gates).toEqual([]);
@@ -827,6 +828,7 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 		const s = blockingStory(rollout({ at: 2, pinned: 'c3' }), ctxFull);
 		says(s.headline, 'this service is pinned to c3');
 		says(s.consequence, 'Automatic updates are off here until the pin is cleared.');
+		says(s.line!, 'Automatic updates are off until the pin is cleared.');
 	});
 
 	test('pinned with exactly one newer build -- the singular branch', () => {
@@ -835,11 +837,13 @@ describe('blocking-story: the story a page prints, one state at a time', () => {
 			s.consequence,
 			'1 newer build is available and none of them will deploy while the pin is set.'
 		);
+		says(s.line!, '1 newer build is held by the pin.');
 	});
 
 	test('pinned while the fleet list has not answered -- the same sentence with no count', () => {
 		const s = blockingStory(rollout({ at: 1, pinned: 'b2' }), ctxFull, { settled: false });
 		says(s.consequence, 'Newer builds are available and none of them will deploy while the pin is set.');
+		says(s.line!, 'Newer builds are held by the pin.');
 	});
 
 	test('one approval gate -- the only state whose verdict is escalate', () => {
@@ -1888,6 +1892,17 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 		);
 	});
 
+	test('a build the controller rolled back -- says why, and that deploying it again overrides that', () => {
+		says(
+			confirmNotice(intent({ production: true, environment: 'prod', vouched: true }), false, null, [], { check: 'cart-smoke-test' }),
+			'The controller rolled this build back because cart-smoke-test failed. Deploying it again overrides that.'
+		);
+		says(
+			confirmNotice(intent({ production: true, environment: 'prod', vouched: true }), false, null, [], { check: null }),
+			'The controller rolled this build back. Deploying it again overrides that.'
+		);
+	});
+
 	test('production, vouched -- says the controller would have done this itself', () => {
 		says(
 			confirmNotice(intent({ production: true, environment: 'prod', vouched: true })),
@@ -2053,13 +2068,13 @@ describe('deploy-risk: a retry states what it destroys', () => {
 		);
 	});
 
-	test('a vouched retry says the controller would have made this attempt', () => {
+	test('a vouched retry says what retrying does, not what the controller would do', () => {
 		says(
 			retryConsequences(prod({ vouched: true }), {
 				failingChecks: [],
 				clearsFailureDetail: false
 			})[1],
-			'Every rule here allows this build, so this is the attempt the controller would make on its own.'
+			'Every rule here allows this build. Retrying deploys it again and runs its checks again.'
 		);
 	});
 

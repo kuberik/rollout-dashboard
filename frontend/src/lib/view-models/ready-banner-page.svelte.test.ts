@@ -110,18 +110,18 @@ describe('the Ready banner never repeats a fact another banner states', () => {
 		const b = readyBanner(c)!;
 		expect(b.textContent).toContain('Deploy refused');
 		// one short sentence names the other writer and the field, in the code role, copied clean
-		const line = b.querySelector('[data-calm-line]')!;
+		const line = b.querySelector('[data-banner-line]')!;
 		expect(line.textContent).toContain('gitops-demo');
 		expect(line.textContent).toContain('spec.values.image.tag');
 		expect(line.textContent).not.toContain('HelmReleaseFieldConflict');
 		expect(/[​‌‍⁠]/.test(b.textContent ?? ''), 'no zero-width characters to copy').toBe(false);
 		// the next step, the object, the reason code and the controller's hint sit behind Details, once
-		const panel = b.querySelector('[data-calm-panel]')!;
+		const panel = b.querySelector('[data-banner-panel]')!;
 		expect(panel.textContent).toContain('Stop the other writer from setting it to continue.');
 		expect(panel.textContent).toContain('HelmRelease alpha-app');
 		expect(panel.textContent).toContain('HelmReleaseFieldConflict');
-		expect(b.querySelectorAll('[data-calm-panel]').length).toBe(1);
-		expect(b.querySelector('[data-calm-details]')!.textContent).toContain('Details');
+		expect(b.querySelectorAll('[data-banner-panel]').length).toBe(1);
+		expect(b.querySelector('[data-banner-details]')!.textContent).toContain('Details');
 		expect(screen.queryByText('No release source', { exact: true })).toBeNull();
 		expect(screen.queryByText('Failed, not rolled back')).toBeNull();
 	});

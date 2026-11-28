@@ -570,7 +570,7 @@ export function retryConsequences(intent: DeployIntent, facts: RetryFacts, tag?:
 
 	out.push(
 		intent.vouched
-			? `Every rule here allows this build, so this is the attempt the controller would make on its own.`
+			? `Every rule here allows this build. Retrying deploys it again and runs its checks again.`
 			: `A rule here is still holding this build back. It applies immediately and ${where} starts serving it.`
 	);
 
@@ -654,7 +654,9 @@ export function confirmNotice(
 	 */
 	stepsBack?: number | null,
 	/** Display names of the gates that do NOT allow this build (QA #22): the sentence names what actually holds it. */
-	holders: readonly string[] = []
+	holders: readonly string[] = [],
+	/** the controller deployed this build here and rolled it back: say so, and what deploying it again means */
+	rolledBack: { check: string | null } | null = null
 ): string | null {
 	const level = confirmLevel(intent);
 	if (level === 'none') return null;
@@ -662,6 +664,10 @@ export function confirmNotice(
 	const pinNote = pins
 		? ` It also pins ${where} to this version, so nothing newer promotes until the pin is cleared.`
 		: '';
+	if (rolledBack && !intent.custom) {
+		const why = rolledBack.check ? `The controller rolled this build back because ${rolledBack.check} failed.` : 'The controller rolled this build back.';
+		return `${why} Deploying it again overrides that.${pinNote}`;
+	}
 
 	if (intent.custom) {
 		return `This tag is not in ${where}'s release list, so no rule here has vouched for it and the commit list above may be incomplete. It applies immediately.${pinNote}`;

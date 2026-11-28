@@ -1359,6 +1359,12 @@ export type BlockingStory = {
 	/** The concrete consequence: every gate, each with how it clears. */
 	consequence: string;
 	/**
+	 * The consequence as a banner prints it: ONE sentence of 12 words or fewer (the glanceable rule). The count of
+	 * waiting builds the full `consequence` leads with is already on the page (the release strip), so the banner drops
+	 * it. Absent: the banner prints `consequence`.
+	 */
+	line?: string;
+	/**
 	 * The verdict ALONE — "do I get up?", in one sentence. Split out from
 	 * `resolution` because the manual-deploy clause is a PAGE-level promise:
 	 * printed once in a banner it is the thing that stops a reader panicking,
@@ -1898,6 +1904,10 @@ export function blockingStory(
 				shownNewer > 0
 					? `${newerBuildsAre(newerCount, countPending)} available and none of them will deploy while the pin is set.`
 					: 'Automatic updates are off here until the pin is cleared.',
+			line:
+				shownNewer > 0
+					? `${newerBuildsAre(newerCount, countPending)} held by the pin.`
+					: 'Automatic updates are off until the pin is cleared.',
 			verdict: 'Clearing the pin is the only thing that restarts automatic deploys.',
 			resolution: 'Clearing the pin is the only thing that restarts automatic deploys.',
 			iconKind: 'pinned'
@@ -2097,7 +2107,8 @@ export function blockingStory(
 				? `${newerBuildsAre(newerCount, countPending)} waiting. `
 				: ''
 			: '';
-	const consequence = `${lead}Nothing promotes itself until ${joinClauses(parts)}.`;
+	const until = `Nothing promotes itself until ${joinClauses(parts)}.`;
+	const consequence = `${lead}${until}`;
 
 	// ── THE VERDICT ─────────────────────────────────────────────────────────
 	// The 3am answer, and the promise the product already keeps.
@@ -2176,6 +2187,7 @@ export function blockingStory(
 		selfClearing,
 		headline,
 		consequence,
+		line: until,
 		verdict,
 		resolution,
 		// ⭐ ALWAYS `warning` HERE. See the field's own doc comment (F2,

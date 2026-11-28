@@ -15,16 +15,16 @@ const props = (observations: unknown[]) => ({
 describe('rollout detail failure banner', () => {
 	test('the sentence names the check and its budget; the measured figure is behind Details', () => {
 		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: props([obs]) } });
-		const line = container.querySelector('[data-calm-line]')?.textContent ?? '';
+		const line = container.querySelector('[data-banner-line]')?.textContent ?? '';
 		expect(line).toContain('over a 1% budget');
-		expect(container.querySelector('[data-calm-panel]')?.textContent).toContain('4.2%');
-		expect(container.querySelector('[data-calm-banner]')?.textContent).toContain('Failed, not rolled back');
+		expect(container.querySelector('[data-banner-panel]')?.textContent).toContain('4.2%');
+		expect(container.querySelector('[data-banner]')?.textContent).toContain('Failed, not rolled back');
 	});
 	test('no observations: no figure, the sentence is unchanged', () => {
 		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: props([]) } });
 		expect(container.textContent).toContain('of requests failed');
 		/* the banner's own sentence, not the Details list below it */
-		expect((container.textContent ?? '').split('Details')[0]).toContain('of requests failed');
+		expect((container.querySelector('[data-banner-line]')?.textContent ?? '')).toContain('of requests failed');
 	});
 	test('a check failing without observations beside a recovered one: the sentence stays, no "retry is reasonable"', () => {
 		const live = [
@@ -33,9 +33,9 @@ describe('rollout detail failure banner', () => {
 		];
 		const p = { ...(props([]) as object), healthChecks: live, failedHCList: [{ name: 'latency', message: 'latency monitor alerted' }, { name: 'error-rate', message: 'error-rate: 4.2% of requests failed, over a 1% budget' }] } as never;
 		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: p } });
-		const head = (container.textContent ?? '').split('Details')[0];
+		const head = (container.querySelector('[data-banner-line]')?.textContent ?? '');
 		expect(head).not.toContain('retry is reasonable');
-		expect(head.length).toBeGreaterThan('Failed, not rolled back'.length + 5);
+		expect(head.length).toBeGreaterThan(5);
 	});
 	test('one check failing now and one recovered: the sentence counts and names only the failing one', () => {
 		const live = [
@@ -44,7 +44,7 @@ describe('rollout detail failure banner', () => {
 		];
 		const p = { ...(props([]) as object), healthChecks: live, failedHCList: [{ name: 'latency', message: 'latency monitor alerted' }, { name: 'error-rate', message: 'error-rate: 4.2% of requests failed' }] } as never;
 		const { container } = render(WithQueryClient, { props: { component: FailurePanel as never, props: p } });
-		const head = (container.textContent ?? '').split('Details')[0];
+		const head = (container.querySelector('[data-banner-line]')?.textContent ?? '');
 		expect(head).not.toContain('2 health checks failing');
 		expect(head).not.toContain('latency');
 		expect(head).toContain('error-rate: 4.2% of requests failed');

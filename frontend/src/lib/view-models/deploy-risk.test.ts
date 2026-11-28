@@ -795,3 +795,12 @@ describe('placeTarget: the tier and the site, one spelling', () => {
 		expect(retryTitle(retry, '1.4.0')).toBe('Retry 1.4.0 in prod · eu-west');
 	});
 });
+
+describe('confirmNotice: a build the controller rolled back', () => {
+	it('says it was rolled back because the check failed, and that deploying it again overrides that', () => {
+		const i = { production: true, environment: 'prod', vouched: true } as never;
+		const n = confirmNotice(i, false, null, [], { check: 'cart-smoke-test' });
+		expect(n).toBe('The controller rolled this build back because cart-smoke-test failed. Deploying it again overrides that.');
+		expect(n).not.toMatch(/on its own|currently allows/);
+	});
+});

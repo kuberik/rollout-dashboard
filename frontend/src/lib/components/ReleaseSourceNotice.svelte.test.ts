@@ -34,21 +34,21 @@ describe('ReleaseSourceNotice', () => {
 		expect(RELEASE_SOURCE_REQUIRED_MESSAGE).toBe(CONTROLLER_MESSAGE);
 	});
 
-	it('rollout page: leads with "This Rollout", the controller message sits in the footnote verbatim', () => {
+	it('rollout page: leads with "this Rollout", the controller message sits in the footnote verbatim', () => {
 		const { container } = render(ReleaseSourceNotice, { rollout: rollout() });
 		const t = text(container);
-		expect(t).toContain('This Rollout has no release source, so it has no releases.');
-		expect(t).not.toContain("This app's rollout");
+		expect(t).toContain('Without one, this Rollout has no releases.');
+		expect(t).not.toContain("this app's rollout");
 		expect(t).toContain(CONTROLLER_MESSAGE);
-		expect(t.indexOf('This Rollout has no release source')).toBeLessThan(
+		expect(t.indexOf('Without one, this Rollout has no releases.')).toBeLessThan(
 			t.indexOf(CONTROLLER_MESSAGE)
 		);
 	});
 
-	it('app page: leads with "This app\'s rollout" given the controller message as text', () => {
+	it('app page: leads with "this app\'s rollout" given the controller message as text', () => {
 		const { container } = render(ReleaseSourceNotice, { app: true, text: CONTROLLER_MESSAGE });
 		const t = text(container);
-		expect(t).toContain("This app's rollout has no release source, so it has no releases.");
+		expect(t).toContain("Without one, this app's rollout has no releases.");
 		expect(t).toContain(CONTROLLER_MESSAGE);
 	});
 
@@ -86,10 +86,10 @@ describe('ReleaseSourceNotice', () => {
 
 	it('lead copy per reason and variant', () => {
 		expect(noticeLead('ReleaseSourceRequired')).toBe(
-			'This Rollout has no release source, so it has no releases.'
+			'Without one, this Rollout has no releases.'
 		);
 		expect(noticeLead('ReleaseSourceRequired', true)).toBe(
-			"This app's rollout has no release source, so it has no releases."
+			"Without one, this app's rollout has no releases."
 		);
 		expect(noticeLead('ReleasesImagePolicyIgnored')).toBe(
 			'This Rollout sets spec.releasesImagePolicy, which is ignored.'

@@ -280,7 +280,7 @@
 	     underneath, quieter (`opacity-80`, same ink — never a second colour)
 	     so it reads as a footnote to THIS panel rather than a panel of its
 	     own. -->
-	<p>{story.consequence}</p>
+	<p>{story.line ?? story.consequence}</p>
 	<p class="mt-1 opacity-80">{secondaryFact}</p>
 {/snippet}
 
@@ -309,7 +309,7 @@
 <AlertPanel
 	severity={story.severity === 'warning' ? 'pinned' : story.severity}
 	title={titleOverride ?? story.headline}
-	message={story.kindPending || hasSecondaryFact ? undefined : story.consequence}
+	message={story.kindPending || hasSecondaryFact ? undefined : (story.line ?? story.consequence)}
 	messageBody={story.kindPending
 		? consequencePending
 		: hasSecondaryFact

@@ -33,7 +33,6 @@
 	import HeldGlyph from './HeldGlyph.svelte';
 	import CauseText from './CauseText.svelte';
 	import type { Cause } from '$lib/view-models/gate-label';
-	import ObservationFigure from './ObservationFigure.svelte';
 	import { failingLead } from '$lib/view-models/attention';
 	import type { HealthObservation } from '$lib/../types';
 	import { canHover } from '$lib/can-hover.svelte';
@@ -80,6 +79,7 @@
 		pulse = false,
 		footnoteLabel,
 		footnoteBody,
+		shape,
 		class: className = 'mb-0'
 	}: {
 		severity: Severity;
@@ -143,6 +143,8 @@
 		pulse?: boolean;
 		footnoteLabel?: string;
 		footnoteBody?: Snippet;
+		/** drawn facts (a region chip) inline on the sentence's row */
+		shape?: Snippet;
 		class?: string;
 	} = $props();
 
@@ -150,6 +152,10 @@
 		severity === 'failed' ? 'error' : severity === 'approval' || severity === 'held' ? 'pinned' : 'info'
 	);
 	const acts = $derived<Act[]>(severity === 'failed' && !primary && !secondary.length && openHref ? [{ label: 'Open rollout', href: openHref, after: true, key: 'open-rollout' }] : secondary);
+	/* at most two visible buttons (the banner rule): the primary and one more; the rest go in "⋯" at every width */
+	/* DOM order = visual order (Tab meets the primary last, as the eye does): no `after` reordering inside a banner */
+	const visibleActs = $derived(acts.slice(0, primary ? 1 : 2).map((a) => (a.after && !a.quiet ? { ...a, after: false } : a)));
+	const moreActs = $derived(acts.slice(primary ? 1 : 2));
 	const hasActions = $derived(!!primary || acts.length > 0);
 	/* the failure cards' rule (attention.ts): a measured figure leads, and the check line then says the name + the budget instead of repeating the figure in its message */
 	const figure = $derived(severity === 'failed' && (check || observations?.length) ? (() => { const l = failingLead(check ?? null, observations); return l.kind === 'check' ? null : l; })() : null);
@@ -162,10 +168,18 @@
 	const hasBody = $derived(!!(figure || check || place || since || build || cause || fact || message || body));
 </script>
 
+{#snippet checkLine(c: { name?: string; message?: string; cls?: string })}
+	<!-- one line format on every banner: `<check> · <message>`, no second status mark (the banner's disc is the one);
+	     a recovered check keeps FailedCheckLine's recovered ring, which IS the news -->
+	{#if recovered}<FailedCheckLine check={c} danger ink={checkInk} {recovered} body />
+	{:else}<p class="min-w-0" data-statement-check>{#if c.name}<span class="text-fg">{c.name}</span>{#if c.message}<span class="mx-1.5 text-fg-subtle" aria-hidden="true">·</span>{/if}{/if}{c.message ?? ''}</p>{/if}
+{/snippet}
 {#snippet bodySnip()}
 			<div class="flex min-w-0 flex-col gap-2" data-statement-body>
-				{#if figure}<ObservationFigure fig={figure} />{/if}
-				{#if shownCheck && !checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} {recovered} body />{/if}
+				{#if figure}
+					<!-- the measured figure as ONE line (banners system: title + one line); the big 32px figure is the card's, not the banner's -->
+					<p class="min-w-0" data-observation-figure data-lead={figure.kind}><span class="tabular-nums">{figure.value}{figure.unit && figure.unit !== '%' && figure.unit !== '‰' ? ' ' : ''}{figure.unit}</span> {figure.label}{#if shownCheck?.message}<span class="mx-1.5 text-fg-subtle" aria-hidden="true">·</span>{shownCheck.message}{/if}</p>
+				{:else if shownCheck && !checkAfterMeta}{@render checkLine(shownCheck)}{/if}
 				{#if place || since || build || cause || fact}
 					<!-- one .dot-list row at every width and in every banner (no fixed tracks: a track left a 50px hole between the sha and the badge) -->
 					<div class="dot-list min-w-0" data-statement-meta>
@@ -184,13 +198,13 @@
 						</div>
 					</div>
 				{/if}
-				{#if shownCheck && checkAfterMeta}<FailedCheckLine check={shownCheck} danger ink={checkInk} {recovered} body />{/if}
-				{#if message}<p class="min-w-0 {messageDesktopOnly ? 'max-sm:hidden' : ''}">{#if typeof message !== 'string'}<CauseText parts={message} />{:else}{#each splitOpensClause(message) as part}{#if part.unit}<span class="whitespace-nowrap" data-opens-clause>{part.text}</span>{:else}{part.text}{/if}{/each}{/if}</p>{/if}
+				{#if shownCheck && checkAfterMeta && !figure}{@render checkLine(shownCheck)}{/if}
+				{#if message && !figure}<p class="min-w-0 {messageDesktopOnly ? 'max-sm:hidden' : ''}">{#if typeof message !== 'string'}<CauseText parts={message} />{:else}{#each splitOpensClause(message) as part}{#if part.unit}<span class="whitespace-nowrap" data-opens-clause>{part.text}</span>{:else}{part.text}{/if}{/each}{/if}</p>{/if}
 				{#if body}{@render body()}{/if}
 			</div>
 {/snippet}
 {#snippet actionsSnip()}
-			<ActRow {primary} secondary={acts} {phoneMax} align="start" />
+			<ActRow {primary} secondary={visibleActs} more={moreActs} {phoneMax} align="end" equal />
 			{#if note}<p class="t-meta basis-full opacity-80">{note}</p>{/if}
 			{#if canHover.current && tooltips}
 				{#each Object.entries(tooltips) as [id, text] (id)}
@@ -211,6 +225,7 @@
 	{compact}
 	{toggle}
 	extra={age}
+	{shape}
 	{footnoteLabel}
 	{footnoteBody}
 	class={className}
