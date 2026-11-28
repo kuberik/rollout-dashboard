@@ -273,6 +273,7 @@ lib/components/ChangeVersionModal.svelte	code	Required for a prod …. Recorded 
 lib/components/ChangeVersionModal.svelte	code	Required: say why the rule should not apply. Recorded with the deploy.
 lib/components/ChangeVersionModal.svelte	code	Roll back
 lib/components/ChangeVersionModal.svelte	code	Roll back … to …
+lib/components/ChangeVersionModal.svelte	code	Rolled back
 lib/components/ChangeVersionModal.svelte	code	Rolling back…
 lib/components/ChangeVersionModal.svelte	code	Running in …
 lib/components/ChangeVersionModal.svelte	code	Running in … since …
@@ -454,15 +455,12 @@ lib/components/ErrorState.svelte	title	Where to look
 lib/components/EventsCard.svelte	text	… event …
 lib/components/EventsCard.svelte	text	… Nothing since the deploy started · … … No recent events …
 lib/components/EventsCard.svelte	title	Recent events
-lib/components/FailurePanel.svelte	text	… &#x2715;
 lib/components/FailurePanel.svelte	code	` recovered
 lib/components/FailurePanel.svelte	text	+ … more
 lib/components/FailurePanel.svelte	code	A health check
 lib/components/FailurePanel.svelte	code	A rollback would break a consumer
 lib/components/FailurePanel.svelte	code	An error occurred during deployment.
 lib/components/FailurePanel.svelte	code	Open …
-lib/components/FailurePanel.svelte	code	Open consumer
-lib/components/FailurePanel.svelte	code	Open provider
 lib/components/FailurePanel.svelte	code	Roll back
 lib/components/FailurePanel.svelte	code	Roll back anyway…
 lib/components/FailurePanel.svelte	code	Roll back to …
@@ -1670,6 +1668,7 @@ lib/view-models/deploy-bars.ts	code	none …
 lib/view-models/deploy-bars.ts	code	rolled back
 lib/view-models/deploy-risk.ts	code	… back
 lib/view-models/deploy-risk.ts	code	… build…
+lib/view-models/deploy-risk.ts	code	… Deploying it again overrides that.…
 lib/view-models/deploy-risk.ts	code	… health checks are still failing right now — ……. Nothing has re-checked this build since.
 lib/view-models/deploy-risk.ts	code	… is still failing right now. Nothing has re-checked this build since.
 lib/view-models/deploy-risk.ts	code	… newer
@@ -1679,7 +1678,7 @@ lib/view-models/deploy-risk.ts	code	a rule is still holding back
 lib/view-models/deploy-risk.ts	code	Deploy anyway
 lib/view-models/deploy-risk.ts	code	Deploy Now
 lib/view-models/deploy-risk.ts	code	Deploy to …
-lib/view-models/deploy-risk.ts	code	Every rule here allows this build, so this is the attempt the controller would make on its own.
+lib/view-models/deploy-risk.ts	code	Every rule here allows this build. Retrying deploys it again and runs its checks again.
 lib/view-models/deploy-risk.ts	code	Goes back… to a version … has already run. It applies immediately; older code will run against data the newer version has already written.…
 lib/view-models/deploy-risk.ts	code	It also pins … to this version, so nothing newer promotes until the pin is cleared.
 lib/view-models/deploy-risk.ts	code	Nothing has vouched for this build in …. Type
@@ -1691,6 +1690,8 @@ lib/view-models/deploy-risk.ts	code	Retrying resets this rollout’s health chec
 lib/view-models/deploy-risk.ts	code	Retrying resets those checks to “Pending — reset due to new deployment”, which clears the recorded failure detail.
 lib/view-models/deploy-risk.ts	code	Roll back
 lib/view-models/deploy-risk.ts	code	Several builds are selected, so type the rule's name.
+lib/view-models/deploy-risk.ts	code	The controller rolled this build back because … failed.
+lib/view-models/deploy-risk.ts	code	The controller rolled this build back.
 lib/view-models/deploy-risk.ts	code	This build already failed here. Type
 lib/view-models/deploy-risk.ts	code	This changes …. Every rule currently allows this build, so this is the move the controller would make on its own — it just has not made it yet.…
 lib/view-models/deploy-risk.ts	code	This changes …. Type

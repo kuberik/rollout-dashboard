@@ -237,7 +237,7 @@
 	const anywayAct = $derived({ label: nowSafe ? 'Roll back' : 'Roll back anyway\u2026', ...(nowSafe ? { ariaLabel: `Roll back to ${nowSafe.target}` } : {}), icon: UndoOutline, id: 'failure-rollback-btn', key: nowSafe ? 'rollback-safe' : 'rollback-anyway', disabled: actionsPending || !isDashboardManagingWantedVersion, onclick: () => handleRollback(nowSafe?.targetTag ?? dependencyBlock?.usualTag) });
 	const openConsumerAct = $derived(
 		dependencyBlock && dependencyBlock.breaks.length === 1 && dependencyBlock.breaks[0].namespace
-			? { label: `Open ${dependencyBlock.breaks[0].name}`, shortLabel: dependencyBlock.reason === 'TargetRequires' ? 'Open provider' : 'Open consumer', ariaLabel: `Open ${dependencyBlock.breaks[0].name}`, title: `Open ${dependencyBlock.breaks[0].name}`, href: rolloutPath(cluster ?? '', dependencyBlock.breaks[0].namespace, dependencyBlock.breaks[0].name), key: 'open-consumer' }
+			? { label: `Open ${dependencyBlock.breaks[0].name}`, ariaLabel: `Open ${dependencyBlock.breaks[0].name}`, title: `Open ${dependencyBlock.breaks[0].name}`, href: rolloutPath(cluster ?? '', dependencyBlock.breaks[0].namespace, dependencyBlock.breaks[0].name), key: 'open-consumer' }
 			: null
 	);
 	const rollbackShown = $derived(!!(rollout?.status?.history && rollout.status.history.length > 1 && canModify));
@@ -297,7 +297,7 @@
 		<span class="bn-chip t-code-sm" data-banner-relation>{relation.name}</span>
 		<span class="t-meta text-fg-muted">needs</span>
 		<span class="bn-chip t-code-sm">{relation.left}</span>
-		<span class="bn-chip t-code-sm" aria-label="the rollback target {relation.right} does not satisfy it">{relation.right} &#x2715;</span>
+		<span class="t-code-sm text-danger" aria-label="the rollback target {relation.right} does not satisfy it">{relation.right}</span><span class="t-meta text-fg-muted">refused</span>
 	{/if}
 {/snippet}
 {#snippet evidenceBody()}

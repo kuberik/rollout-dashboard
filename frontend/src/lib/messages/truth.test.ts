@@ -1892,6 +1892,17 @@ describe('deploy-risk: every notice, in the state that produces it', () => {
 		);
 	});
 
+	test('a build the controller rolled back -- says why, and that deploying it again overrides that', () => {
+		says(
+			confirmNotice(intent({ production: true, environment: 'prod', vouched: true }), false, null, [], { check: 'cart-smoke-test' }),
+			'The controller rolled this build back because cart-smoke-test failed. Deploying it again overrides that.'
+		);
+		says(
+			confirmNotice(intent({ production: true, environment: 'prod', vouched: true }), false, null, [], { check: null }),
+			'The controller rolled this build back. Deploying it again overrides that.'
+		);
+	});
+
 	test('production, vouched -- says the controller would have done this itself', () => {
 		says(
 			confirmNotice(intent({ production: true, environment: 'prod', vouched: true })),
@@ -2057,13 +2068,13 @@ describe('deploy-risk: a retry states what it destroys', () => {
 		);
 	});
 
-	test('a vouched retry says the controller would have made this attempt', () => {
+	test('a vouched retry says what retrying does, not what the controller would do', () => {
 		says(
 			retryConsequences(prod({ vouched: true }), {
 				failingChecks: [],
 				clearsFailureDetail: false
 			})[1],
-			'Every rule here allows this build, so this is the attempt the controller would make on its own.'
+			'Every rule here allows this build. Retrying deploys it again and runs its checks again.'
 		);
 	});
 

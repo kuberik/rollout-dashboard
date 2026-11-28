@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rollout } from '../../types';
-import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, triggerSentence, notRolledBackSentence, retryPrimary, failureTitle, warningSentence, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
+import { severityOf, shortWhy, autoRollbackView, deployKindLabel, entryRollbackNote, entryRolledBack, failedBakeHeld, notRolledBackHeadline, notRolledBackWhy, verdictDetailRows, triggerSentence, notRolledBackSentence, retryPrimary, failureTitle, warningSentence, autoRolledBackBuild, splitSource, triggerLine, verdictRows, whyWords } from './auto-rollback';
 
 const v = (tag: string) => ({ tag, version: `1.${tag.slice(-1)}.0`, revision: 'a'.repeat(40), created: '2026-11-21T10:00:00Z' });
 const failed = {
@@ -186,4 +186,13 @@ describe('failureTitle: a warning-only failure has its own headline', () => {
 describe('warningSentence: names the check and the consequence, not the severity again', () => {
 	it('one check', () => expect(warningSentence([{ ref: 'prod/catalog-flaky-ui-test' }])).toBe('`catalog-flaky-ui-test` does not trigger a rollback'));
 	it('several', () => expect(warningSentence([{ ref: 'a/x' }, { ref: 'a/y' }])).toBe('2 checks, none trigger a rollback'));
+});
+
+describe('autoRolledBackBuild: the build the controller deployed and rolled back', () => {
+	it('names the check that triggered the rollback, only for that build', () => {
+		expect(autoRolledBackBuild(rolledBack(), 'r4')).toEqual({ check: 'smoke' });
+		expect(autoRolledBackBuild(rolledBack(), 'r3')).toBeNull();
+		expect(autoRolledBackBuild(rolledBack(), null)).toBeNull();
+		expect(autoRolledBackBuild({ status: { history: [failed] } } as unknown as Rollout, 'r4')).toBeNull();
+	});
 });

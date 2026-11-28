@@ -79,6 +79,7 @@
 		pulse = false,
 		footnoteLabel,
 		footnoteBody,
+		shape,
 		class: className = 'mb-0'
 	}: {
 		severity: Severity;
@@ -142,6 +143,8 @@
 		pulse?: boolean;
 		footnoteLabel?: string;
 		footnoteBody?: Snippet;
+		/** drawn facts (a region chip) inline on the sentence's row */
+		shape?: Snippet;
 		class?: string;
 	} = $props();
 
@@ -222,6 +225,7 @@
 	{compact}
 	{toggle}
 	extra={age}
+	{shape}
 	{footnoteLabel}
 	{footnoteBody}
 	class={className}

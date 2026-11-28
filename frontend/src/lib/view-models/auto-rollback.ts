@@ -214,6 +214,16 @@ export function warningSentence(rows: Pick<VerdictRow, 'ref'>[]): string {
 	return rows.length === 1 ? '`' + shortRef(rows[0].ref) + '` does not trigger a rollback' : `${rows.length} checks, none trigger a rollback`;
 }
 
+/**
+ * Is `tag` the build the controller just deployed and rolled back (AutoRollback=True, history[0] the rollback)? Then the
+ * deploy dialogs say so, and name the check that failed, instead of treating it as a build nobody has run here.
+ */
+export function autoRolledBackBuild(r: Rollout | null | undefined, tag: string | null | undefined): { check: string | null } | null {
+	const v = autoRollbackView(r);
+	if (!tag || v?.state !== 'rolled-back' || v.failed.version?.tag !== tag) return null;
+	return { check: v.triggers[0] ? shortRef(v.triggers[0].ref) : null };
+}
+
 /** the same line for the banner: a check's name is marked `like this` so the banner draws it in the code role */
 export function notRolledBackSentence(reason: string, failed: HistoryEntry, rows: VerdictRow[]): string {
 	switch (reason) {

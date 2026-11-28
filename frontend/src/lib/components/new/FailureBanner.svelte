@@ -19,6 +19,7 @@
 	import { agoOf, withAge, type BannerEvidence } from '$lib/view-models/health-failures';
 	import { now } from '$lib/stores/time';
 	import type { BannerMeta, ChangeLine } from './rollouts-page';
+	import { titleParts } from '$lib/view-models/banner';
 
 	let { b, extra }: {
 		b: { /** the Overview banner's evidence (same lines, Details and class glyph); absent = the check + line the row carries */ evidence?: BannerEvidence | null; title: string; check: { name: string; message: string } | null; line: string | null; change: ChangeLine | null; openHref: string; rollbackHref: string | null; /** every check is OK again: Retry leads (view-models/failure-actions.ts) */ recovered?: boolean; /** where Retry goes: the rollout, which holds the retry and its confirmation (defaults to openHref) */ retryHref?: string; meta: BannerMeta };
@@ -28,6 +29,10 @@
 	/* the age rides on the health line ("2 health checks failing, 1 pending · 12m ago"), as on the rollout Overview's banner; the meta line keeps only the build */
 	const age = $derived(b.meta.sinceAt ? agoOf(b.meta.sinceAt, $now) : b.meta.since);
 	const sentence = $derived(b.evidence ? (b.evidence.recovered ? b.evidence.message : withAge(b.evidence.message, age)) : b.check ? undefined : b.line ? withAge(b.line, age) : undefined);
+	/* "invoice-api failing in prod · eu-west": the region is drawn as a chip on the sentence's row, so the title is one line at 390 */
+	const tp = $derived(titleParts(b.title));
+	const region = $derived.by(() => { const at = tp.place?.indexOf(' · ') ?? -1; return tp.place && at > 0 ? { env: tp.place.slice(0, at), place: tp.place.slice(at + 3) } : null; });
+	const bannerTitle = $derived(region ? tp.lead + region.env : b.title);
 	/* another controller owns the wanted version: Roll back stays drawn, disabled, with the reason the header and the Overview give */
 	const ownedReason = $derived(rollbackOwnedReason(b.rollbackHref));
 	const acts = $derived(failureActs<Act>(!!b.recovered, {
@@ -38,8 +43,9 @@
 	}));
 </script>
 
+{#snippet regionChip()}{#if region}<span class="bn-chip t-code-sm" data-banner-region title="{region.env} · {region.place}">{region.place}</span>{/if}{/snippet}
 {#snippet details()}{#if extra}<div class="mb-2">{@render extra()}</div>{/if}{#if b.evidence}<FailureDetails pool={b.evidence.pool} />{/if}{/snippet}
-<StatementBanner severity="failed" title={b.title} recovered={!!b.recovered} check={b.evidence ? b.evidence.check : b.check ?? undefined} observations={b.evidence?.observations}
+<StatementBanner severity="failed" title={bannerTitle} shape={region ? regionChip : undefined} recovered={!!b.recovered} check={b.evidence ? b.evidence.check : b.check ?? undefined} observations={b.evidence?.observations}
 	message={sentence} change={b.change ? { ...b.change, build: b.meta.build ?? undefined } : undefined}
 	class=""
 	footnoteLabel={b.evidence || extra ? 'Details' : undefined}

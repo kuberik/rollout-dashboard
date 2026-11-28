@@ -57,6 +57,8 @@
 		compact?: boolean;
 		toggle?: { open: boolean; onclick: () => void; label: string; controls?: string };
 		extra?: Snippet;
+		/** drawn facts (chips) inline on the sentence's row */
+		shape?: Snippet;
 		class?: string;
 		/** Read by the landing page's guided tour to find this banner by a stable name. */
 		dataTour?: string;
@@ -123,6 +125,7 @@
 	{icon}
 	{heading}
 	extra={p.extra}
+	shape={p.shape}
 	line={plainLine}
 	body={hasBody ? body : undefined}
 	detailsBody={hasFoot ? foot : undefined}

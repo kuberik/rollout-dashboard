@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import { toneInk } from '$lib/view-models/state-tone';
+	import { autoRolledBackBuild } from '$lib/view-models/auto-rollback';
 	import { availableReleases } from '$lib/releases/registry.svelte';
 	import HeldGlyph from './HeldGlyph.svelte';
 	import Avatar from './Avatar.svelte';
@@ -1434,7 +1435,7 @@
 	});
 	const deployNotice = $derived(
 		selectedVersion
-			? confirmNotice(intent, pinVersionToggle, deployStepsBack, overriddenGates.map((g) => nameOfGate(g.name)))
+			? confirmNotice(intent, pinVersionToggle, deployStepsBack, overriddenGates.map((g) => nameOfGate(g.name)), autoRolledBackBuild(rollout, selectedVersion))
 			: null
 	);
 
@@ -1985,7 +1986,9 @@
 			: direction === 'rollback'
 				? { word: 'Ran here before', ink: 'text-fg-subtle' }
 				: direction === 'forward'
-					? { word: 'Not deployed here', ink: 'text-fg-subtle' }
+					? autoRolledBackBuild(rollout, selectedVersion)
+						? { word: 'Rolled back', ink: 'text-fg-subtle' }
+						: { word: 'Not deployed here', ink: 'text-fg-subtle' }
 					: null
 	);
 	/**

@@ -478,8 +478,13 @@
 			flex: 1 1 100%;
 		}
 		.bn-own {
-			flex-wrap: nowrap;
+			display: grid;
+			grid-auto-flow: column;
+			grid-auto-columns: minmax(0, 1fr);
 			gap: 8px;
+		}
+		.bn-own :global(.btn) {
+			width: 100%;
 		}
 		.bn-own > :global(*) {
 			flex: 1 1 0;
@@ -493,6 +498,10 @@
 			height: 44px;
 			min-height: 44px;
 			justify-content: center;
+		}
+		/* every visible button in the phone row shares the row equally (ActRow's own rule sizes by label, which left Retry narrower than its sibling) */
+		.bn .bn-acts :global(.ar.ar-equal.ar-fill .ar-item:not(.ar-menu)) {
+			flex: 1 1 0;
 		}
 		.bn-acts :global(.ar-more) {
 			flex: 0 0 44px;
